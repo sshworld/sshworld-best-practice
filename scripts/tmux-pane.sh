@@ -32,6 +32,7 @@ commands:
   wait-idle --pane=<id> [--idle=<sec>] [--timeout=<sec>]
                                                 idle 도달까지 대기 (idle=3, timeout=120)
   kill --pane=<id>                              pane 종료 (자기 pane 거부)
+  cleanup                                       tmux-pane-mgr 세션 일괄 정리 (out-tmux 자식 전부)
   list                                          pane 목록 JSON
   status                                        현재 pane + window 의 pane 목록 텍스트
 USAGE
@@ -185,6 +186,48 @@ do_list() {
   echo "]"
 }
 
+do_cleanup() {
+  require_tmux
+  local count=0
+
+  # (1) `tmux-pane-mgr` 세션 (out-tmux 에서 spawn 한 모든 자식) 일괄 정리.
+  if tmux has-session -t "$MGR_SESSION" 2>/dev/null; then
+    local mgr_count
+    mgr_count=$(tmux list-panes -s -t "$MGR_SESSION" -F '#{pane_id}' 2>/dev/null | wc -l | tr -d ' ')
+    tmux kill-session -t "$MGR_SESSION" 2>/dev/null || true
+    count=$((count + mgr_count))
+  fi
+
+  # (2) attached client 의 active pane 이 속한 window 의 다른 pane 정리.
+  # active pane 과 wrapper 가 도는 self pane 은 보존 — 사용자 인터랙션 중일 수 있음.
+  local active_pane self_pane target_window
+  active_pane=$(tmux list-panes -a -F '#{?pane_active,#{pane_id},}' 2>/dev/null | grep -v '^$' | head -1)
+  self_pane=$(tmux display-message -p '#{pane_id}' 2>/dev/null || true)
+
+  if [ -n "$active_pane" ]; then
+    target_window=$(tmux display-message -p '#{session_name}:#{window_index}' -t "$active_pane" 2>/dev/null)
+    if [ -n "$target_window" ]; then
+      local in_tmux_count=0
+      while read -r pid; do
+        [ -z "$pid" ] && continue
+        if [ "$pid" = "$active_pane" ] || [ "$pid" = "$self_pane" ]; then
+          continue  # preserve active + self
+        fi
+        if tmux kill-pane -t "$pid" 2>/dev/null; then
+          in_tmux_count=$((in_tmux_count + 1))
+        fi
+      done < <(tmux list-panes -t "$target_window" -F '#{pane_id}' 2>/dev/null)
+      count=$((count + in_tmux_count))
+    fi
+  fi
+
+  if [ "$count" -gt 0 ]; then
+    echo "cleaning $count child pane(s)" >&2
+  else
+    echo "cleaning 0 child pane(s) — no child panes to remove" >&2
+  fi
+}
+
 do_status() {
   require_tmux
   if [ -n "${TMUX:-}" ]; then
@@ -211,6 +254,7 @@ main() {
     capture)    do_capture "$@" ;;
     wait-idle)  do_wait_idle "$@" ;;
     kill)       do_kill "$@" ;;
+    cleanup)    do_cleanup "$@" ;;
     list)       do_list "$@" ;;
     status)     do_status "$@" ;;
     -h|--help|help) usage ;;

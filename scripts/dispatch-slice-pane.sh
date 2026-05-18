@@ -106,6 +106,13 @@ main() {
     die "wrapper 미발견 — tmux-cli 설치 또는 scripts/tmux-pane.sh 확인" 2
   fi
 
+  # 새 작업 시작 시 기존 자식 pane 일괄 정리 (out-tmux 의 tmux-pane-mgr 세션).
+  # in-tmux 환경에서 spawn 한 split pane 은 사용자가 attach 중일 수 있어 보존.
+  # 우회: DISPATCH_SKIP_CLEANUP=1
+  if [ "${DISPATCH_SKIP_CLEANUP:-0}" != "1" ] && [ "$WRAPPER" = "$SCRIPT_DIR/tmux-pane.sh" ]; then
+    "$WRAPPER" cleanup || true
+  fi
+
   # worktree 결정 / 생성
   [ -z "$WORKTREE" ] && WORKTREE=".worktrees/$SLICE"
 

@@ -121,6 +121,14 @@ scripts/tmux-pane.sh kill --pane=$pane
 
 `tmux-orchestrate` skill 가이드 (`.claude/skills/tmux-orchestrate/SKILL.md`) 에 안티패턴 + 호출 시퀀스 정리.
 
+### 자식 pane 라이프사이클
+
+새 `/parallel-consult` / `/plan-dev --mode=pane` 작업 시작 시 **이전 자식 pane 자동 정리**:
+- 정리 대상: `tmux-pane-mgr` 세션 전체 + 현재 attached window 의 active/self 외 split pane
+- 보존: 사용자가 attach 중인 active pane + wrapper 가 도는 self pane
+- 우회: `DISPATCH_SKIP_CLEANUP=1`
+- 수동 정리: `scripts/tmux-pane.sh cleanup`
+
 ### 권장 `~/.tmux.conf` 설정 (세션명 표시)
 
 자식 pane 들이 어떤 세션에 속하는지 한눈에 보기 위해 status bar 좌측에 `[#S]` 형태로 세션명 상시 표시:
@@ -197,6 +205,7 @@ DOC_IMPACT=updated git commit -m "..."
 | `FORCE_SELF_KILL=1` | off | tmux-pane.sh kill 의 자기 pane 거부 우회 |
 | `TMUX_PANE_NO_LAYOUT=1` | off | tmux-pane.sh launch 의 main-vertical layout 자동 적용 끄기 |
 | `DISPATCH_DEFAULT_MODEL=<alias>` | sonnet | dispatch-slice-pane.sh 의 자식 model 디폴트 (--model arg 가 우선) |
+| `DISPATCH_SKIP_CLEANUP=1` | off | dispatch-slice-pane.sh 가 main 진입 시 자식 pane 자동 정리 끄기 |
 
 ---
 

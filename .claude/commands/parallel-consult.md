@@ -13,6 +13,7 @@ args: <자식에게 보낼 질문>
 1. `command -v tmux` — 없으면 즉시 중단 + `brew install tmux` 안내.
 2. wrapper 검출 — `command -v tmux-cli` 우선, 없으면 본 repo 의 `scripts/tmux-pane.sh` 폴백.
 3. 둘 다 없으면 사용자에게 `uv tool install claude-code-tools` 안내 후 중단.
+4. **기존 자식 pane 정리**: 본 wrapper 사용 시 새 작업 시작 전 `scripts/tmux-pane.sh cleanup` 호출. `tmux-pane-mgr` 세션 + 현재 window 의 main/self 외 split pane 일괄 kill. 우회: `DISPATCH_SKIP_CLEANUP=1` 또는 호출 생략.
 
 ## 흐름 단계
 
