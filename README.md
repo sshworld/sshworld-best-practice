@@ -137,7 +137,13 @@ scripts/tmux-pane.sh kill --pane=$pane
 - 정리 대상: `tmux-pane-mgr` 세션 전체 + 현재 attached window 의 active/self 외 split pane
 - 보존: 사용자가 attach 중인 active pane + wrapper 가 도는 self pane
 - 우회: `DISPATCH_SKIP_CLEANUP=1`
-- 수동 정리: `scripts/tmux-pane.sh cleanup`
+- 수동 정리: `scripts/tmux-pane.sh cleanup` (tmux) / `scripts/cmux-pane.sh cleanup` (cmux)
+
+cmux 환경에서의 자식 workspace 라이프사이클:
+- `cbp-` prefix workspace 만 관리 대상 (사용자 수동 workspace 보호)
+- `scripts/cmux-pane.sh list` — 관리 중인 workspace JSON 목록
+- `scripts/cmux-pane.sh cleanup` — `cbp-*` workspace 일괄 close (자기 workspace 보존)
+- `scripts/cmux-pane.sh kill --pane=<ref>` — 개별 workspace close (자기 workspace 거부, `FORCE_SELF_KILL=1` 우회)
 
 ### 권장 `~/.tmux.conf` 설정 (세션명 표시)
 
@@ -194,6 +200,18 @@ DOC_IMPACT=updated git commit -m "..."
 `DISABLE_TOKEN_STATS=1` 로 끄기.
 
 > ℹ️ `statusline-tokens.sh` 는 같은 데이터를 화면 하단 status bar 로 상시 표시하는 **opt-in 대안** — settings.json 의 `statusLine.command` 에 등록하고 `hooks.Stop` 에서 token-stats 제거해서 전환 가능. 기본은 Stop hook 의 inline 메시지.
+
+### 4) limit-child-panes.sh (PreToolUse: Bash, spawn 명령)
+
+자식 pane/workspace 를 spawn 하는 명령 (`tmux-pane.sh launch`, `cmux-pane.sh launch`, `dispatch-slice-pane.sh`) 이 호출될 때 **tmux pane + cmux workspace 합산** 수가 `CLAUDE_MAX_CHILD_PANES` (기본 5) 이상이면 차단.
+
+```bash
+# 한도 상향
+CLAUDE_MAX_CHILD_PANES=10
+
+# hook 비활성
+export DISABLE_PANE_LIMIT_HOOK=1
+```
 
 ### 5) SessionStart inline
 
