@@ -1,0 +1,31 @@
+# 민감 정보 — 절대 commit 금지
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+*.p12
+
+# 백업
+*.bak
+*.bak.*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# tmux pane dispatcher artifacts
+.worktrees/
+
+# Node / Python (있다면)
+node_modules/
+__pycache__/
+*.pyc
+.venv/
+venv/
