@@ -47,9 +47,9 @@
 | `.claude/hooks/statusline-tokens.sh` | (opt-in 대안) statusLine 으로 토큰 사용량 상시 표시. 기본은 `token-stats.sh` 의 inline 메시지. |
 | `.claude/settings.json` | permissions(allow/deny) + hooks. 광역 `Bash(tmux*)` 금지 — 좁힌 패턴만. |
 | `scripts/tmux-pane.sh` | tmux wrapper — launch/send/capture/wait-idle/kill/list/status. 외부 `tmux-cli` 와 명령 표면 정렬. |
-| `scripts/cmux-pane.sh` | cmux wrapper — launch/send/capture. `tmux-pane.sh` 와 명령 표면 정렬. `CMUX_BIN` env 로 mock 가능. |
+| `scripts/cmux-pane.sh` | cmux wrapper — launch/send/capture/wait-idle. `tmux-pane.sh` 와 명령 표면 정렬. `CMUX_BIN` env 로 mock 가능. |
 | `scripts/detect-pane-env.sh` | 터미널 멀티플렉서 환경 감지. stdout: `tmux` \| `cmux` \| `default`. sourcing guard 포함. |
-| `scripts/dispatch-slice-pane.sh` | implementor 슬라이스를 worktree + tmux pane 으로 spawn. `plan-dev --mode=pane` 진입점. `--model=<alias>` 로 자식 model 선택 (디폴트 sonnet). `build_child_cmd` 순수 함수로 분리되어 단위 테스트 가능. 시작 시 기존 자식 pane 자동 정리 (`DISPATCH_SKIP_CLEANUP=1` 우회). |
+| `scripts/dispatch-slice-pane.sh` | implementor 슬라이스를 worktree + tmux/cmux pane 으로 spawn. 멀티-driver: `--mode=tmux\|cmux\|pane\|auto\|subagent`. `plan-dev --mode=pane` 진입점 (기존 호환). `--model=<alias>` 로 자식 model 선택 (디폴트 sonnet). `build_child_cmd` 순수 함수로 분리되어 단위 테스트 가능. `DISPATCH_DRY_RUN=1` 로 launch 없이 분기 검증. 시작 시 기존 자식 pane 자동 정리 (`DISPATCH_SKIP_CLEANUP=1` 우회). |
 
 ## 추가 / 수정 체크리스트
 
@@ -96,6 +96,7 @@
 | `DISPATCH_CHILD_CMD` | unset | `dispatch-slice-pane.sh` 가 자식 명령으로 사용할 cmd 강제 (테스트용 substitute) |
 | `DISPATCH_DEFAULT_MODEL` | sonnet | `dispatch-slice-pane.sh` 의 자식 model 디폴트 (--model arg 가 우선) |
 | `DISPATCH_SKIP_CLEANUP` | unset | `dispatch-slice-pane.sh` 의 시작 시 자식 pane 자동 정리 끄기 |
+| `DISPATCH_DRY_RUN` | unset | `dispatch-slice-pane.sh` 가 launch 직전 driver/wrapper/worktree JSON 출력 후 exit 0 (테스트용) |
 | `CMUX_BIN` | `cmux` | `cmux-pane.sh` / `detect-pane-env.sh` 가 사용할 cmux 바이너리 경로. 테스트 mock 에 사용. |
 | `CBP_WORKSPACE_PREFIX` | `cbp-` | `cmux-pane.sh launch` 의 workspace 이름 prefix |
 

@@ -57,11 +57,23 @@ tmux-cli capture --pane=$pane
 | `command -v tmux-cli` 성공 (uv 로 설치됨) | **외부 `tmux-cli` 우선** — `execute` 등 고급 기능 활용 가능 |
 | 외부 tool 미설치, 본 repo 의 wrapper 만 존재 | `scripts/tmux-pane.sh` 폴백 — 의존성 없음 |
 | 둘 다 없음 | tmux 도 없는 환경 — `brew install tmux` + `uv tool install claude-code-tools` 안내 |
+| cmux 안 surface (`CMUX_SOCKET_PASSWORD` set) | `scripts/cmux-pane.sh` 사용 — launch/send/capture/wait-idle 동일 5단계 |
 
 두 도구는 명령 표면이 정렬되어 있어 스크립트는 wrapper 변수로 추상화 가능:
 ```bash
 W=$(command -v tmux-cli || echo "./scripts/tmux-pane.sh")
 pane=$("$W" launch zsh)
+```
+
+cmux 도 동일 5단계 — wrapper 만 `scripts/cmux-pane.sh` 로 바꿈:
+```bash
+W="./scripts/cmux-pane.sh"
+pane=$("$W" launch zsh)
+"$W" send "claude" --pane=$pane
+"$W" wait-idle --pane=$pane --idle=2 --timeout=30
+"$W" send "분석해줘: ..." --pane=$pane
+"$W" wait-idle --pane=$pane --idle=5 --timeout=180
+reply=$("$W" capture --pane=$pane)
 ```
 
 ## 안티패턴
