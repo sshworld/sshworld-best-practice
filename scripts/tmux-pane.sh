@@ -82,7 +82,14 @@ do_launch() {
   require_tmux
   local cmd="${1:-zsh}"
   if [ -n "${TMUX:-}" ]; then
-    tmux split-window -P -F '#{session_name}:#{window_index}.#{pane_index}' "$cmd"
+    # 좌우 split (-h) + main-vertical layout 자동 적용
+    # 첫 launch 는 좌우 분할, 두 번째부터는 main-vertical 이 오른쪽 stack 으로 정렬
+    local pane
+    pane=$(tmux split-window -P -h -F '#{session_name}:#{window_index}.#{pane_index}' "$cmd")
+    if [ "${TMUX_PANE_NO_LAYOUT:-0}" != "1" ]; then
+      tmux select-layout main-vertical >/dev/null 2>&1 || true
+    fi
+    printf '%s\n' "$pane"
   else
     ensure_mgr_session
     tmux new-window -t "$MGR_SESSION" -P -F '#{session_name}:#{window_index}.#{pane_index}' "$cmd"

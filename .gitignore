@@ -6,6 +6,9 @@
 *.key
 *.p12
 
+# 로컬 권한 오버라이드 (개인 세션 한정)
+.claude/settings.local.json
+
 # 백업
 *.bak
 *.bak.*

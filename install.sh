@@ -36,6 +36,7 @@ FILES=(
   "hooks/enforce-test-first.sh"
   "hooks/enforce-doc-sync.sh"
   "hooks/limit-child-panes.sh"
+  "hooks/statusline-tokens.sh"
   "hooks/token-stats.sh"
 )
 

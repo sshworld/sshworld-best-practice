@@ -25,8 +25,9 @@
 │   ├── enforce-test-first.sh # production 파일 작성 전 테스트 존재 검사
 │   ├── enforce-doc-sync.sh   # commit 시점 DOC 영향 평가 강제
 │   ├── limit-child-panes.sh  # 자식 tmux pane spawn 상한 (CLAUDE_MAX_CHILD_PANES)
-│   └── token-stats.sh        # Stop 시 직전 응답 토큰 사용량 + 캐시 히트율 한 줄 노출
-└── settings.json             # permissions(allow/deny) + 4 hooks
+│   ├── statusline-tokens.sh  # 하단 status bar 에 직전 응답 토큰 사용량 + 캐시 히트율 상시 표시
+│   └── token-stats.sh        # (legacy) Stop hook 으로 inline 메시지 노출 — statusLine 미지원 환경 폴백
+└── settings.json             # permissions(allow/deny) + hooks + statusLine
 scripts/
 ├── tmux-pane.sh              # 얇은 tmux wrapper — launch/send/capture/wait-idle/kill/list/status
 └── dispatch-slice-pane.sh    # implementor 슬라이스를 tmux pane 으로 dispatch (plan-dev --mode=pane)
@@ -120,6 +121,19 @@ scripts/tmux-pane.sh kill --pane=$pane
 
 `tmux-orchestrate` skill 가이드 (`.claude/skills/tmux-orchestrate/SKILL.md`) 에 안티패턴 + 호출 시퀀스 정리.
 
+### 권장 `~/.tmux.conf` 설정 (세션명 표시)
+
+자식 pane 들이 어떤 세션에 속하는지 한눈에 보기 위해 status bar 좌측에 `[#S]` 형태로 세션명 상시 표시:
+
+```bash
+# ~/.tmux.conf
+set -g status-left "#[fg=cyan,bold][#S] #[default]"
+set -g status-left-length 30
+set -g mouse on  # 휠 스크롤로 자식 pane scrollback 확인
+```
+
+리로드: `tmux source-file ~/.tmux.conf`. 본 wrapper 와는 독립이라 적용 안 해도 동작에는 영향 없음.
+
 ---
 
 ## 하네스 가드
@@ -151,16 +165,17 @@ DOC_IMPACT=updated git commit -m "..."
 
 `DOC_IMPACT` 미지정 시 차단. 가드 비활성화: `export DISABLE_DOC_SYNC_HOOK=1`
 
-### 3) token-stats.sh (Stop)
+### 3) statusline-tokens.sh (statusLine)
 
-
-응답이 끝날 때 직전 turn (마지막 user 메시지 이후 모든 assistant 줄) 의 토큰 사용량과 캐시 히트율을 한 줄로 노출:
+화면 **하단 status bar** 에 직전 turn (마지막 user 메시지 이후 모든 assistant 줄) 의 토큰 사용량과 캐시 히트율을 상시 표시. 매 응답마다 같은 자리에서 갱신 — 대화 본문 안 끼어듦:
 
 ```
-💰 in=15 cache_c=150 cache_r=1.1k out=60 | cache hit 87%
+💰 in=15 cache_c=150 cache_r=1.1k out=60 | hit 87%
 ```
 
 `DISABLE_TOKEN_STATS=1` 로 끄기.
+
+> ℹ️ legacy `token-stats.sh` 는 동일한 통계를 Stop hook 으로 inline 메시지로 노출 — Claude Code 가 statusLine 미지원이면 폴백으로 settings.json 에 등록 가능.
 
 ### 5) SessionStart inline
 
@@ -180,6 +195,8 @@ DOC_IMPACT=updated git commit -m "..."
 | `CLAUDE_MAX_CHILD_PANES=N` | 5 | 자식 tmux pane 상한 (limit-child-panes hook) |
 | `DISABLE_PANE_LIMIT_HOOK=1` | off | limit-child-panes hook 비활성화 |
 | `FORCE_SELF_KILL=1` | off | tmux-pane.sh kill 의 자기 pane 거부 우회 |
+| `TMUX_PANE_NO_LAYOUT=1` | off | tmux-pane.sh launch 의 main-vertical layout 자동 적용 끄기 |
+| `DISPATCH_DEFAULT_MODEL=<alias>` | sonnet | dispatch-slice-pane.sh 의 자식 model 디폴트 (--model arg 가 우선) |
 
 ---
 

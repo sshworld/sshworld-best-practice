@@ -21,9 +21,11 @@ args: <자식에게 보낼 질문>
 1. **tmux 존재 확인** — `command -v tmux` 실패 시 중단.
 2. **wrapper 결정** — `W=$(command -v tmux-cli || echo "./scripts/tmux-pane.sh")`.
 3. **`launch zsh`** — pane id 저장. `pane=$($W launch zsh)`.
-4. **`send "claude"` + `wait-idle`** — 자식 Claude 프롬프트가 뜰 때까지 대기.
+4. **`send "claude --model <alias>"` + `wait-idle`** — 자식 Claude 프롬프트가 뜰 때까지 대기. **model alias 규약**: 사용자 인자가 `sonnet:`/`opus:`/`haiku:` 으로 시작하면 그 토큰을 model 로 분리, 나머지를 prompt 로. 명시 안 하면 `sonnet` 디폴트.
    ```bash
-   $W send "claude" --pane=$pane
+   # 예: /parallel-consult "haiku: 이거 분석해줘"  →  model=haiku, prompt="이거 분석해줘"
+   # 예: /parallel-consult "그냥 질문"            →  model=sonnet (default), prompt="그냥 질문"
+   $W send "claude --model $MODEL" --pane=$pane
    $W wait-idle --pane=$pane --idle=2 --timeout=30
    ```
 5. **`send "$ARG"` + `wait-idle`** — 질문 전송 후 응답 마무리까지 대기.

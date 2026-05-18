@@ -135,9 +135,11 @@ ExitPlanMode 직전에 작성한 plan 을 **별도 컨텍스트의 Plan 서브�
 
 호출:
 ```bash
-scripts/dispatch-slice-pane.sh --slice=<kebab> --spec-file=<spec.md>
+scripts/dispatch-slice-pane.sh --slice=<kebab> --spec-file=<spec.md> [--model=<alias>]
 # stdout: {"pane":"<id>","worktree":"<path>","branch":"slice/<kebab>"}
 ```
+
+`--model` 미지정 시 `DISPATCH_DEFAULT_MODEL` env → 그것도 없으면 `sonnet`. 보조 작업에 Opus 강제 회피.
 
 사용자가 자식 pane 에 attach (직접 대화 가능):
 ```bash

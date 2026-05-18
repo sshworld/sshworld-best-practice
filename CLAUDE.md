@@ -44,9 +44,10 @@
 | `.claude/skills/tmux-orchestrate/SKILL.md` | 부모-자식 Claude tmux pane 협업 패턴 가이드. |
 | `.claude/hooks/*.sh` | 런타임 강제. stderr 메시지에 우회 방법 항상 명시. |
 | `.claude/hooks/limit-child-panes.sh` | 자식 tmux pane spawn 상한 강제 (`CLAUDE_MAX_CHILD_PANES`). |
-| `.claude/settings.json` | permissions(allow/deny) + hooks 정의. 광역 `Bash(tmux*)` 금지 — 좁힌 패턴만. |
+| `.claude/hooks/statusline-tokens.sh` | statusLine 으로 직전 turn 토큰 사용량 + 캐시 히트율 상시 표시 (Stop hook 의 inline 메시지 대신). |
+| `.claude/settings.json` | permissions(allow/deny) + hooks + statusLine. 광역 `Bash(tmux*)` 금지 — 좁힌 패턴만. |
 | `scripts/tmux-pane.sh` | tmux wrapper — launch/send/capture/wait-idle/kill/list/status. 외부 `tmux-cli` 와 명령 표면 정렬. |
-| `scripts/dispatch-slice-pane.sh` | implementor 슬라이스를 worktree + tmux pane 으로 spawn. `plan-dev --mode=pane` 진입점. |
+| `scripts/dispatch-slice-pane.sh` | implementor 슬라이스를 worktree + tmux pane 으로 spawn. `plan-dev --mode=pane` 진입점. `--model=<alias>` 로 자식 model 선택 (디폴트 sonnet). `build_child_cmd` 순수 함수로 분리되어 단위 테스트 가능. |
 
 ## 추가 / 수정 체크리스트
 
@@ -89,7 +90,9 @@
 | `CLAUDE_MAX_CHILD_PANES` | 5 | 자식 tmux pane 상한 — `limit-child-panes` hook 이 강제 |
 | `DISABLE_PANE_LIMIT_HOOK` | unset | `limit-child-panes` hook 영구 비활성화 |
 | `FORCE_SELF_KILL` | unset | `tmux-pane.sh kill` 의 자기 pane 거부 우회 |
-| `DISPATCH_CHILD_CMD` | unset | `dispatch-slice-pane.sh` 가 자식 명령으로 사용할 cmd 강제 (테스트용) |
+| `TMUX_PANE_NO_LAYOUT` | unset | `tmux-pane.sh launch` 의 main-vertical layout 자동 적용 끄기 |
+| `DISPATCH_CHILD_CMD` | unset | `dispatch-slice-pane.sh` 가 자식 명령으로 사용할 cmd 강제 (테스트용 substitute) |
+| `DISPATCH_DEFAULT_MODEL` | sonnet | `dispatch-slice-pane.sh` 의 자식 model 디폴트 (--model arg 가 우선) |
 
 ## 향후 작업 (플러그인화)
 
