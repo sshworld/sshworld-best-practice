@@ -129,32 +129,44 @@ ExitPlanMode 직전에 작성한 plan 을 **별도 컨텍스트의 Plan 서브�
 1. **우선: Rewind → 재시도** — 실패 시도가 메인 컨텍스트에 남아 다음 reasoning 을 오염시키지 않게. rewind 후 동일 슬라이스 재호출 (자동, 1회).
 2. rewind 가 가능하지 않거나 재시도도 `❌` → 해당 슬라이스 중단 + 사용자에게 원인 보고 후 지시 대기.
 
-### Phase 2 모드 선택: subagent (기본) vs tmux pane (advanced)
+### Phase 2 모드 선택
 
-기본은 위 흐름 (병렬 subagent + worktree). `--mode=pane` 옵션 시 implementor 를 **tmux pane** 으로 dispatch — 사용자가 자식 작업에 직접 attach 해서 모니터링/개입 가능.
+| 모드 | 효과 |
+|---|---|
+| (미지정) / `--mode=subagent` | Agent(implementor) — 토큰 추적 ✓, 디폴트 |
+| `--mode=pane` / `--mode=tmux` | tmux pane dispatch (기존 `--mode=pane` 그대로) |
+| `--mode=cmux` | cmux workspace dispatch (신규) |
+| `--mode=auto` | 환경 자동 감지 (TMUX 안 → tmux, cmux 안 → cmux, 둘 다 아니면 에러) |
+
+기본은 위 흐름 (병렬 subagent + worktree). `--mode=pane` / `--mode=tmux` 옵션 시 implementor 를 **tmux pane** 으로, `--mode=cmux` 시 **cmux workspace** 로 dispatch — 사용자가 자식 작업에 직접 attach/모니터링/개입 가능.
 
 호출:
 ```bash
-scripts/dispatch-slice-pane.sh --slice=<kebab> --spec-file=<spec.md> [--model=<alias>]
-# stdout: {"pane":"<id>","worktree":"<path>","branch":"slice/<kebab>"}
+scripts/dispatch-slice-pane.sh --slice=<kebab> --spec-file=<spec.md> \
+  --mode=pane   [--model=<alias>]   # tmux pane
+  --mode=cmux   [--model=<alias>]   # cmux workspace
+  --mode=auto   [--model=<alias>]   # 환경 자동 감지
+# stdout: {"pane":"<id>","worktree":"<path>","branch":"slice/<kebab>","driver":"tmux|cmux"}
 ```
 
 `--model` 미지정 시 `DISPATCH_DEFAULT_MODEL` env → 그것도 없으면 `sonnet`. 보조 작업에 Opus 강제 회피.
 
 사용자가 자식 pane 에 attach (직접 대화 가능):
 ```bash
-tmux attach -t tmux-pane-mgr   # wrapper 가 알려준 세션명
+tmux attach -t tmux-pane-mgr   # tmux: wrapper 가 알려준 세션명
 ```
 
-부모는 완료 회수:
+부모는 완료 회수 (tmux, wrapper 는 변수로 추상화):
 ```bash
-scripts/tmux-pane.sh wait-idle --pane=$pane --idle=10 --timeout=1800
-scripts/tmux-pane.sh capture   --pane=$pane | tail -50 | grep -E '^(✅|❌)'
+$wrapper wait-idle --pane=$pane --idle=10 --timeout=1800
+$wrapper capture   --pane=$pane | tail -50 | grep -E '^(✅|❌)'
 ```
 
-`✅` 회수 후에만 `git merge --no-ff slice/<kebab>`. 호출 예: `/plan-dev --mode=pane "<task>"`.
+`✅` 회수 후에만 `git merge --no-ff slice/<kebab>`. 호출 예: `/plan-dev --mode=pane "<task>"`, `/plan-dev --mode=cmux "<task>"`, `/plan-dev --mode=auto "<task>"`.
 
-**장점**: 사용자가 자식 작업 중간 개입 가능 / **단점**: 자식 토큰·비용은 부모 `token-stats` 로 추적 안 됨, 자식 pane 수만큼 머신 부하 → `CLAUDE_MAX_CHILD_PANES` (기본 5) 가드.
+**장점**: 사용자가 자식 작업 중간 개입 가능 / **단점**: 자식 토큰·비용은 부모 `token-stats` 로 추적 안 됨, 자식 pane/workspace 수만큼 머신 부하 → `CLAUDE_MAX_CHILD_PANES` (기본 5) 가드.
+
+> ⚠️ 안티패턴: cmux 도 tmux 와 동일 — 자식 결과(`✅` / `❌`) **회수 전 머지** 금지.
 
 ## Phase 3 — Verify (loop)
 

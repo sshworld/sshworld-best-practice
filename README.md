@@ -106,9 +106,16 @@ scripts/
 
 부모가 자식 Claude pane 을 띄워 질문 → 응답 회수 → 부모 세션에 요약 + "자식 pane 유지/kill" 묻기. 자세한 흐름은 `.claude/commands/parallel-consult.md`.
 
-### `/plan-dev --mode=pane` — implementor 를 tmux pane 으로
+### `/plan-dev` 모드 옵션
 
-기본 subagent 모드 대신 `--mode=pane` 시 `scripts/dispatch-slice-pane.sh` 가 각 슬라이스를 tmux pane 에 띄움. 사용자가 `tmux attach -t tmux-pane-mgr` 로 자식 작업을 직접 모니터링/개입 가능.
+| 모드 | 효과 |
+|---|---|
+| (미지정) / `--mode=subagent` | Agent(implementor) — 토큰 추적 ✓, 디폴트 |
+| `--mode=pane` / `--mode=tmux` | tmux pane dispatch |
+| `--mode=cmux` | cmux workspace dispatch |
+| `--mode=auto` | 환경 자동 감지 (TMUX > CMUX > 에러) |
+
+기본 subagent 모드 대신 pane/cmux 모드 시 `scripts/dispatch-slice-pane.sh` 가 각 슬라이스를 tmux pane 또는 cmux workspace 에 띄움. 사용자가 자식 작업을 직접 모니터링/개입 가능.
 
 ### 직접 호출 (수동)
 
@@ -209,6 +216,7 @@ DOC_IMPACT=updated git commit -m "..."
 | `TMUX_PANE_NO_LAYOUT=1` | off | tmux-pane.sh launch 의 main-vertical layout 자동 적용 끄기 |
 | `DISPATCH_DEFAULT_MODEL=<alias>` | sonnet | dispatch-slice-pane.sh 의 자식 model 디폴트 (--model arg 가 우선) |
 | `DISPATCH_SKIP_CLEANUP=1` | off | dispatch-slice-pane.sh 가 main 진입 시 자식 pane 자동 정리 끄기 |
+| `DISPATCH_DRY_RUN=1` | off | dispatch-slice-pane.sh 가 launch 없이 driver/wrapper/worktree JSON 출력 후 exit 0 (테스트용) |
 
 ---
 
