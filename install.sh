@@ -43,6 +43,8 @@ FILES=(
 # scripts/ 는 .claude/ 밖이라 별도 카테고리 (실행 권한 부여 대상)
 SCRIPTS=(
   "scripts/tmux-pane.sh"
+  "scripts/cmux-pane.sh"
+  "scripts/detect-pane-env.sh"
   "scripts/dispatch-slice-pane.sh"
 )
 
