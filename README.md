@@ -25,9 +25,9 @@
 │   ├── enforce-test-first.sh # production 파일 작성 전 테스트 존재 검사
 │   ├── enforce-doc-sync.sh   # commit 시점 DOC 영향 평가 강제
 │   ├── limit-child-panes.sh  # 자식 tmux pane spawn 상한 (CLAUDE_MAX_CHILD_PANES)
-│   ├── statusline-tokens.sh  # 하단 status bar 에 직전 응답 토큰 사용량 + 캐시 히트율 상시 표시
-│   └── token-stats.sh        # (legacy) Stop hook 으로 inline 메시지 노출 — statusLine 미지원 환경 폴백
-└── settings.json             # permissions(allow/deny) + hooks + statusLine
+│   ├── statusline-tokens.sh  # (opt-in) 하단 status bar 모드 — 기본은 token-stats.sh 사용
+│   └── token-stats.sh        # Stop hook 으로 직전 응답 토큰 사용량 + 캐시 히트율 inline 노출
+└── settings.json             # permissions(allow/deny) + 4 hooks
 scripts/
 ├── tmux-pane.sh              # 얇은 tmux wrapper — launch/send/capture/wait-idle/kill/list/status
 └── dispatch-slice-pane.sh    # implementor 슬라이스를 tmux pane 으로 dispatch (plan-dev --mode=pane)
@@ -165,17 +165,17 @@ DOC_IMPACT=updated git commit -m "..."
 
 `DOC_IMPACT` 미지정 시 차단. 가드 비활성화: `export DISABLE_DOC_SYNC_HOOK=1`
 
-### 3) statusline-tokens.sh (statusLine)
+### 3) token-stats.sh (Stop)
 
-화면 **하단 status bar** 에 직전 turn (마지막 user 메시지 이후 모든 assistant 줄) 의 토큰 사용량과 캐시 히트율을 상시 표시. 매 응답마다 같은 자리에서 갱신 — 대화 본문 안 끼어듦:
+응답이 끝날 때 직전 turn (마지막 user 메시지 이후 모든 assistant 줄) 의 토큰 사용량과 캐시 히트율을 한 줄로 inline 노출:
 
 ```
-💰 in=15 cache_c=150 cache_r=1.1k out=60 | hit 87%
+💰 in=15 cache_c=150 cache_r=1.1k out=60 | cache hit 87%
 ```
 
 `DISABLE_TOKEN_STATS=1` 로 끄기.
 
-> ℹ️ legacy `token-stats.sh` 는 동일한 통계를 Stop hook 으로 inline 메시지로 노출 — Claude Code 가 statusLine 미지원이면 폴백으로 settings.json 에 등록 가능.
+> ℹ️ `statusline-tokens.sh` 는 같은 데이터를 화면 하단 status bar 로 상시 표시하는 **opt-in 대안** — settings.json 의 `statusLine.command` 에 등록하고 `hooks.Stop` 에서 token-stats 제거해서 전환 가능. 기본은 Stop hook 의 inline 메시지.
 
 ### 5) SessionStart inline
 

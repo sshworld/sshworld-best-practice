@@ -44,8 +44,8 @@
 | `.claude/skills/tmux-orchestrate/SKILL.md` | 부모-자식 Claude tmux pane 협업 패턴 가이드. |
 | `.claude/hooks/*.sh` | 런타임 강제. stderr 메시지에 우회 방법 항상 명시. |
 | `.claude/hooks/limit-child-panes.sh` | 자식 tmux pane spawn 상한 강제 (`CLAUDE_MAX_CHILD_PANES`). |
-| `.claude/hooks/statusline-tokens.sh` | statusLine 으로 직전 turn 토큰 사용량 + 캐시 히트율 상시 표시 (Stop hook 의 inline 메시지 대신). |
-| `.claude/settings.json` | permissions(allow/deny) + hooks + statusLine. 광역 `Bash(tmux*)` 금지 — 좁힌 패턴만. |
+| `.claude/hooks/statusline-tokens.sh` | (opt-in 대안) statusLine 으로 토큰 사용량 상시 표시. 기본은 `token-stats.sh` 의 inline 메시지. |
+| `.claude/settings.json` | permissions(allow/deny) + hooks. 광역 `Bash(tmux*)` 금지 — 좁힌 패턴만. |
 | `scripts/tmux-pane.sh` | tmux wrapper — launch/send/capture/wait-idle/kill/list/status. 외부 `tmux-cli` 와 명령 표면 정렬. |
 | `scripts/dispatch-slice-pane.sh` | implementor 슬라이스를 worktree + tmux pane 으로 spawn. `plan-dev --mode=pane` 진입점. `--model=<alias>` 로 자식 model 선택 (디폴트 sonnet). `build_child_cmd` 순수 함수로 분리되어 단위 테스트 가능. |
 
