@@ -30,7 +30,18 @@
       "Bash(tmux kill-pane*)",
       "Bash(tmux-cli*)",
       "Bash(*/scripts/tmux-pane.sh*)",
-      "Bash(*/scripts/dispatch-slice-pane.sh*)"
+      "Bash(*/scripts/dispatch-slice-pane.sh*)",
+      "Bash(cmux new-workspace*)",
+      "Bash(cmux send *)",
+      "Bash(cmux send-key*)",
+      "Bash(cmux read-screen*)",
+      "Bash(cmux capture-pane*)",
+      "Bash(cmux list-workspaces*)",
+      "Bash(cmux list-panes*)",
+      "Bash(cmux ping*)",
+      "Bash(cmux identify*)",
+      "Bash(*/scripts/cmux-pane.sh*)",
+      "Bash(*/scripts/detect-pane-env.sh*)"
     ],
     "deny": [
       "Bash(rm -rf*)",
