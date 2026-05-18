@@ -30,6 +30,8 @@
 └── settings.json             # permissions(allow/deny) + 4 hooks
 scripts/
 ├── tmux-pane.sh              # 얇은 tmux wrapper — launch/send/capture/wait-idle/kill/list/status
+├── cmux-pane.sh              # 얇은 cmux wrapper — launch/send/capture (tmux-pane.sh 과 명령 표면 정렬)
+├── detect-pane-env.sh        # 터미널 환경 감지 — tmux | cmux | default
 └── dispatch-slice-pane.sh    # implementor 슬라이스를 tmux pane 으로 dispatch (plan-dev --mode=pane)
 ```
 
@@ -86,14 +88,15 @@ scripts/
 
 ---
 
-## 병렬 Claude 협업 (tmux pane)
+## 병렬 Claude 협업 (tmux / cmux)
 
-부모 Claude 세션에서 **다른 tmux pane** 의 CLI 에이전트(또 다른 Claude / 디버거 / 장시간 스크립트)와 통신.
+부모 Claude 세션에서 **다른 pane** 의 CLI 에이전트(또 다른 Claude / 디버거 / 장시간 스크립트)와 통신. tmux 와 cmux 양쪽 지원.
 
 ### Prerequisite
 
 - `tmux` — `brew install tmux`
-- (권장) 외부 `tmux-cli` — `uv tool install claude-code-tools`. 미설치 시 본 repo 의 `scripts/tmux-pane.sh` 가 폴백.
+- 또는 `cmux` — macOS 네이티브 터미널 멀티플렉서 (`/opt/homebrew/bin/cmux` 또는 PATH 검색)
+- (권장, tmux 전용) 외부 `tmux-cli` — `uv tool install claude-code-tools`. 미설치 시 본 repo 의 `scripts/tmux-pane.sh` 가 폴백.
 
 ### `/parallel-consult` — 자식 Claude 에게 한 번 묻기
 
