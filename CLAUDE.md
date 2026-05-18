@@ -35,13 +35,18 @@
 | 파일 | 책임 |
 |---|---|
 | `.claude/commands/plan-dev.md` | 사용자 entry point. 단계별 가이드와 안티패턴. |
-| `.claude/agents/implementor.md` | TDD Red→Green→Refactor. 명세 외 파일 침범 금지. |
+| `.claude/commands/parallel-consult.md` | 자식 Claude pane 띄워 1회 질의응답. |
+| `.claude/agents/implementor.md` | TDD Red→Green→Refactor. subagent / tmux pane 모드 양쪽 지원. |
 | `.claude/agents/verifier.md` | Read-only 빌드/테스트. 코드 수정 안 함. |
 | `.claude/agents/reviewer.md` | 치명적 vs 제안 분류. 직접 수정 안 함. |
 | `.claude/agents/commit-advisor.md` | 한글 Conventional Commit + DOC 영향 평가. 실제 commit 안 함. |
 | `.claude/skills/fork/SKILL.md` | 자식 컨텍스트로 작업 위임, 요약만 반환. |
+| `.claude/skills/tmux-orchestrate/SKILL.md` | 부모-자식 Claude tmux pane 협업 패턴 가이드. |
 | `.claude/hooks/*.sh` | 런타임 강제. stderr 메시지에 우회 방법 항상 명시. |
-| `.claude/settings.json` | permissions(allow/deny) + hooks 정의. |
+| `.claude/hooks/limit-child-panes.sh` | 자식 tmux pane spawn 상한 강제 (`CLAUDE_MAX_CHILD_PANES`). |
+| `.claude/settings.json` | permissions(allow/deny) + hooks 정의. 광역 `Bash(tmux*)` 금지 — 좁힌 패턴만. |
+| `scripts/tmux-pane.sh` | tmux wrapper — launch/send/capture/wait-idle/kill/list/status. 외부 `tmux-cli` 와 명령 표면 정렬. |
+| `scripts/dispatch-slice-pane.sh` | implementor 슬라이스를 worktree + tmux pane 으로 spawn. `plan-dev --mode=pane` 진입점. |
 
 ## 추가 / 수정 체크리스트
 
@@ -74,6 +79,17 @@
 - ❌ plan 파일 200줄 초과 (슬라이스 더 쪼개라)
 - ❌ Horizontal phase slicing
 - ❌ README/CLAUDE.md 동기화 없이 동작 변경
+- ❌ 광역 `Bash(tmux*)` 허용 — 좁힌 패턴 (`tmux new-window*`, `tmux send-keys*`, `tmux capture-pane*`, `tmux display-message*`, `tmux list-panes*`, `tmux kill-pane*`) 만. `kill-server` 는 deny.
+- ❌ tmux pane 모드에서 자식 결과(`✅` / `❌`) 회수 전 머지 시도
+
+## 환경변수 (tmux 통합)
+
+| 변수 | 기본 | 효과 |
+|---|---|---|
+| `CLAUDE_MAX_CHILD_PANES` | 5 | 자식 tmux pane 상한 — `limit-child-panes` hook 이 강제 |
+| `DISABLE_PANE_LIMIT_HOOK` | unset | `limit-child-panes` hook 영구 비활성화 |
+| `FORCE_SELF_KILL` | unset | `tmux-pane.sh kill` 의 자기 pane 거부 우회 |
+| `DISPATCH_CHILD_CMD` | unset | `dispatch-slice-pane.sh` 가 자식 명령으로 사용할 cmd 강제 (테스트용) |
 
 ## 향후 작업 (플러그인화)
 

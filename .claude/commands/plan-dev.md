@@ -111,6 +111,7 @@ ExitPlanMode 직전에 작성한 plan 을 **별도 컨텍스트의 Plan 서브�
 - ❌ "사용자가 빨리 결과 보길 원할 것" 이라는 추측으로 승인 단계 단축
 - ❌ Phase 1-0 Explore 생략하고 빈틈 질문을 추상적으로 던지기
 - ❌ Horizontal phases 로 슬라이스 분해
+- ❌ pane 모드에서 자식 pane 의 결과(✅ / ❌) **회수 전 머지** 시도 — 자식 작업이 완료되지 않은 worktree 머지 = 손실
 
 ## Phase 2 — TDD Execute (비동기)
 
@@ -127,6 +128,31 @@ ExitPlanMode 직전에 작성한 plan 을 **별도 컨텍스트의 Plan 서브�
 **implementor 실패 시 (`❌` 리턴):**
 1. **우선: Rewind → 재시도** — 실패 시도가 메인 컨텍스트에 남아 다음 reasoning 을 오염시키지 않게. rewind 후 동일 슬라이스 재호출 (자동, 1회).
 2. rewind 가 가능하지 않거나 재시도도 `❌` → 해당 슬라이스 중단 + 사용자에게 원인 보고 후 지시 대기.
+
+### Phase 2 모드 선택: subagent (기본) vs tmux pane (advanced)
+
+기본은 위 흐름 (병렬 subagent + worktree). `--mode=pane` 옵션 시 implementor 를 **tmux pane** 으로 dispatch — 사용자가 자식 작업에 직접 attach 해서 모니터링/개입 가능.
+
+호출:
+```bash
+scripts/dispatch-slice-pane.sh --slice=<kebab> --spec-file=<spec.md>
+# stdout: {"pane":"<id>","worktree":"<path>","branch":"slice/<kebab>"}
+```
+
+사용자가 자식 pane 에 attach (직접 대화 가능):
+```bash
+tmux attach -t tmux-pane-mgr   # wrapper 가 알려준 세션명
+```
+
+부모는 완료 회수:
+```bash
+scripts/tmux-pane.sh wait-idle --pane=$pane --idle=10 --timeout=1800
+scripts/tmux-pane.sh capture   --pane=$pane | tail -50 | grep -E '^(✅|❌)'
+```
+
+`✅` 회수 후에만 `git merge --no-ff slice/<kebab>`. 호출 예: `/plan-dev --mode=pane "<task>"`.
+
+**장점**: 사용자가 자식 작업 중간 개입 가능 / **단점**: 자식 토큰·비용은 부모 `token-stats` 로 추적 안 됨, 자식 pane 수만큼 머신 부하 → `CLAUDE_MAX_CHILD_PANES` (기본 5) 가드.
 
 ## Phase 3 — Verify (loop)
 

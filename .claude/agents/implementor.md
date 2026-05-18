@@ -59,6 +59,14 @@ Branch: slice/<kebab-slice-name>
 권장: rewind 후 재시도 (메인이 결정) — 실패 시도가 컨텍스트에 남으면 다음 reasoning 에 영향
 ```
 
+## pane 모드 안내 (Slice E 이후)
+
+본 implementor 는 두 호출 경로에서 동일 동작:
+- **subagent 모드** (기본) — Agent 도구로 spawn, worktree 자동 격리.
+- **tmux pane 모드** (`--mode=pane`) — `scripts/dispatch-slice-pane.sh` 가 worktree + tmux pane 띄우고 본 implementor 가 그 안에서 인터랙티브 Claude 로 동작.
+
+출력 형식 (`✅ <slice>:` / `❌ <slice>:`) 은 양쪽 동일. 부모는 capture 결과의 마지막 부분에서 이 신호로 완료 판정. 사용자가 도중에 pane 에 attach 해서 메시지를 보내도 작업 흐름은 유지.
+
 ## 안 하는 것
 
 - 테스트 없이 production 코드 작성 — TDD 위반, 절대 금지.

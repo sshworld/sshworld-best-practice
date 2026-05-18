@@ -21,14 +21,24 @@
       "Bash(git restore*)",
       "Bash(# TODO: BUILD_CMD*)",
       "Bash(# TODO: TEST_CMD*)",
-      "Bash(# TODO: RUN_CMD*)"
+      "Bash(# TODO: RUN_CMD*)",
+      "Bash(tmux new-window*)",
+      "Bash(tmux send-keys*)",
+      "Bash(tmux capture-pane*)",
+      "Bash(tmux display-message*)",
+      "Bash(tmux list-panes*)",
+      "Bash(tmux kill-pane*)",
+      "Bash(tmux-cli*)",
+      "Bash(*/scripts/tmux-pane.sh*)",
+      "Bash(*/scripts/dispatch-slice-pane.sh*)"
     ],
     "deny": [
       "Bash(rm -rf*)",
       "Bash(git push --force*)",
       "Bash(git push -f*)",
       "Bash(git commit --no-verify*)",
-      "Bash(git reset --hard*)"
+      "Bash(git reset --hard*)",
+      "Bash(tmux kill-server*)"
     ]
   },
   "hooks": {
@@ -48,6 +58,10 @@
           {
             "type": "command",
             "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/enforce-doc-sync.sh"
+          },
+          {
+            "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/limit-child-panes.sh"
           }
         ]
       }

@@ -23,17 +23,26 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SRC="$SCRIPT_DIR/.claude"
 TS="$(date +%Y%m%d-%H%M%S)"
 
-# 설치 대상 파일 목록 (SRC 기준 상대경로)
+# 설치 대상 파일 목록 (SRC 기준 상대경로 — .claude/ 하위)
 FILES=(
   "commands/plan-dev.md"
+  "commands/parallel-consult.md"
   "agents/implementor.md"
   "agents/verifier.md"
   "agents/reviewer.md"
   "agents/commit-advisor.md"
   "skills/fork/SKILL.md"
+  "skills/tmux-orchestrate/SKILL.md"
   "hooks/enforce-test-first.sh"
   "hooks/enforce-doc-sync.sh"
+  "hooks/limit-child-panes.sh"
   "hooks/token-stats.sh"
+)
+
+# scripts/ 는 .claude/ 밖이라 별도 카테고리 (실행 권한 부여 대상)
+SCRIPTS=(
+  "scripts/tmux-pane.sh"
+  "scripts/dispatch-slice-pane.sh"
 )
 
 usage() {
@@ -57,12 +66,25 @@ resolve_dest() {
   esac
 }
 
+check_tmux_prereq() {
+  if ! command -v tmux > /dev/null 2>&1; then
+    echo "  ⚠️  tmux 미설치 — /parallel-consult / --mode=pane 사용 시 필요" >&2
+    echo "      설치: brew install tmux" >&2
+  fi
+  if ! command -v tmux-cli > /dev/null 2>&1; then
+    echo "  ℹ️  외부 tmux-cli (pchalasani/claude-code-tools) 권장: uv tool install claude-code-tools" >&2
+    echo "      미설치 시 본 repo 의 scripts/tmux-pane.sh 가 폴백으로 동작" >&2
+  fi
+}
+
 do_install() {
   local dest="$1"
   local scope="project"
   [ "$dest" = "$HOME/.claude" ] && scope="user"
   echo "📦 설치 대상: $dest (scope: $scope)"
   mkdir -p "$dest"
+
+  check_tmux_prereq
 
   for rel in "${FILES[@]}"; do
     local src_file="$SRC/$rel"
@@ -88,6 +110,29 @@ do_install() {
       hooks/*.sh) chmod +x "$dest_file" ;;
     esac
 
+    echo "  ✓ $rel"
+  done
+
+  # scripts/ 는 .claude/ 밖에 배포 (project root 또는 $HOME)
+  local proj_root="$(dirname "$dest")"
+  for rel in "${SCRIPTS[@]}"; do
+    local src_file="$SCRIPT_DIR/$rel"
+    local dest_file="$proj_root/$rel"
+
+    if [ ! -f "$src_file" ]; then
+      echo "  ⚠️  스킵 (소스 없음): $rel"
+      continue
+    fi
+
+    mkdir -p "$(dirname "$dest_file")"
+
+    if [ -f "$dest_file" ]; then
+      cp "$dest_file" "$dest_file.bak.$TS"
+      echo "  💾 백업: $dest_file.bak.$TS"
+    fi
+
+    cp "$src_file" "$dest_file"
+    chmod +x "$dest_file"
     echo "  ✓ $rel"
   done
 
@@ -152,10 +197,21 @@ do_uninstall() {
     fi
   done
 
+  # scripts/ 도 정리
+  local proj_root="$(dirname "$dest")"
+  for rel in "${SCRIPTS[@]}"; do
+    local f="$proj_root/$rel"
+    if [ -f "$f" ]; then
+      rm "$f"
+      echo "  ✓ 삭제: $rel"
+    fi
+  done
+
   # 빈 디렉토리 정리 (실패해도 무시)
-  for d in skills/fork hooks commands agents skills; do
+  for d in skills/fork skills/tmux-orchestrate hooks commands agents skills; do
     rmdir "$dest/$d" 2>/dev/null || true
   done
+  rmdir "$proj_root/scripts" 2>/dev/null || true
 
   echo ""
   echo "✅ 제거 완료."

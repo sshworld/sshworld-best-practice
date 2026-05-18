@@ -11,19 +11,25 @@
 ```
 .claude/
 ├── commands/
-│   └── plan-dev.md           # 6단계 워크플로 (Explore → Plan → Review → TDD → Verify → Commit → Context 정리)
+│   ├── plan-dev.md           # 6단계 워크플로 (Explore → Plan → Review → TDD → Verify → Commit → Context 정리)
+│   └── parallel-consult.md   # 자식 Claude pane 띄워 한 번 질문하고 답 회수
 ├── agents/
-│   ├── implementor.md        # TDD Red→Green→Refactor, worktree 격리
+│   ├── implementor.md        # TDD Red→Green→Refactor, worktree 격리 (+ tmux pane 모드 지원)
 │   ├── verifier.md           # Read-only 빌드/테스트 실행 + diff 제안
 │   ├── reviewer.md           # 치명적 이슈만 블로킹, 나머지 제안
 │   └── commit-advisor.md     # 한글 Conventional Commit + DOC 영향 평가
 ├── skills/
-│   └── fork/SKILL.md         # 자식 컨텍스트에서 처리하고 요약만 반환
+│   ├── fork/SKILL.md         # 자식 컨텍스트에서 처리하고 요약만 반환
+│   └── tmux-orchestrate/SKILL.md # 부모-자식 Claude tmux pane 협업 패턴
 ├── hooks/
 │   ├── enforce-test-first.sh # production 파일 작성 전 테스트 존재 검사
 │   ├── enforce-doc-sync.sh   # commit 시점 DOC 영향 평가 강제
+│   ├── limit-child-panes.sh  # 자식 tmux pane spawn 상한 (CLAUDE_MAX_CHILD_PANES)
 │   └── token-stats.sh        # Stop 시 직전 응답 토큰 사용량 + 캐시 히트율 한 줄 노출
-└── settings.json             # permissions(allow/deny) + 3 hooks
+└── settings.json             # permissions(allow/deny) + 4 hooks
+scripts/
+├── tmux-pane.sh              # 얇은 tmux wrapper — launch/send/capture/wait-idle/kill/list/status
+└── dispatch-slice-pane.sh    # implementor 슬라이스를 tmux pane 으로 dispatch (plan-dev --mode=pane)
 ```
 
 ---
@@ -76,6 +82,43 @@
 ```text
 /fork
 ```
+
+---
+
+## 병렬 Claude 협업 (tmux pane)
+
+부모 Claude 세션에서 **다른 tmux pane** 의 CLI 에이전트(또 다른 Claude / 디버거 / 장시간 스크립트)와 통신.
+
+### Prerequisite
+
+- `tmux` — `brew install tmux`
+- (권장) 외부 `tmux-cli` — `uv tool install claude-code-tools`. 미설치 시 본 repo 의 `scripts/tmux-pane.sh` 가 폴백.
+
+### `/parallel-consult` — 자식 Claude 에게 한 번 묻기
+
+```text
+/parallel-consult "이 함수의 시간복잡도는?"
+```
+
+부모가 자식 Claude pane 을 띄워 질문 → 응답 회수 → 부모 세션에 요약 + "자식 pane 유지/kill" 묻기. 자세한 흐름은 `.claude/commands/parallel-consult.md`.
+
+### `/plan-dev --mode=pane` — implementor 를 tmux pane 으로
+
+기본 subagent 모드 대신 `--mode=pane` 시 `scripts/dispatch-slice-pane.sh` 가 각 슬라이스를 tmux pane 에 띄움. 사용자가 `tmux attach -t tmux-pane-mgr` 로 자식 작업을 직접 모니터링/개입 가능.
+
+### 직접 호출 (수동)
+
+```bash
+pane=$(scripts/tmux-pane.sh launch zsh)
+scripts/tmux-pane.sh send "claude" --pane=$pane
+scripts/tmux-pane.sh wait-idle --pane=$pane
+scripts/tmux-pane.sh send "분석해줘: ..." --pane=$pane
+scripts/tmux-pane.sh wait-idle --pane=$pane --idle=5
+scripts/tmux-pane.sh capture --pane=$pane
+scripts/tmux-pane.sh kill --pane=$pane
+```
+
+`tmux-orchestrate` skill 가이드 (`.claude/skills/tmux-orchestrate/SKILL.md`) 에 안티패턴 + 호출 시퀀스 정리.
 
 ---
 
@@ -134,6 +177,9 @@ DOC_IMPACT=updated git commit -m "..."
 | `SKIP_DOC_SYNC=1` | off | doc-sync hook 1회 우회 (deprecated — DOC_IMPACT 사용) |
 | `DISABLE_DOC_SYNC_HOOK=1` | off | doc-sync hook 영구 비활성화 |
 | `DISABLE_TOKEN_STATS=1` | off | token-stats hook 비활성화 |
+| `CLAUDE_MAX_CHILD_PANES=N` | 5 | 자식 tmux pane 상한 (limit-child-panes hook) |
+| `DISABLE_PANE_LIMIT_HOOK=1` | off | limit-child-panes hook 비활성화 |
+| `FORCE_SELF_KILL=1` | off | tmux-pane.sh kill 의 자기 pane 거부 우회 |
 
 ---
 
