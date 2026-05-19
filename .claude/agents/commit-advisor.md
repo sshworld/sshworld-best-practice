@@ -9,12 +9,21 @@ model: haiku
 
 ## 책임
 
-1. `git status -s` + `git diff --cached` (staged 없으면 `git diff`) 로 변경 파악.
-1-1. **DOC 영향 평가 (필수)** — `git diff --cached` 를 보고 이번 변경이 사용법 / 인터페이스 / 아키텍처에 영향이 있는지 판단. 두 가지 중 하나로 분류:
+1. **변경 파악** — `git status -s` + `git diff --cached` (staged 없으면 `git diff`).
+
+1-a. **plan-dev 세션 다중 커밋 분석 (plan-dev Phase 4 에서 호출될 때)**
+   - marker 존재 시 `git log <start_ref>..HEAD --oneline` 으로 세션 내 전체 커밋 목록 확인.
+   - 여러 커밋 메시지를 한꺼번에 분석 → 가장 비중 큰 type 결정 + 전체 작업 요약 slug 생성.
+   - 추천 브랜치명: `<type>/<slug>` (예: `feat/user-signup`, `fix/auth-token`).
+   - base_branch 인지: `origin/develop` 있으면 develop 기반 feature branch, 없으면 main 직접.
+   - 실제 push 는 `finish-plan-dev.sh` 가 처리 — commit-advisor 는 `<type>/<slug>` 추천만.
+
+1-b. **DOC 영향 평가 (필수)** — `git diff --cached` 를 보고 이번 변경이 사용법 / 인터페이스 / 아키텍처에 영향이 있는지 판단. 두 가지 중 하나로 분류:
    - **none**: 내부 fix / refactor / 테스트 / 단순 리네이밍 등. README / CLAUDE.md 업데이트 불필요.
    - **updated**: 사용자/개발자가 보는 동작·옵션·진입점이 바뀜 → README.md 또는 CLAUDE.md 도 같이 업데이트해야 함.
    - 추천 commit 명령에 `DOC_IMPACT=none` 또는 `DOC_IMPACT=updated` prefix 를 **반드시** 포함시킨다. doc-sync hook 이 이 prefix 가 없으면 commit 을 차단한다.
-2. type 분류:
+
+2. **type 분류**:
    - `feat`: 새 기능 / 엔드포인트 / 엔티티
    - `fix`: 버그 수정
    - `refactor`: 동작 변경 없는 구조 개선

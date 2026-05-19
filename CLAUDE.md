@@ -50,7 +50,9 @@
 | `scripts/tmux-pane.sh` | tmux wrapper — launch/send/capture/wait-idle/kill/list/status. 외부 `tmux-cli` 와 명령 표면 정렬. |
 | `scripts/cmux-pane.sh` | cmux wrapper — launch/send/capture/wait-idle/kill/list/cleanup/status. `CMUX_BIN` env 로 mock 가능. `CBP_LIST_LINES` / `CLAUDE_FAKE_SELF_CMUX_WS` 로 테스트 mock 지원. **state file 헬퍼 (sanitize + flock/mkdir-mutex + ts)**. send/capture/wait-idle 이 `surface:N` ref 를 `--surface` flag 로, `workspace:N` 을 `--workspace` 로 자동 dispatch. do_list: state file 우선 (lazy reconcile, mock 환경 자동 감지), 폴백 cbp- workspace. do_cleanup: state file surface 일괄 close-surface + state 제거 후 cbp- workspace cleanup 도 실행 (호환). |
 | `scripts/detect-pane-env.sh` | 터미널 멀티플렉서 환경 감지. stdout: `tmux` \| `cmux` \| `default`. sourcing guard 포함. |
-| `scripts/dispatch-slice-pane.sh` | implementor 슬라이스를 worktree + tmux/cmux pane 으로 spawn. 멀티-driver: `--mode=tmux\|cmux\|pane\|auto\|subagent`. `plan-dev --mode=pane` 진입점. `--model=<alias>` 로 자식 model 선택 (디폴트 sonnet). `build_child_cmd` 순수 함수로 분리되어 단위 테스트 가능. `DISPATCH_DRY_RUN=1` 로 launch 없이 분기 검증. 시작 시 기존 자식 pane 자동 정리 (`DISPATCH_SKIP_CLEANUP=1` 우회). |
+| `scripts/dispatch-slice-pane.sh` | implementor 슬라이스를 worktree + tmux/cmux pane 으로 spawn. 멀티-driver: `--mode=tmux\|cmux\|pane\|auto\|subagent`. `plan-dev --mode=pane` 진입점. `--model=<alias>` 로 자식 model 선택 (디폴트 sonnet). `--type=<feat|fix|refactor|test|docs|chore>` 로 브랜치 prefix 결정. `build_child_cmd` 순수 함수로 분리되어 단위 테스트 가능. `DISPATCH_DRY_RUN=1` 로 launch 없이 분기 검증. 시작 시 기존 자식 pane 자동 정리 (`DISPATCH_SKIP_CLEANUP=1` 우회). |
+| `scripts/plan-dev-session.sh` | plan-dev 세션 marker 관리 (start/query/clear). start 시 start_ref, base_branch, work_branch, start_ts, start_pid, auto_branch 기록. detached HEAD 차단. 기존 살아있는 세션 재진입 안전 처리. |
+| `scripts/finish-plan-dev.sh` | develop/main 분기 push 자동화 + marker clear. `origin/develop` 있으면 feature branch push, 없으면 main 직접 push. branch 이름 충돌 시 suffix -2~-5 자동 부여. `SKIP_PLAN_DEV_FINISH` / `DISABLE_PLAN_DEV_FINISH` 우회 지원. |
 
 ## 추가 / 수정 체크리스트
 
@@ -85,6 +87,9 @@
 - ❌ README/CLAUDE.md 동기화 없이 동작 변경
 - ❌ 광역 `Bash(tmux*)` 허용 — 좁힌 패턴 (`tmux new-window*`, `tmux send-keys*`, `tmux capture-pane*`, `tmux display-message*`, `tmux list-panes*`, `tmux kill-pane*`) 만. `kill-server` 는 deny.
 - ❌ tmux pane 모드에서 자식 결과(`✅` / `❌`) 회수 전 머지 시도
+- ❌ `slice/<kebab>` branch 명 — 반드시 `<type>/<slug>` 사용 (`feat/...`, `fix/...`, etc.)
+- ❌ `git merge --no-ff slice/...` — rebase fast-forward + `git branch -D` + `git worktree remove`
+- ❌ Phase 5 (Branch & Push) 를 `SKIP_PLAN_DEV_FINISH=1` 로 기본값처럼 우회 — 예외적 사용만
 
 ## 환경변수 (tmux / cmux 통합)
 
@@ -96,8 +101,13 @@
 | `TMUX_PANE_NO_LAYOUT` | unset | `tmux-pane.sh launch` 의 main-vertical layout 자동 적용 끄기 |
 | `DISPATCH_CHILD_CMD` | unset | `dispatch-slice-pane.sh` 가 자식 명령으로 사용할 cmd 강제 (테스트용 substitute) |
 | `DISPATCH_DEFAULT_MODEL` | sonnet | `dispatch-slice-pane.sh` 의 자식 model 디폴트 (--model arg 가 우선) |
+| `DISPATCH_DEFAULT_TYPE` | feat | `dispatch-slice-pane.sh` 의 --type 미지정 시 기본 type (기본: feat) |
 | `DISPATCH_SKIP_CLEANUP` | unset | `dispatch-slice-pane.sh` 의 시작 시 자식 pane 자동 정리 끄기 |
 | `DISPATCH_DRY_RUN` | unset | `dispatch-slice-pane.sh` 가 launch 직전 driver/wrapper/worktree JSON 출력 후 exit 0 (테스트용) |
+| `SKIP_PLAN_DEV_FINISH` | unset | `finish-plan-dev.sh` Phase 5 1회 우회 (exit 0 + "skipped") |
+| `DISABLE_PLAN_DEV_FINISH` | unset | `finish-plan-dev.sh` 영구 비활성화 (exit 0 + "disabled") |
+| `GIT_PUSH_CMD` | `git push` | `finish-plan-dev.sh` 의 push 명령 override (테스트용) |
+| `PLAN_DEV_SESSION_BIN` | `scripts/plan-dev-session.sh` | `finish-plan-dev.sh` 가 marker 조회에 사용할 헬퍼 경로 override |
 | `CMUX_BIN` | `cmux` | `cmux-pane.sh` / `detect-pane-env.sh` 가 사용할 cmux 바이너리 경로. 테스트 mock 에 사용. |
 | `CBP_WORKSPACE_PREFIX` | `cbp-` | `cmux-pane.sh launch` 의 workspace 이름 prefix |
 | `CBP_STATE_FILE` | `~/.cache/cbp/children-<ws>.json` | `cmux-pane.sh` state file 경로 override. sanitize 규칙: `${CMUX_WORKSPACE_ID//[:\/]/_}` (콜론/슬래시 → 언더스코어) |

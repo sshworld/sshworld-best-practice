@@ -11,13 +11,13 @@
 ```
 .claude/
 ├── commands/
-│   ├── plan-dev.md           # 6단계 워크플로 (Explore → Plan → Review → TDD → Verify → Commit → Context 정리)
+│   ├── plan-dev.md           # Phase 0~6 워크플로 (Session Start → Plan → TDD → Verify → Commit → Branch & Push → Context 정리)
 │   └── parallel-consult.md   # 자식 Claude pane 띄워 한 번 질문하고 답 회수
 ├── agents/
-│   ├── implementor.md        # TDD Red→Green→Refactor, worktree 격리 (+ tmux pane 모드 지원)
+│   ├── implementor.md        # TDD Red→Green→Refactor, <type>/<slug> worktree 격리 (+ tmux pane 모드 지원)
 │   ├── verifier.md           # Read-only 빌드/테스트 실행 + diff 제안
 │   ├── reviewer.md           # 치명적 이슈만 블로킹, 나머지 제안
-│   └── commit-advisor.md     # 한글 Conventional Commit + DOC 영향 평가
+│   └── commit-advisor.md     # 한글 Conventional Commit + DOC 영향 평가 + 다중 커밋 분석
 ├── skills/
 │   ├── fork/SKILL.md         # 자식 컨텍스트에서 처리하고 요약만 반환
 │   └── tmux-orchestrate/SKILL.md # 부모-자식 Claude tmux pane 협업 패턴
@@ -33,7 +33,9 @@ scripts/
 ├── tmux-pane.sh              # 얇은 tmux wrapper — launch/send/capture/wait-idle/kill/list/status
 ├── cmux-pane.sh              # 얇은 cmux wrapper — launch/send/capture/kill/list/cleanup/status + state file 헬퍼
 ├── detect-pane-env.sh        # 터미널 환경 감지 — tmux | cmux | default
-└── dispatch-slice-pane.sh    # implementor 슬라이스를 tmux/cmux pane 으로 dispatch (plan-dev --mode=pane)
+├── dispatch-slice-pane.sh    # implementor 슬라이스를 tmux/cmux pane 으로 dispatch (plan-dev --mode=pane)
+├── plan-dev-session.sh       # plan-dev 세션 marker 관리 (start/query/clear)
+└── finish-plan-dev.sh        # develop/main 분기 push 자동화 + marker clear
 ```
 
 ---
@@ -68,16 +70,18 @@ scripts/
 ```
 
 자동 진행 흐름:
+0. **Session Start** (Phase 0): `plan-dev-session.sh start` 자동 호출 — start_ref, base_branch 기록
 1. **Explore**: 관련 파일 자동 스캔
 2. **빈틈 진단**: `AskUserQuestion` 으로 요구사항 명확화 반복
-3. **EnterPlanMode**: plan 파일 작성 (200줄 이하 권장)
+3. **EnterPlanMode**: plan 파일 작성 (200줄 이하 권장) + slice 별 type 결정
 4. **Staff Engineer Plan Review**: Plan 서브에이전트 비평 (선택)
 5. **ExitPlanMode**: 사용자 승인
-6. **TDD Execute**: 병렬 implementor → worktree 격리, Red→Green→Refactor
-7. **Verify**: verifier 빌드/테스트 (max 5회 루프)
+6. **TDD Execute**: 병렬 implementor → `<type>/<slug>` worktree 격리, Red→Green→Refactor
+7. **Verify**: rebase fast-forward 머지 + verifier 빌드/테스트 (max 5회 루프)
 8. **Review**: reviewer 치명적 이슈 점검 (선택)
-9. **Commit**: commit-advisor 한글 메시지 추천 + DOC 영향 평가
-10. **Context 정리**: 다음 추천 명령 (`/clear` / `/compact` / `/fork`) 노출
+9. **Commit**: commit-advisor 다중 커밋 분석 → 한글 메시지 + `<type>/<slug>` 브랜치명 추천
+10. **Branch & Push** (Phase 5): `finish-plan-dev.sh` 로 develop/main 분기 push 자동화
+11. **Context 정리** (Phase 6): 다음 추천 명령 노출 + unlocked worktree-agent-* 자동 cleanup
 
 ### 보조 — `/fork`
 
@@ -105,6 +109,16 @@ scripts/
 ```
 
 부모가 자식 Claude pane 을 띄워 질문 → 응답 회수 → 부모 세션에 요약 + "자식 pane 유지/kill" 묻기. 자세한 흐름은 `.claude/commands/parallel-consult.md`.
+
+### Branch Convention
+
+| 규칙 | 설명 |
+|---|---|
+| 브랜치명 형식 | `<type>/<slug>` — `feat/user-signup`, `fix/auth-token`, `test/session-marker` 등 |
+| type 결정 시점 | plan 파일의 Vertical Slices 섹션에서 각 slice 별로 결정 |
+| 머지 방식 | **rebase fast-forward** — `git rebase <type>/<slug>` + `git branch -D` (merge commit 없음) |
+| `slice/` prefix | 폐기됨 — `<type>/<slug>` 로 전환 (기존 `slice/` 브랜치는 dispatch 가 재사용 가능) |
+| push | `finish-plan-dev.sh` 가 develop 있으면 feature branch, 없으면 main 직접 push |
 
 ### `/plan-dev --mode=pane` — implementor 를 tmux pane 으로
 
@@ -270,7 +284,12 @@ export DISABLE_CMUX_CONTEXT_HOOK=1
 | `FORCE_SELF_KILL=1` | off | tmux-pane.sh kill 의 자기 pane 거부 우회 |
 | `TMUX_PANE_NO_LAYOUT=1` | off | tmux-pane.sh launch 의 main-vertical layout 자동 적용 끄기 |
 | `DISPATCH_DEFAULT_MODEL=<alias>` | sonnet | dispatch-slice-pane.sh 의 자식 model 디폴트 (--model arg 가 우선) |
+| `DISPATCH_DEFAULT_TYPE=<type>` | feat | dispatch-slice-pane.sh 의 --type 미지정 시 기본 type |
 | `DISPATCH_SKIP_CLEANUP=1` | off | dispatch-slice-pane.sh 가 main 진입 시 자식 pane 자동 정리 끄기 |
+| `SKIP_PLAN_DEV_FINISH=1` | off | Phase 5 (finish-plan-dev.sh) 1회 우회 |
+| `DISABLE_PLAN_DEV_FINISH=1` | off | Phase 5 영구 비활성화 |
+| `GIT_PUSH_CMD=<cmd>` | `git push` | finish-plan-dev.sh 의 push 명령 override (테스트용) |
+| `PLAN_DEV_SESSION_BIN=<path>` | `scripts/plan-dev-session.sh` | 세션 헬퍼 경로 override |
 | `CMUX_BIN=<path>` | `cmux` | cmux-pane.sh / detect-pane-env.sh 가 사용할 cmux 바이너리 경로 (테스트 mock 에 사용) |
 | `CBP_STATE_FILE=<path>` | `~/.cache/cbp/children-<ws>.json` | cmux-pane.sh state file 경로 override (ws sanitize 규칙: `${CMUX_WORKSPACE_ID//[:\/]/_}`) |
 | `CBP_WORKSPACE_PREFIX=<str>` | `cbp-` | cmux-pane.sh launch 의 workspace 이름 prefix |

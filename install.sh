@@ -47,6 +47,8 @@ SCRIPTS=(
   "scripts/cmux-pane.sh"
   "scripts/detect-pane-env.sh"
   "scripts/dispatch-slice-pane.sh"
+  "scripts/plan-dev-session.sh"
+  "scripts/finish-plan-dev.sh"
 )
 
 usage() {
