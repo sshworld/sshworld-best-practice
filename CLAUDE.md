@@ -48,10 +48,11 @@
 | `.claude/hooks/statusline-tokens.sh` | (opt-in 대안) statusLine 으로 토큰 사용량 상시 표시. 기본은 `token-stats.sh` 의 inline 메시지. |
 | `.claude/settings.json` | permissions(allow/deny) + hooks. 광역 `Bash(tmux*)` 금지 — 좁힌 패턴만. |
 | `scripts/tmux-pane.sh` | tmux wrapper — launch/send/capture/wait-idle/kill/list/status. 외부 `tmux-cli` 와 명령 표면 정렬. |
-| `scripts/cmux-pane.sh` | cmux wrapper — launch/send/capture/wait-idle/kill/list/cleanup/status. `CMUX_BIN` env 로 mock 가능. `CBP_LIST_LINES` / `CLAUDE_FAKE_SELF_CMUX_WS` 로 테스트 mock 지원. **state file 헬퍼 (sanitize + flock/mkdir-mutex + ts)**. send/capture/wait-idle 이 `surface:N` ref 를 `--surface` flag 로, `workspace:N` 을 `--workspace` 로 자동 dispatch. do_list: state file 우선 (lazy reconcile, mock 환경 자동 감지), 폴백 cbp- workspace. do_cleanup: state file surface 일괄 close-surface + state 제거 후 cbp- workspace cleanup 도 실행 (호환). |
+| `scripts/cmux-pane.sh` | cmux wrapper — launch/send/capture/wait-idle/kill/list/cleanup/status/**notify/set-status**. `CMUX_BIN` env 로 mock 가능. `CBP_LIST_LINES` / `CLAUDE_FAKE_SELF_CMUX_WS` 로 테스트 mock 지원. **state file 헬퍼 (sanitize + flock/mkdir-mutex + ts)**. send/capture/wait-idle 이 `surface:N` ref 를 `--surface` flag 로, `workspace:N` 을 `--workspace` 로 자동 dispatch. do_list: state file 우선 (lazy reconcile, mock 환경 자동 감지), 폴백 cbp- workspace. do_cleanup: state file surface 일괄 close-surface + state 제거 후 cbp- workspace cleanup 도 실행 (호환). |
 | `scripts/detect-pane-env.sh` | 터미널 멀티플렉서 환경 감지. stdout: `tmux` \| `cmux` \| `default`. sourcing guard 포함. |
 | `scripts/dispatch-slice-pane.sh` | implementor 슬라이스를 worktree + tmux/cmux pane 으로 spawn. 멀티-driver: `--mode=tmux\|cmux\|pane\|auto\|subagent`. `plan-dev --mode=pane` 진입점. `--model=<alias>` 로 자식 model 선택 (디폴트 sonnet). `--type=<feat|fix|refactor|test|docs|chore>` 로 브랜치 prefix 결정. `build_child_cmd` 순수 함수로 분리되어 단위 테스트 가능. `DISPATCH_DRY_RUN=1` 로 launch 없이 분기 검증. 시작 시 기존 자식 pane 자동 정리 (`DISPATCH_SKIP_CLEANUP=1` 우회). |
 | `scripts/plan-dev-session.sh` | plan-dev 세션 marker 관리 (start/query/clear). start 시 start_ref, base_branch, work_branch, start_ts, start_pid, auto_branch 기록. detached HEAD 차단. 기존 살아있는 세션 재진입 안전 처리. |
+| `scripts/plan-dev-progress.sh` | plan-dev 진행률 cmux push 헬퍼 (start/tick/show). `PLAN_DEV_SESSION_BIN` / `CMUX_PANE_BIN` env 로 mock 가능. `PROGRESS_DRY_RUN=1` 로 notify/set-status dry-run. cmux 환경 외에서는 tick stdout 만 출력. |
 | `scripts/finish-plan-dev.sh` | develop/main 분기 push 자동화 + marker clear. `origin/develop` 있으면 feature branch push, 없으면 main 직접 push. branch 이름 충돌 시 suffix -2~-5 자동 부여. `SKIP_PLAN_DEV_FINISH` / `DISABLE_PLAN_DEV_FINISH` 우회 지원. |
 
 ## 추가 / 수정 체크리스트
@@ -90,6 +91,7 @@
 - ❌ `slice/<kebab>` branch 명 — 반드시 `<type>/<slug>` 사용 (`feat/...`, `fix/...`, etc.)
 - ❌ `git merge --no-ff slice/...` — rebase fast-forward + `git branch -D` + `git worktree remove`
 - ❌ Phase 5 (Branch & Push) 를 `SKIP_PLAN_DEV_FINISH=1` 로 기본값처럼 우회 — 예외적 사용만
+- ❌ `PROGRESS_DRY_RUN=1` 을 환경변수로 항상 켜두기 — 진행률이 push 되지 않아 cmux 좌측에 표시가 멈춤. 테스트 시 일회성으로만.
 
 ## 환경변수 (tmux / cmux 통합)
 
@@ -108,7 +110,9 @@
 | `SKIP_PLAN_DEV_FINISH` | unset | `finish-plan-dev.sh` Phase 5 1회 우회 (exit 0 + "skipped") |
 | `DISABLE_PLAN_DEV_FINISH` | unset | `finish-plan-dev.sh` 영구 비활성화 (exit 0 + "disabled") |
 | `GIT_PUSH_CMD` | `git push` | `finish-plan-dev.sh` 의 push 명령 override (테스트용) |
-| `PLAN_DEV_SESSION_BIN` | `scripts/plan-dev-session.sh` | `finish-plan-dev.sh` 가 marker 조회에 사용할 헬퍼 경로 override |
+| `PLAN_DEV_SESSION_BIN` | `scripts/plan-dev-session.sh` | `finish-plan-dev.sh` / `plan-dev-progress.sh` 가 marker 조작에 사용할 헬퍼 경로 override (테스트용) |
+| `CMUX_PANE_BIN` | `scripts/cmux-pane.sh` | `plan-dev-progress.sh` 가 cmux push 에 사용할 wrapper 경로 override (테스트용) |
+| `PROGRESS_DRY_RUN` | unset | `plan-dev-progress.sh` 의 notify/set-status 단계 dry-run (`cmux-pane.sh` 가 처리). unset 시 실제 push |
 | `CMUX_BIN` | `cmux` | `cmux-pane.sh` / `detect-pane-env.sh` 가 사용할 cmux 바이너리 경로. 테스트 mock 에 사용. |
 | `CBP_WORKSPACE_PREFIX` | `cbp-` | `cmux-pane.sh launch` 의 workspace 이름 prefix |
 | `CBP_STATE_FILE` | `~/.cache/cbp/children-<ws>.json` | `cmux-pane.sh` state file 경로 override. sanitize 규칙: `${CMUX_WORKSPACE_ID//[:\/]/_}` (콜론/슬래시 → 언더스코어) |

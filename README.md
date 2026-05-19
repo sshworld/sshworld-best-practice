@@ -35,6 +35,7 @@ scripts/
 ├── detect-pane-env.sh        # 터미널 환경 감지 — tmux | cmux | default
 ├── dispatch-slice-pane.sh    # implementor 슬라이스를 tmux/cmux pane 으로 dispatch (plan-dev --mode=pane)
 ├── plan-dev-session.sh       # plan-dev 세션 marker 관리 (start/query/clear)
+├── plan-dev-progress.sh      # plan-dev 진행률 cmux push 헬퍼 (start/tick/show)
 └── finish-plan-dev.sh        # develop/main 분기 push 자동화 + marker clear
 ```
 
@@ -170,6 +171,25 @@ cmux 앱 안에서 실행 중일 때 (`CMUX_WORKSPACE_ID` set) `scripts/cmux-pan
 
 `CMUX_WORKSPACE_ID` unset 환경에서는 기존 new-workspace 흐름 그대로 (회귀 zero).
 
+### cmux 진행률 push (`plan-dev-progress.sh`)
+
+`plan-dev` 실행 중 cmux 좌측 사이드바 status pill 및 알림 패널에 슬라이스 진행률을 실시간 push.
+
+```bash
+# 세션 시작 + status pill 초기화 (총 슬라이스 수 지정)
+scripts/plan-dev-progress.sh start --total=3
+
+# 슬라이스 완료 시 카운트 +1 + pill / 알림 갱신
+scripts/plan-dev-progress.sh tick --slug=user-signup
+
+# 현재 진행률 표 + 최근 알림 출력
+scripts/plan-dev-progress.sh show
+```
+
+`plan-dev --mode=cmux` 흐름에서 각 implementor slice 완료 후 자동 호출됨 — 사용자는 cmux 사이드바에서 `✨ 1/3` → `✨ 2/3` → `✨ 3/3` 으로 진행률 추적 가능.
+
+cmux 환경이 아닐 때(tmux/default)는 `tick` 이 진행률 문자열만 stdout 출력하고 notify/set-status 는 no-op.
+
 ### 권장 `~/.tmux.conf` 설정 (세션명 표시)
 
 자식 pane 들이 어떤 세션에 속하는지 한눈에 보기 위해 status bar 좌측에 `[#S]` 형태로 세션명 상시 표시:
@@ -300,7 +320,9 @@ export DISABLE_CMUX_CONTEXT_HOOK=1
 | `SKIP_PLAN_DEV_FINISH=1` | off | Phase 5 (finish-plan-dev.sh) 1회 우회 |
 | `DISABLE_PLAN_DEV_FINISH=1` | off | Phase 5 영구 비활성화 |
 | `GIT_PUSH_CMD=<cmd>` | `git push` | finish-plan-dev.sh 의 push 명령 override (테스트용) |
-| `PLAN_DEV_SESSION_BIN=<path>` | `scripts/plan-dev-session.sh` | 세션 헬퍼 경로 override |
+| `PLAN_DEV_SESSION_BIN=<path>` | `scripts/plan-dev-session.sh` | 세션 헬퍼 경로 override (`finish-plan-dev.sh` / `plan-dev-progress.sh` 공용, 테스트용) |
+| `CMUX_PANE_BIN=<path>` | `scripts/cmux-pane.sh` | `plan-dev-progress.sh` 가 cmux push 에 사용할 wrapper 경로 override (테스트용) |
+| `PROGRESS_DRY_RUN=1` | off | `plan-dev-progress.sh` 의 notify/set-status 단계 dry-run (`cmux-pane.sh` 가 처리) |
 | `CMUX_BIN=<path>` | `cmux` | cmux-pane.sh / detect-pane-env.sh 가 사용할 cmux 바이너리 경로 (테스트 mock 에 사용) |
 | `CBP_STATE_FILE=<path>` | `~/.cache/cbp/children-<ws>.json` | cmux-pane.sh state file 경로 override (ws sanitize 규칙: `${CMUX_WORKSPACE_ID//[:\/]/_}`) |
 | `CBP_WORKSPACE_PREFIX=<str>` | `cbp-` | cmux-pane.sh launch 의 workspace 이름 prefix |
