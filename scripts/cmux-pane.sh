@@ -11,6 +11,8 @@
 #   cmux-pane list
 #   cmux-pane cleanup
 #   cmux-pane status
+#   cmux-pane notify --title=<t> [--body=<b>] [--subtitle=<s>] [--workspace=<ref>] [--surface=<ref>]
+#   cmux-pane set-status <key> <value> [--icon=<name>] [--color=<#hex>] [--workspace=<ref>]
 #
 # 환경변수:
 #   CMUX_BIN                  — cmux 바이너리 경로 (미지정 시 PATH 의 cmux)
@@ -20,6 +22,7 @@
 #   CBP_LIST_LINES             — list 명령 입력 mock (테스트용. set 시 실제 cmux 호출 생략)
 #   CLAUDE_FAKE_SELF_CMUX_WS   — 자기 workspace ref mock (테스트용)
 #   FORCE_SELF_KILL            — 자기 workspace kill 거부 우회
+#   PROGRESS_DRY_RUN           — notify/set-status 가 실제 cmux 호출 없이 명령 echo 후 exit 0 (테스트용)
 
 set -uo pipefail
 
@@ -48,6 +51,13 @@ commands:
   list                                          cbp- prefix workspace 목록 JSON 출력
   cleanup                                       cbp- prefix workspace 일괄 close (자기 workspace 보존)
   status                                        현재 workspace + cbp-* 목록 텍스트 출력
+  notify --title=<t> [--body=<b>] [--subtitle=<s>] [--workspace=<ref>] [--surface=<ref>]
+                                                cmux 알림 패널에 메시지 push (좌측 사이드바 latest
+                                                notification + ⌘I 패널 누적). workspace/surface 미지정 시
+                                                cmux 가 $CMUX_WORKSPACE_ID / $CMUX_SURFACE_ID 자동 사용.
+  set-status <key> <value> [--icon=<name>] [--color=<#hex>] [--workspace=<ref>]
+                                                workspace 사이드바 탭 status pill 갱신 (key 별로 관리).
+                                                예: set-status plan-dev "2/3 (66%)" --icon sparkle
 USAGE
   exit 2
 }
@@ -596,6 +606,86 @@ EOF
   fi
 }
 
+# non-cmux 환경이면 advisory + exit 0 (호출자 무해)
+_skip_if_non_cmux() {
+  local detect_bin
+  detect_bin="$(dirname "${BASH_SOURCE[0]}")/detect-pane-env.sh"
+  [ -x "$detect_bin" ] || return 0  # detect 없으면 그냥 진행
+  local env
+  env=$("$detect_bin" 2>/dev/null) || return 0
+  if [ "$env" != "cmux" ]; then
+    echo "cmux-pane: non-cmux env, skipped" >&2
+    exit 0
+  fi
+}
+
+# PROGRESS_DRY_RUN=1 이면 명령 echo 후 exit 0
+_maybe_dry_run() {
+  if [ -n "${PROGRESS_DRY_RUN:-}" ]; then
+    printf 'DRY_RUN: %s\n' "$*"
+    exit 0
+  fi
+}
+
+do_notify() {
+  local TITLE="" BODY="" SUBTITLE="" WORKSPACE="" SURFACE=""
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --title=*)     TITLE="${1#*=}"; shift ;;
+      --title)       TITLE="$2"; shift 2 ;;
+      --body=*)      BODY="${1#*=}"; shift ;;
+      --body)        BODY="$2"; shift 2 ;;
+      --subtitle=*)  SUBTITLE="${1#*=}"; shift ;;
+      --subtitle)    SUBTITLE="$2"; shift 2 ;;
+      --workspace=*) WORKSPACE="${1#*=}"; shift ;;
+      --workspace)   WORKSPACE="$2"; shift 2 ;;
+      --surface=*)   SURFACE="${1#*=}"; shift ;;
+      --surface)     SURFACE="$2"; shift 2 ;;
+      *) shift ;;
+    esac
+  done
+  [ -z "$TITLE" ] && die "notify: --title 필요" 2
+  WORKSPACE=$(printf '%s' "$WORKSPACE" | tr -d '[:space:]')
+  SURFACE=$(printf '%s' "$SURFACE" | tr -d '[:space:]')
+
+  local args=(notify --title "$TITLE")
+  [ -n "$BODY" ]      && args+=(--body "$BODY")
+  [ -n "$SUBTITLE" ]  && args+=(--subtitle "$SUBTITLE")
+  [ -n "$WORKSPACE" ] && args+=(--workspace "$WORKSPACE")
+  [ -n "$SURFACE" ]   && args+=(--surface "$SURFACE")
+
+  _maybe_dry_run "$CMUX_BIN" "${args[@]}"
+  _skip_if_non_cmux
+  "$CMUX_BIN" "${args[@]}" || die "notify: 실패" 3
+}
+
+do_set_status() {
+  local KEY="$1"; shift
+  local VALUE="$1"; shift
+  local ICON="" COLOR="" WORKSPACE=""
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --icon=*)      ICON="${1#*=}"; shift ;;
+      --icon)        ICON="$2"; shift 2 ;;
+      --color=*)     COLOR="${1#*=}"; shift ;;
+      --color)       COLOR="$2"; shift 2 ;;
+      --workspace=*) WORKSPACE="${1#*=}"; shift ;;
+      --workspace)   WORKSPACE="$2"; shift 2 ;;
+      *) shift ;;
+    esac
+  done
+  WORKSPACE=$(printf '%s' "$WORKSPACE" | tr -d '[:space:]')
+
+  local args=(set-status "$KEY" "$VALUE")
+  [ -n "$ICON" ]      && args+=(--icon "$ICON")
+  [ -n "$COLOR" ]     && args+=(--color "$COLOR")
+  [ -n "$WORKSPACE" ] && args+=(--workspace "$WORKSPACE")
+
+  _maybe_dry_run "$CMUX_BIN" "${args[@]}"
+  _skip_if_non_cmux
+  "$CMUX_BIN" "${args[@]}" || die "set-status: 실패" 3
+}
+
 main() {
   [ $# -lt 1 ] && usage
   local cmd="$1"; shift
@@ -611,6 +701,10 @@ main() {
     list)      do_list "$@" ;;
     cleanup)   do_cleanup "$@" ;;
     status)    do_status "$@" ;;
+    notify)     do_notify "$@" ;;
+    set-status)
+      [ $# -lt 2 ] && die "set-status: <key> <value> 필요" 2
+      do_set_status "$@" ;;
     -h|--help|help) usage ;;
     *) die "unknown command: $cmd" 2 ;;
   esac
