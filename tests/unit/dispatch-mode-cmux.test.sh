@@ -18,7 +18,7 @@ FALSE_BIN="$(which false)"
 
 pass=0
 fail_count=0
-total=9
+total=15
 
 check() {
   local desc="$1" expected="$2" actual="$3"
@@ -161,6 +161,36 @@ env -i \
   bash "$DISPATCH" --slice=t --spec-file="$SPEC_FILE" --mode=subagent 2>/dev/null \
   && exit_code=0 || exit_code=$?
 check "--mode=subagent → exit 0" "0" "$exit_code"
+
+# ----------------------------------------------------------------
+# T4. validate_pane_ref — wrapper launch 계약 검증
+# dispatch 를 source 해서 함수만 노출 (main 은 sourcing guard 로 안 불림)
+# ----------------------------------------------------------------
+source "$DISPATCH"
+
+# T4-pass-a: surface:N 통과
+result=$(validate_pane_ref "surface:5" 2>/dev/null) && rc=0 || rc=$?
+check "T4-pass: surface:5 → 통과" "surface:5" "$result"
+
+# T4-pass-b: workspace:cbp-abc123 통과
+result=$(validate_pane_ref "workspace:cbp-abc123" 2>/dev/null) && rc=0 || rc=$?
+check "T4-pass: workspace:cbp-abc123 → 통과" "workspace:cbp-abc123" "$result"
+
+# T4-pass-c: trailing \r\n 트림 후 surface:5
+result=$(validate_pane_ref "$(printf 'surface:5\r\n')" 2>/dev/null) && rc=0 || rc=$?
+check "T4-pass: trailing CRLF 트림 → surface:5" "surface:5" "$result"
+
+# T4-fail-a: cmux 응답 누수형 PANE → DIE (exit non-zero)
+validate_pane_ref "OK action=rename tab=tab:5 workspace=workspace:3 surface:5" >/dev/null 2>&1 && rc=0 || rc=$?
+check "T4-fail: 'OK action=...' 깨진 ref → 거부" "1" "$rc"
+
+# T4-fail-b: 빈 문자열 → DIE
+validate_pane_ref "" >/dev/null 2>&1 && rc=0 || rc=$?
+check "T4-fail: 빈 문자열 → 거부" "1" "$rc"
+
+# T4-fail-c: garbage → DIE
+validate_pane_ref "garbage" >/dev/null 2>&1 && rc=0 || rc=$?
+check "T4-fail: 'garbage' → 거부" "1" "$rc"
 
 echo ""
 echo "ok: $pass/$total passed"

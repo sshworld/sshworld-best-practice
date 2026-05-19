@@ -44,7 +44,7 @@ case "$1" in
     echo "OK surface:0 pane:0 workspace:0"
     ;;
   rename-tab)
-    # silent success
+    echo "OK action=rename tab=tab:0 surface:0"
     exit 0
     ;;
   *)
@@ -54,11 +54,50 @@ esac
 MOCK
 chmod +x "$MOCK_CMUX"
 
-trap 'rm -f "$MOCK_CMUX" "$STATE_A"' EXIT
+# noisy mock A: new-pane 이 stderr 로 부수 메시지 출력
+MOCK_CMUX_NOISY_A="/tmp/mock-cmux-noisy-a-$$"
+cat > "$MOCK_CMUX_NOISY_A" <<'MOCK'
+#!/usr/bin/env bash
+case "$1" in
+  new-pane|new-split)
+    echo "info: opened pane" >&2
+    echo "OK surface:0 pane:0 workspace:0"
+    ;;
+  rename-tab)
+    echo "OK action=rename tab=tab:0 surface:0"
+    exit 0
+    ;;
+  *)
+    echo "$@"
+    ;;
+esac
+MOCK
+chmod +x "$MOCK_CMUX_NOISY_A"
+
+# noisy mock B: new-pane 이 stdout 에 두 번째 줄(trailing noise) 출력
+MOCK_CMUX_NOISY_B="/tmp/mock-cmux-noisy-b-$$"
+cat > "$MOCK_CMUX_NOISY_B" <<'MOCK'
+#!/usr/bin/env bash
+case "$1" in
+  new-pane|new-split)
+    printf 'OK surface:0 pane:0 workspace:0\ntrailing-event line\n'
+    ;;
+  rename-tab)
+    echo "OK action=rename tab=tab:0 surface:0"
+    exit 0
+    ;;
+  *)
+    echo "$@"
+    ;;
+esac
+MOCK
+chmod +x "$MOCK_CMUX_NOISY_B"
+
+trap 'rm -f "$MOCK_CMUX" "$MOCK_CMUX_NOISY_A" "$MOCK_CMUX_NOISY_B" "$STATE_A"' EXIT
 
 STATE_A="/tmp/test-A2-cmd-$$.state"
 
-total=15
+total=18
 
 # ----------------------------------------------------------------
 # 기존 회귀 케이스 (CMUX_WORKSPACE_ID unset — new-workspace 흐름)
@@ -103,8 +142,13 @@ check "launch in cmux (첫 번째): state 1줄 추가" "1" "$line_count"
 check_contains "launch in cmux (첫 번째): stdout = surface ref" "surface:" "$first_out"
 
 # 5. 첫 launch cmux stdout 에 new-pane 명령 사용됨 (mock 이 surface:0 반환)
-# mock cmux 가 "OK surface:0 ..." 반환하므로 do_launch 가 awk '{print $2}' → "surface:0"
+# mock cmux 가 "OK surface:0 ..." 반환하므로 do_launch 가 awk '/^OK /{print $2;exit}' → "surface:0"
 check "launch in cmux (첫 번째): stdout = surface:0" "surface:0" "$first_out"
+
+# T2: launch stdout 이 정확히 한 줄 — rename-tab 의 stdout noise 가 섞이지 않아야 함
+# $first_out 에 개행이 없으면 단일 줄임 (echo 로 줄 수 세기)
+first_out_lines=$(echo "$first_out" | wc -l | tr -d ' ')
+check "launch in cmux (첫 번째): stdout 정확히 1줄" "1" "$first_out_lines"
 
 # 6. 두 번째 launch in cmux (state 에 1줄 있음) → state 2줄 + new-split down 사용
 # prev_surface 는 첫 번째 launch 결과 = surface:0
@@ -127,6 +171,26 @@ third_out=$(env -i PATH="$PATH" HOME="${HOME:-/tmp}" \
   bash "$SCRIPT" launch zsh 2>/dev/null)
 line_count=$(wc -l < "$STATE_A" 2>/dev/null | tr -d ' ')
 check "launch in cmux (세 번째): state 3줄" "3" "$line_count"
+
+# T3-A: noisy mock (stderr noise) → launch stdout 은 surface:0 한 줄
+rm -f "$STATE_A"
+noisy_a_out=$(env -i PATH="$PATH" HOME="${HOME:-/tmp}" \
+  CMUX_BIN="$MOCK_CMUX_NOISY_A" \
+  CMUX_WORKSPACE_ID="workspace:1" \
+  CBP_STATE_FILE="$STATE_A" \
+  CBP_WORKSPACE_PREFIX="cbp-" \
+  bash "$SCRIPT" launch zsh 2>/dev/null)
+check "T3-A: noisy stderr mock — launch stdout = surface:0" "surface:0" "$noisy_a_out"
+
+# T3-B: noisy mock (stdout trailing line) → launch stdout 은 surface:0 한 줄
+rm -f "$STATE_A"
+noisy_b_out=$(env -i PATH="$PATH" HOME="${HOME:-/tmp}" \
+  CMUX_BIN="$MOCK_CMUX_NOISY_B" \
+  CMUX_WORKSPACE_ID="workspace:1" \
+  CBP_STATE_FILE="$STATE_A" \
+  CBP_WORKSPACE_PREFIX="cbp-" \
+  bash "$SCRIPT" launch zsh 2>/dev/null)
+check "T3-B: noisy stdout trailing mock — launch stdout = surface:0" "surface:0" "$noisy_b_out"
 
 # ----------------------------------------------------------------
 # 8. kill surface ref → close-surface + state remove
@@ -152,7 +216,7 @@ check_contains "kill surface ref: close-surface --surface surface:0 포함" \
 LOADER_SCRIPT="/tmp/cbp-loader-kill-$$.sh"
 sed '$d' "$SCRIPT" > "$LOADER_SCRIPT"
 echo "# loader: main call removed" >> "$LOADER_SCRIPT"
-trap 'rm -f "$MOCK_CMUX" "$STATE_A" "$LOADER_SCRIPT"' EXIT
+trap 'rm -f "$MOCK_CMUX" "$MOCK_CMUX_NOISY_A" "$MOCK_CMUX_NOISY_B" "$STATE_A" "$LOADER_SCRIPT"' EXIT
 list_after_kill=$(env -i PATH="$PATH" HOME="${HOME:-/tmp}" \
     CBP_STATE_FILE="$STATE_A" \
     CMUX_WORKSPACE_ID="workspace:1" \

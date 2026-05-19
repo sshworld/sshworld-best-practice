@@ -235,8 +235,8 @@ _do_launch_grid() {
       --type terminal \
       --direction right \
       --workspace "$CMUX_WORKSPACE_ID" 2>/dev/null || true)
-    # stdout 파싱: "OK surface:N pane:N workspace:N" → 두 번째 토큰 = surface ref
-    surface_ref=$(printf '%s' "$raw_out" | awk '{print $2}')
+    # stdout 파싱: "OK surface:N pane:N workspace:N" → OK 로 시작하는 줄의 두 번째 토큰 = surface ref
+    surface_ref=$(printf '%s' "$raw_out" | awk '/^OK / {print $2; exit}')
   else
     # 후속 자식: 직전 자식 surface 를 기준으로 split
     # state file 마지막 줄에서 surface ref 추출
@@ -257,8 +257,11 @@ _do_launch_grid() {
 
     raw_out=$("$CMUX_BIN" new-split "$dir" \
       --surface "$prev_surface" 2>/dev/null || true)
-    surface_ref=$(printf '%s' "$raw_out" | awk '{print $2}')
+    surface_ref=$(printf '%s' "$raw_out" | awk '/^OK / {print $2; exit}')
   fi
+
+  # surface ref 공백 trim
+  surface_ref=$(printf '%s' "$surface_ref" | tr -d '[:space:]')
 
   # surface ref 가 비었으면 fallback (cmux 오류 등)
   if [ -z "$surface_ref" ]; then
@@ -268,8 +271,8 @@ _do_launch_grid() {
   # state file 에 기록
   cbp_state_append "$surface_ref" "$name"
 
-  # rename-tab (실패 silent)
-  "$CMUX_BIN" rename-tab --surface "$surface_ref" "$name" 2>/dev/null || true
+  # rename-tab (stdout/stderr 모두 redirect — rename-tab 이 OK 한 줄 stdout 출력하므로)
+  "$CMUX_BIN" rename-tab --surface "$surface_ref" "$name" >/dev/null 2>&1 || true
 
   printf '%s\n' "$surface_ref"
 }

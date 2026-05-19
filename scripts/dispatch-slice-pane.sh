@@ -66,6 +66,19 @@ USAGE
 
 die() { echo "dispatch: $*" >&2; exit "${2:-1}"; }
 
+# cmux wrapper launch stdout 검증. 인자: pane_ref. stdout: 트림된 ref (성공 시), exit 1 (실패 시).
+# cmux-pane.sh launch 는 "surface:N" 또는 "workspace:N" 단일 토큰 한 줄을 stdout 으로 반환하는 계약.
+# 위반 시 fail-fast (silent tail -1 같은 recovery 는 다음 버그를 덮음).
+# tmux pane ref (session:window.pane 형식) 는 별도 분기에서 처리 — 이 함수는 cmux 전용.
+validate_pane_ref() {
+  local pane="$1"
+  pane=$(printf '%s' "$pane" | tr -d '\r\n')
+  case "$pane" in
+    surface:*|workspace:*) printf '%s' "$pane"; return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
 # 순수 함수 — 부수효과 0, stdout 으로 CHILD_CMD 한 줄 반환.
 # 우선순위: child_cmd_env > model_arg > default_model_env > hard-coded "sonnet"
 # 참고: mode 인자(interactive/background)는 내부 호환 유지용, 외부 --mode 와 다름.
@@ -244,8 +257,17 @@ main() {
   CHILD_CMD=$(build_child_cmd "${DISPATCH_CHILD_CMD:-}" "interactive" "$MODEL" "${DISPATCH_DEFAULT_MODEL:-}")
 
   # pane/workspace 띄우기 — 항상 zsh 먼저, 그 다음 cd + 자식 명령
-  local PANE
-  PANE=$("$WRAPPER" launch zsh) || die "wrapper launch 실패"
+  local PANE PANE_RAW
+  PANE_RAW=$("$WRAPPER" launch zsh) || die "wrapper launch 실패"
+  # cmux: surface:N / workspace:N 단일 토큰 strict 계약.
+  # tmux: session:window.pane 형식 (driver 외부) — CRLF 트림 + 빈값 거부만.
+  if [ "$DRIVER" = "cmux" ]; then
+    PANE=$(validate_pane_ref "$PANE_RAW") || \
+      die "wrapper launch 계약 위반: PANE='$PANE_RAW' (expected surface:N 또는 workspace:N 단일 토큰). wrapper 의 stdout 격리 확인."
+  else
+    PANE=$(printf '%s' "$PANE_RAW" | tr -d '\r\n')
+    [ -z "$PANE" ] && die "wrapper launch 실패: pane ref 가 비어있음"
+  fi
 
   "$WRAPPER" send "cd $WORKTREE_ABS" --pane="$PANE" --delay=0.3 >/dev/null || die "send cd 실패"
   "$WRAPPER" wait-idle --pane="$PANE" --idle=1 --timeout=10 >/dev/null 2>&1 || true
