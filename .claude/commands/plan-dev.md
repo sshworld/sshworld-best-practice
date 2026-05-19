@@ -52,6 +52,11 @@ Slice 정의 시 **type 도 같이 결정**: `feat|fix|refactor|test|docs|chore`
 ### 1-4. ExitPlanMode → 사용자 승인 (MANDATORY)
 승인 전 Phase 2 진입 금지.
 
+슬라이스 수 확정 후 progress 시작:
+```bash
+scripts/plan-dev-progress.sh start --total=<N>
+```
+
 ## Phase 2 — TDD Execute (비동기)
 
 **의존성 없는 슬라이스는 병렬, 의존 있으면 순차.**
@@ -99,6 +104,11 @@ pane 모드 완료 회수:
 ```bash
 $wrapper wait-idle --pane=$pane --idle=10 --timeout=1800
 $wrapper capture   --pane=$pane | tail -50 | grep -E '^(✅|❌)'
+```
+
+슬라이스 ✅ 확인 후:
+```bash
+scripts/plan-dev-progress.sh tick --slug=<slice>
 ```
 
 ## Phase 3 — Verify (loop)
@@ -152,6 +162,11 @@ verifier PASS 후 commit 전 코드 리뷰를 원하면 `reviewer` 에이전트 
 - **같은 도메인 후속 작업 → `/compact <남길 핵심 + 다음 방향>`**
 - **부수 조사/탐색 격리 → `/fork`**
 
+**종료 직전** 진행률 최종 확인:
+```bash
+scripts/plan-dev-progress.sh show
+```
+
 **종료 직전** unlocked `worktree-agent-*` 자동 cleanup:
 ```bash
 git worktree list --porcelain
@@ -176,3 +191,4 @@ git worktree list --porcelain
 - ❌ `git merge --no-ff slice/...` — rebase fast-forward + branch -D 사용
 - ❌ pane 모드에서 자식 결과(`✅` / `❌`) **회수 전 머지** 시도
 - ❌ Phase 5 우회 (`SKIP_PLAN_DEV_FINISH`) 를 기본값처럼 사용
+- ❌ `PROGRESS_DRY_RUN=1` 을 기본값처럼 켜두기 (테스트 전용, 실제 push 억제됨)
