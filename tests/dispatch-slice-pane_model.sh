@@ -24,21 +24,21 @@ step 1 "DISPATCH_CHILD_CMD env 가 최우선"
 RESULT=$(build_child_cmd "zsh" "interactive" "" "")
 [ "$RESULT" = "zsh" ] || fail "expected 'zsh', got '$RESULT'"
 
-step 2 "--model=haiku arg"
+step 2 "--model=haiku arg (디폴트 permission-mode bypassPermissions 포함)"
 RESULT=$(build_child_cmd "" "interactive" "haiku" "")
-[ "$RESULT" = "claude --model haiku" ] || fail "expected 'claude --model haiku', got '$RESULT'"
+[ "$RESULT" = "claude --model haiku --permission-mode bypassPermissions" ] || fail "expected 'claude --model haiku --permission-mode bypassPermissions', got '$RESULT'"
 
-step 3 "DISPATCH_DEFAULT_MODEL env (arg 없을 때)"
+step 3 "DISPATCH_DEFAULT_MODEL env (arg 없을 때) + 디폴트 permission-mode"
 RESULT=$(build_child_cmd "" "interactive" "" "opus")
-[ "$RESULT" = "claude --model opus" ] || fail "expected 'claude --model opus', got '$RESULT'"
+[ "$RESULT" = "claude --model opus --permission-mode bypassPermissions" ] || fail "expected 'claude --model opus --permission-mode bypassPermissions', got '$RESULT'"
 
-step 4 "arg 가 env 보다 우선"
+step 4 "arg 가 env 보다 우선 (+ 디폴트 permission-mode)"
 RESULT=$(build_child_cmd "" "interactive" "haiku" "opus")
-[ "$RESULT" = "claude --model haiku" ] || fail "expected arg-wins 'claude --model haiku', got '$RESULT'"
+[ "$RESULT" = "claude --model haiku --permission-mode bypassPermissions" ] || fail "expected arg-wins 'claude --model haiku --permission-mode bypassPermissions', got '$RESULT'"
 
-step 5 "모두 미지정 → sonnet 디폴트"
+step 5 "모두 미지정 → sonnet 디폴트 + 디폴트 permission-mode"
 RESULT=$(build_child_cmd "" "interactive" "" "")
-[ "$RESULT" = "claude --model sonnet" ] || fail "expected 'claude --model sonnet', got '$RESULT'"
+[ "$RESULT" = "claude --model sonnet --permission-mode bypassPermissions" ] || fail "expected 'claude --model sonnet --permission-mode bypassPermissions', got '$RESULT'"
 
 step 6 "CHILD_CMD env 는 model 보다도 우선"
 RESULT=$(build_child_cmd "/usr/bin/something" "interactive" "haiku" "opus")
