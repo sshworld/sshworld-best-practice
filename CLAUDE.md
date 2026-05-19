@@ -102,6 +102,7 @@
 | `CBP_STATE_FILE` | `~/.cache/cbp/children-<ws>.json` | `cmux-pane.sh` state file 경로 override. sanitize 규칙: `${CMUX_WORKSPACE_ID//[:\/]/_}` (콜론/슬래시 → 언더스코어) |
 | `CBP_LIST_LINES` | unset | `cmux-pane.sh list/cleanup/status` 의 list-workspaces 입력 mock (테스트용). set 시 실제 cmux 호출 생략. |
 | `CLAUDE_FAKE_SELF_CMUX_WS` | unset | `cmux-pane.sh kill/cleanup` 의 자기 workspace ref mock (테스트용). `cmux identify` 대신 이 값 사용. |
+| `CBP_SPLIT_POLICY` | unset (라운드로빈) | `cmux-pane.sh` grid split 방향 고정 (`down` 또는 `right`). unset 시 라운드로빈 (count 홀수→down, 짝수→right). Slice A3 에서 확장 예정. |
 
 ## 향후 작업 (플러그인화)
 

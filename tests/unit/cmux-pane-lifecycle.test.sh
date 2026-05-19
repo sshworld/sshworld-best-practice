@@ -49,7 +49,11 @@ check_not_contains() {
 
 [ -f "$SCRIPT" ] || { echo "FAIL: $SCRIPT 없음" >&2; exit 1; }
 
-total=10
+# state file for surface kill tests
+STATE_LIFECYCLE="/tmp/test-A2-lifecycle-$$.state"
+trap 'rm -f "$STATE_LIFECYCLE"' EXIT
+
+total=13
 
 # ----------------------------------------------------------------
 # 1. kill --pane=workspace:9 (FORCE_SELF_KILL=1) → close-workspace --workspace workspace:9 호출
@@ -113,6 +117,24 @@ exit_code=0
 CMUX_BIN=echo CLAUDE_FAKE_SELF_CMUX_WS="workspace:99" \
   bash "$SCRIPT" kill --pane=workspace:99 2>/dev/null || exit_code=$?
 check "kill self (CLAUDE_FAKE_SELF_CMUX_WS match) → exit 2 거부" "2" "$exit_code"
+
+# ----------------------------------------------------------------
+# 11. kill --pane=surface:9 (FORCE_SELF_KILL=1) → close-surface --surface surface:9
+result=$(CMUX_BIN=echo FORCE_SELF_KILL=1 \
+  CBP_STATE_FILE="$STATE_LIFECYCLE" \
+  bash "$SCRIPT" kill --pane=surface:9 2>/dev/null)
+check_contains "kill surface ref: close-surface --surface surface:9" \
+  "close-surface --surface surface:9" "$result"
+
+# 12. kill surface ref 는 close-workspace 호출 안 함
+check_not_contains "kill surface ref: close-workspace 미호출" \
+  "close-workspace" "$result"
+
+# 13. kill surface ref → self surface 거부 (CMUX_SURFACE_ID match, FORCE_SELF_KILL 미설정)
+exit_code=0
+CMUX_BIN=echo CMUX_SURFACE_ID="surface:7" \
+  bash "$SCRIPT" kill --pane=surface:7 2>/dev/null || exit_code=$?
+check "kill self surface (CMUX_SURFACE_ID match) → exit 2 거부" "2" "$exit_code"
 
 echo ""
 echo "ok: $pass/$total passed"

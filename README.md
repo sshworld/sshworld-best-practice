@@ -131,6 +131,19 @@ scripts/tmux-pane.sh kill --pane=$pane
 - 우회: `DISPATCH_SKIP_CLEANUP=1`
 - 수동 정리: `scripts/tmux-pane.sh cleanup`
 
+### cmux 자식 라이프사이클 (grid split)
+
+cmux 앱 안에서 실행 중일 때 (`CMUX_WORKSPACE_ID` set) `scripts/cmux-pane.sh launch` 는 새 workspace 대신 **부모 workspace 안 grid split** 으로 자식 surface 를 생성합니다.
+
+- 첫 자식: `cmux new-pane --direction right --workspace $CMUX_WORKSPACE_ID` → 부모 우측 분할.
+- 이후 자식: 직전 자식 surface 기준으로 라운드로빈 방향 split (count 홀수 → `down`, 짝수 → `right`).
+- 각 자식의 surface ref 는 `CBP_STATE_FILE` (기본 `~/.cache/cbp/children-<ws>.json`) 에 누적 기록.
+- `cmux-pane.sh kill --pane=surface:N` 으로 개별 surface close + state 제거.
+
+`CBP_SPLIT_POLICY` 환경변수로 방향을 `down` / `right` 고정 가능 (Slice A3 부터 확장 예정 — 현재는 라운드로빈 고정).
+
+`CMUX_WORKSPACE_ID` unset 환경에서는 기존 new-workspace 흐름 그대로 (회귀 zero).
+
 ### 권장 `~/.tmux.conf` 설정 (세션명 표시)
 
 자식 pane 들이 어떤 세션에 속하는지 한눈에 보기 위해 status bar 좌측에 `[#S]` 형태로 세션명 상시 표시:
@@ -213,6 +226,7 @@ DOC_IMPACT=updated git commit -m "..."
 | `CBP_WORKSPACE_PREFIX=<str>` | `cbp-` | cmux-pane.sh launch 의 workspace 이름 prefix |
 | `CBP_LIST_LINES=<str>` | unset | cmux-pane.sh list/cleanup/status 의 list-workspaces 입력 mock (테스트용) |
 | `CLAUDE_FAKE_SELF_CMUX_WS=<ref>` | unset | cmux-pane.sh kill/cleanup 의 자기 workspace ref mock (테스트용) |
+| `CBP_SPLIT_POLICY=<dir>` | unset (라운드로빈) | cmux-pane.sh grid split 방향 고정 (`down` 또는 `right`). unset 시 라운드로빈 (홀수→down, 짝수→right) |
 
 ---
 

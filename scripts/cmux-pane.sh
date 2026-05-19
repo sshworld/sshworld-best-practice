@@ -31,14 +31,20 @@ usage() {
 cmux-pane <command> [args]
 
 commands:
-  launch [<cmd>]                                workspace 띄움 (디폴트: zsh). stdout=workspace ref
+  launch [<cmd>]                                workspace 띄움 (디폴트: zsh).
+                                                CMUX_WORKSPACE_ID set → 부모 workspace 안 grid split.
+                                                  stdout=surface ref (예: surface:4).
+                                                CMUX_WORKSPACE_ID unset → new-workspace 흐름.
+                                                  stdout=workspace ref (예: workspace:cbp-abc123).
   send <text> --pane=<ref> [--enter=false] [--delay=<sec>]
                                                 텍스트 전송 후 Enter
   capture --pane=<ref> [--lines=<n>]            workspace 화면 내용 stdout
   wait-idle --pane=<ref> [--idle=<sec>] [--timeout=<sec>]
                                                 화면이 <idle>초 동안 변하지 않으면 반환.
                                                 디폴트: idle=3, timeout=120
-  kill --pane=<ref>                             workspace close. 자기 workspace 거부 (FORCE_SELF_KILL=1 우회)
+  kill --pane=<ref>                             surface:N → close-surface + state remove.
+                                                workspace:N → close-workspace (기존).
+                                                자기 pane kill 거부 (FORCE_SELF_KILL=1 우회).
   list                                          cbp- prefix workspace 목록 JSON 출력
   cleanup                                       cbp- prefix workspace 일괄 close (자기 workspace 보존)
   status                                        현재 workspace + cbp-* 목록 텍스트 출력
@@ -185,6 +191,14 @@ cbp_state_remove() {
 do_launch() {
   local cmd="${1:-zsh}"
   local name="${CBP_WORKSPACE_PREFIX}$(rand_hex6)"
+
+  # CMUX_WORKSPACE_ID set → grid split 분기 (부모 workspace 안에서 surface 생성)
+  if [ -n "${CMUX_WORKSPACE_ID:-}" ]; then
+    _do_launch_grid "$cmd" "$name"
+    return $?
+  fi
+
+  # CMUX_WORKSPACE_ID unset → 기존 new-workspace 흐름
   local out
   out=$("$CMUX_BIN" new-workspace --cwd "$PWD" --name "$name" --command "$cmd" 2>/dev/null || true)
   # workspace ref: cmux 출력의 첫 줄 (실제 cmux 는 "workspace:name" 한 줄 반환).
@@ -195,6 +209,69 @@ do_launch() {
     ref="workspace:$name"
   fi
   printf '%s\n' "$ref"
+}
+
+# do_launch 의 grid split 내부 구현 (CMUX_WORKSPACE_ID 가 set 인 경우).
+# 라운드로빈 방향: count=0 → right (첫 자식), count=1 → down, count=2 → right, count=3 → down, ...
+# CBP_SPLIT_POLICY env 로 방향 override 가능 (Slice A3 에서 확장 예정).
+_do_launch_grid() {
+  local _cmd="$1"  # cmd 는 new-pane/new-split 미지원 — Slice A3 에서 send 로 전달 예정
+  local name="$2"
+
+  # 기존 자식 목록으로 count 결정
+  local children
+  children=$(cbp_state_list 2>/dev/null || true)
+  local count=0
+  if [ -n "$children" ]; then
+    count=$(printf '%s\n' "$children" | grep -c '[^[:space:]]' 2>/dev/null) || count=0
+  fi
+
+  local surface_ref
+  local raw_out
+
+  if [ "$count" -eq 0 ]; then
+    # 첫 자식: 부모 workspace 우측에 new-pane
+    raw_out=$("$CMUX_BIN" new-pane \
+      --type terminal \
+      --direction right \
+      --workspace "$CMUX_WORKSPACE_ID" 2>/dev/null || true)
+    # stdout 파싱: "OK surface:N pane:N workspace:N" → 두 번째 토큰 = surface ref
+    surface_ref=$(printf '%s' "$raw_out" | awk '{print $2}')
+  else
+    # 후속 자식: 직전 자식 surface 를 기준으로 split
+    # state file 마지막 줄에서 surface ref 추출
+    local sf
+    sf=$(cbp_state_path)
+    local prev_surface
+    prev_surface=$(tail -1 "$sf" | grep -o 'surface=[^|]*' | sed 's/surface=//')
+
+    # 라운드로빈 방향: count 홀수 → down, 짝수 → right
+    local dir
+    if [ -n "${CBP_SPLIT_POLICY:-}" ]; then
+      dir="$CBP_SPLIT_POLICY"
+    elif [ $(( count % 2 )) -eq 1 ]; then
+      dir="down"
+    else
+      dir="right"
+    fi
+
+    raw_out=$("$CMUX_BIN" new-split "$dir" \
+      --surface "$prev_surface" 2>/dev/null || true)
+    surface_ref=$(printf '%s' "$raw_out" | awk '{print $2}')
+  fi
+
+  # surface ref 가 비었으면 fallback (cmux 오류 등)
+  if [ -z "$surface_ref" ]; then
+    surface_ref="surface:unknown"
+  fi
+
+  # state file 에 기록
+  cbp_state_append "$surface_ref" "$name"
+
+  # rename-tab (실패 silent)
+  "$CMUX_BIN" rename-tab --surface "$surface_ref" "$name" 2>/dev/null || true
+
+  printf '%s\n' "$surface_ref"
 }
 
 do_send() {
@@ -292,19 +369,37 @@ do_kill() {
   parse_long_opts "$@"
   [ -z "$PANE" ] && die "kill: --pane=<ref> 필요" 2
 
-  # 자기 workspace kill 거부 (FORCE_SELF_KILL=1 우회)
-  if [ "${FORCE_SELF_KILL:-0}" != "1" ]; then
-    local self_ref
-    self_ref=$(get_self_ws_ref)
-    if [ -n "$self_ref" ] && [ "$self_ref" = "$PANE" ]; then
-      cat >&2 <<EOF
+  case "$PANE" in
+    surface:*)
+      # surface ref: close-surface + state remove
+      if [ "${FORCE_SELF_KILL:-0}" != "1" ]; then
+        # 자기 surface kill 거부 (CMUX_SURFACE_ID match)
+        local self_surface="${CMUX_SURFACE_ID:-}"
+        if [ -n "$self_surface" ] && [ "$self_surface" = "$PANE" ]; then
+          cat >&2 <<EOF
+cmux-pane: 자기 surface kill 거부 — 우회: $CMUX_BIN close-surface --surface $PANE 직접 호출 또는 FORCE_SELF_KILL=1
+EOF
+          exit 2
+        fi
+      fi
+      "$CMUX_BIN" close-surface --surface "$PANE" || die "kill: surface '$PANE' 없음 또는 close 실패" 3
+      cbp_state_remove "$PANE"
+      ;;
+    *)
+      # workspace ref (또는 그 외): 기존 close-workspace 흐름
+      if [ "${FORCE_SELF_KILL:-0}" != "1" ]; then
+        local self_ref
+        self_ref=$(get_self_ws_ref)
+        if [ -n "$self_ref" ] && [ "$self_ref" = "$PANE" ]; then
+          cat >&2 <<EOF
 cmux-pane: 자기 workspace kill 거부 — 우회: $CMUX_BIN close-workspace --workspace $PANE 직접 호출 또는 FORCE_SELF_KILL=1
 EOF
-      exit 2
-    fi
-  fi
-
-  "$CMUX_BIN" close-workspace --workspace "$PANE" || die "kill: workspace '$PANE' 없음 또는 close 실패" 3
+          exit 2
+        fi
+      fi
+      "$CMUX_BIN" close-workspace --workspace "$PANE" || die "kill: workspace '$PANE' 없음 또는 close 실패" 3
+      ;;
+  esac
 }
 
 do_list() {
