@@ -50,7 +50,26 @@ fi
 CMUX_BIN_FOR_HOOK="${CMUX_BIN:-cmux}"
 if command -v "$CMUX_BIN_FOR_HOOK" > /dev/null 2>&1; then
   if "$CMUX_BIN_FOR_HOOK" ping > /dev/null 2>&1; then
-    CMUX_COUNT=$("$CMUX_BIN_FOR_HOOK" list-workspaces 2>/dev/null | grep -c '^cbp-' || echo 0)
+    # state file 우선: CMUX_WORKSPACE_ID set 시 state file 라인 수 카운트
+    if [ -n "${CMUX_WORKSPACE_ID:-}" ]; then
+      # state file 경로 계산 (cmux-pane.sh 의 cbp_state_path 와 동일 로직)
+      if [ -n "${CBP_STATE_FILE:-}" ]; then
+        _STATE_FILE="$CBP_STATE_FILE"
+      else
+        _ws="${CMUX_WORKSPACE_ID}"
+        _sanitized=$(printf '%s' "$_ws" | tr ':/' '__')
+        _STATE_FILE="${HOME}/.cache/cbp/children-${_sanitized}.json"
+      fi
+      if [ -f "$_STATE_FILE" ]; then
+        CMUX_COUNT=$(grep -c 'surface=' "$_STATE_FILE" 2>/dev/null || echo 0)
+      else
+        # state file 없으면 폴백: cbp- workspace 수
+        CMUX_COUNT=$("$CMUX_BIN_FOR_HOOK" list-workspaces 2>/dev/null | grep -c '^cbp-' || echo 0)
+      fi
+    else
+      # CMUX_WORKSPACE_ID 미설정: 폴백 cbp- workspace 카운트
+      CMUX_COUNT=$("$CMUX_BIN_FOR_HOOK" list-workspaces 2>/dev/null | grep -c '^cbp-' || echo 0)
+    fi
   fi
 fi
 
@@ -58,7 +77,7 @@ CURRENT=$(( TMUX_COUNT + CMUX_COUNT ))
 
 if [ "$CURRENT" -ge "$LIMIT" ]; then
   cat >&2 <<EOF
-limit-child-panes: 한도 초과 — 현재 활성 자식 (tmux pane + cmux workspace 합산): $CURRENT — 상한 $LIMIT 초과
+limit-child-panes: 한도 초과 — tmux pane: $TMUX_COUNT, cmux child: $CMUX_COUNT, total: $CURRENT — 상한 $LIMIT 초과
 
 차단된 명령: $CMD
 

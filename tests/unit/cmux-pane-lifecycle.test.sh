@@ -51,9 +51,11 @@ check_not_contains() {
 
 # state file for surface kill tests
 STATE_LIFECYCLE="/tmp/test-A2-lifecycle-$$.state"
-trap 'rm -f "$STATE_LIFECYCLE"' EXIT
+# state file for A3 send/capture/list/cleanup tests
+STATE_A3="/tmp/test-A3-$$.state"
+trap 'rm -f "$STATE_LIFECYCLE" "$STATE_A3"' EXIT
 
-total=13
+total=21
 
 # ----------------------------------------------------------------
 # 1. kill --pane=workspace:9 (FORCE_SELF_KILL=1) → close-workspace --workspace workspace:9 호출
@@ -135,6 +137,56 @@ exit_code=0
 CMUX_BIN=echo CMUX_SURFACE_ID="surface:7" \
   bash "$SCRIPT" kill --pane=surface:7 2>/dev/null || exit_code=$?
 check "kill self surface (CMUX_SURFACE_ID match) → exit 2 거부" "2" "$exit_code"
+
+# ----------------------------------------------------------------
+# A3: send --pane=surface:N → --surface dispatch
+# CMUX_BIN=echo 이므로 echo 가 인자를 그대로 출력 → stdout 에 "send --surface surface:9" 포함
+result=$(CMUX_BIN=echo bash "$SCRIPT" send "hello" --pane=surface:9 2>/dev/null)
+check_contains "A3 send surface: --surface surface:9 포함" \
+  "send --surface surface:9" "$result"
+
+# 15. send --pane=workspace:N → 기존 --workspace (회귀)
+result=$(CMUX_BIN=echo bash "$SCRIPT" send "hello" --pane=workspace:1 2>/dev/null)
+check_contains "A3 send workspace: --workspace workspace:1 포함 (회귀)" \
+  "send --workspace workspace:1" "$result"
+
+# ----------------------------------------------------------------
+# A3: capture --pane=surface:N → --surface dispatch
+result=$(CMUX_BIN=echo bash "$SCRIPT" capture --pane=surface:9 2>/dev/null)
+check_contains "A3 capture surface: read-screen --surface surface:9 포함" \
+  "read-screen --surface surface:9" "$result"
+
+# 17. capture --pane=workspace:N → 기존 --workspace (회귀)
+result=$(CMUX_BIN=echo bash "$SCRIPT" capture --pane=workspace:1 2>/dev/null)
+check_contains "A3 capture workspace: read-screen --workspace workspace:1 포함 (회귀)" \
+  "read-screen --workspace workspace:1" "$result"
+
+# ----------------------------------------------------------------
+# A3: list state-aware — state file 에 두 surface → JSON 에 둘 다 포함
+# CBP_STATE_FILE 에 surface:1, surface:2 등록 후 list
+printf 'surface=surface:1|name=cbp-aaa|ts=1000|ws=workspace:1\n' > "$STATE_A3"
+printf 'surface=surface:2|name=cbp-bbb|ts=1001|ws=workspace:1\n' >> "$STATE_A3"
+result=$(CMUX_BIN=echo \
+  CMUX_WORKSPACE_ID="workspace:1" \
+  CBP_STATE_FILE="$STATE_A3" \
+  bash "$SCRIPT" list 2>/dev/null)
+check_contains "A3 list state-aware: surface:1 포함" '"id":"surface:1"' "$result"
+check_contains "A3 list state-aware: surface:2 포함" '"id":"surface:2"' "$result"
+
+# ----------------------------------------------------------------
+# A3: cleanup state-aware — state 에 surface:1, CMUX_FAKE_SELF_SURFACE 미설정
+# close-surface --surface surface:1 호출 + state 비워짐
+printf 'surface=surface:1|name=cbp-ccc|ts=1000|ws=workspace:1\n' > "$STATE_A3"
+result=$(CMUX_BIN=echo \
+  CMUX_WORKSPACE_ID="workspace:1" \
+  CBP_STATE_FILE="$STATE_A3" \
+  CMUX_SURFACE_ID="" \
+  bash "$SCRIPT" cleanup 2>/dev/null)
+check_contains "A3 cleanup state-aware: close-surface surface:1 호출" \
+  "close-surface --surface surface:1" "$result"
+# state 비워졌는지 확인
+state_lines=$(wc -l < "$STATE_A3" 2>/dev/null | tr -d ' ')
+check "A3 cleanup state-aware: state 파일 비워짐" "0" "$state_lines"
 
 echo ""
 echo "ok: $pass/$total passed"

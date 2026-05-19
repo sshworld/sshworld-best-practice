@@ -279,10 +279,16 @@ do_send() {
   local PANE="" ENTER="true" DELAY="1.5"
   parse_long_opts "$@"
   [ -z "$PANE" ] && die "send: --pane=<ref> 필요" 2
-  "$CMUX_BIN" send --workspace "$PANE" "$text" || die "send: 실패" 3
+  # surface:* → --surface, 그 외 → --workspace
+  local pane_flag
+  case "$PANE" in
+    surface:*) pane_flag="--surface" ;;
+    *)         pane_flag="--workspace" ;;
+  esac
+  "$CMUX_BIN" send "$pane_flag" "$PANE" "$text" || die "send: 실패" 3
   if [ "$ENTER" = "true" ]; then
     sleep "$DELAY"
-    "$CMUX_BIN" send-key --workspace "$PANE" Enter || die "send: Enter 실패" 3
+    "$CMUX_BIN" send-key "$pane_flag" "$PANE" Enter || die "send: Enter 실패" 3
   fi
 }
 
@@ -290,10 +296,16 @@ do_capture() {
   local PANE="" LINES=""
   parse_long_opts "$@"
   [ -z "$PANE" ] && die "capture: --pane=<ref> 필요" 2
+  # surface:* → --surface, 그 외 → --workspace
+  local pane_flag
+  case "$PANE" in
+    surface:*) pane_flag="--surface" ;;
+    *)         pane_flag="--workspace" ;;
+  esac
   if [ -n "$LINES" ]; then
-    "$CMUX_BIN" read-screen --workspace "$PANE" --lines "$LINES" || die "capture: 실패" 3
+    "$CMUX_BIN" read-screen "$pane_flag" "$PANE" --lines "$LINES" || die "capture: 실패" 3
   else
-    "$CMUX_BIN" read-screen --workspace "$PANE" || die "capture: 실패" 3
+    "$CMUX_BIN" read-screen "$pane_flag" "$PANE" || die "capture: 실패" 3
   fi
 }
 
@@ -318,7 +330,13 @@ do_wait_idle() {
     fi
 
     local screen_content
-    screen_content=$("$CMUX_BIN" read-screen --workspace "$PANE" 2>/dev/null || echo "")
+    # surface:* → --surface, 그 외 → --workspace
+    local _pane_flag
+    case "$PANE" in
+      surface:*) _pane_flag="--surface" ;;
+      *)         _pane_flag="--workspace" ;;
+    esac
+    screen_content=$("$CMUX_BIN" read-screen "$_pane_flag" "$PANE" 2>/dev/null || echo "")
     if command -v sha256sum >/dev/null 2>&1; then
       cur_hash=$(printf '%s' "$screen_content" | sha256sum | cut -c1-16)
     elif command -v shasum >/dev/null 2>&1; then
@@ -403,6 +421,56 @@ EOF
 }
 
 do_list() {
+  # state file 우선 (CMUX_WORKSPACE_ID set 일 때)
+  if [ -n "${CMUX_WORKSPACE_ID:-}" ]; then
+    local state_surfaces
+    state_surfaces=$(cbp_state_list 2>/dev/null || true)
+    if [ -n "$state_surfaces" ]; then
+      # lazy reconcile: tree 결과에 surface: 토큰이 하나라도 있을 때만 수행.
+      # CMUX_BIN=echo mock 환경에서는 tree → "tree" 한 줄 (surface: 없음) → reconcile skip (state 유지).
+      # 실 환경에서는 "surface:N" 형태가 있으면 reconcile.
+      local tree_out
+      tree_out=$("$CMUX_BIN" tree 2>/dev/null || true)
+      local tree_has_surfaces=0
+      printf '%s' "$tree_out" | grep -q 'surface:' && tree_has_surfaces=1 || true
+      local reconciled=""
+      local sf
+      sf=$(cbp_state_path)
+      while IFS= read -r sref; do
+        [ -z "$sref" ] && continue
+        if [ "$tree_has_surfaces" = "1" ] && ! printf '%s' "$tree_out" | grep -qF "$sref"; then
+          # cmux tree 에 없는 dangling surface → state 에서 제거 (silent)
+          cbp_state_remove "$sref"
+        else
+          reconciled="${reconciled}${sref}
+"
+        fi
+      done <<STATEEOF
+$state_surfaces
+STATEEOF
+
+      # reconcile 후 남은 surface 로 JSON 조립
+      local json="["
+      local first=1
+      while IFS= read -r sref; do
+        [ -z "$sref" ] && continue
+        if [ "$first" = "1" ]; then
+          first=0
+        else
+          json="${json},"
+        fi
+        json="${json}{\"id\":\"${sref}\",\"name\":\"${CBP_WORKSPACE_PREFIX}$(printf '%s' "$sref" | tr ':' '-')\"}"
+      done <<JSONEOF
+$reconciled
+JSONEOF
+
+      json="${json}]"
+      printf '%s\n' "$json"
+      return 0
+    fi
+  fi
+
+  # 폴백: 기존 cbp- workspace 목록
   local raw_lines
   raw_lines=$(get_cbp_list_lines)
 
@@ -439,8 +507,31 @@ EOF
 do_cleanup() {
   local self_ref
   self_ref=$(get_self_ws_ref)
+  local self_surface="${CMUX_SURFACE_ID:-}"
 
-  # list 를 통해 cbp- workspace 수집
+  # ── state file 기반 surface cleanup ──────────────────────────────
+  local surface_closed=0
+  if [ -n "${CMUX_WORKSPACE_ID:-}" ]; then
+    local state_surfaces
+    state_surfaces=$(cbp_state_list 2>/dev/null || true)
+    if [ -n "$state_surfaces" ]; then
+      while IFS= read -r sref; do
+        [ -z "$sref" ] && continue
+        # 자기 surface 보호
+        if [ -n "$self_surface" ] && [ "$sref" = "$self_surface" ]; then
+          continue
+        fi
+        "$CMUX_BIN" close-surface --surface "$sref" 2>/dev/null || true
+        cbp_state_remove "$sref"
+        surface_closed=$((surface_closed + 1))
+      done <<SFEOF
+$state_surfaces
+SFEOF
+    fi
+  fi
+  echo "cmux-pane: cleaning $surface_closed cmux child surface(s)" >&2
+
+  # ── 기존 cbp- workspace cleanup (호환) ───────────────────────────
   local raw_lines
   raw_lines=$(get_cbp_list_lines)
 

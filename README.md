@@ -139,8 +139,11 @@ cmux 앱 안에서 실행 중일 때 (`CMUX_WORKSPACE_ID` set) `scripts/cmux-pan
 - 이후 자식: 직전 자식 surface 기준으로 라운드로빈 방향 split (count 홀수 → `down`, 짝수 → `right`).
 - 각 자식의 surface ref 는 `CBP_STATE_FILE` (기본 `~/.cache/cbp/children-<ws>.json`) 에 누적 기록.
 - `cmux-pane.sh kill --pane=surface:N` 으로 개별 surface close + state 제거.
+- `cmux-pane.sh send/capture/wait-idle --pane=surface:N` → `--surface` flag 자동 dispatch. `workspace:N` ref 는 기존 `--workspace` (회귀 zero).
+- `cmux-pane.sh list` → state file 의 자식 surface 우선, 폴백으로 cbp- workspace 목록. cmux tree 와 lazy reconcile (mock 환경 자동 감지).
+- `cmux-pane.sh cleanup` → state file 의 surface 일괄 `close-surface` + state 제거 후, 기존 cbp- workspace cleanup 도 실행 (호환).
 
-`CBP_SPLIT_POLICY` 환경변수로 방향을 `down` / `right` 고정 가능 (Slice A3 부터 확장 예정 — 현재는 라운드로빈 고정).
+`CBP_SPLIT_POLICY` 환경변수로 방향을 `down` / `right` 고정 가능 (unset 시 라운드로빈 고정).
 
 `CMUX_WORKSPACE_ID` unset 환경에서는 기존 new-workspace 흐름 그대로 (회귀 zero).
 
@@ -188,7 +191,25 @@ DOC_IMPACT=updated git commit -m "..."
 
 `DOC_IMPACT` 미지정 시 차단. 가드 비활성화: `export DISABLE_DOC_SYNC_HOOK=1`
 
-### 3) token-stats.sh (Stop)
+### 3) limit-child-panes.sh (PreToolUse: Bash)
+
+자식 pane spawn 명령(`tmux-pane.sh launch`, `cmux-pane.sh launch`, `dispatch-slice-pane.sh`) 직전 **tmux pane + cmux child 합산** 수를 검사해 상한 초과 시 차단.
+
+cmux 카운트 우선순위:
+1. `CMUX_WORKSPACE_ID` set + state file 존재 → state file 라인 수 (실제 자식 surface 수)
+2. 폴백: `cmux list-workspaces` 의 `cbp-` prefix workspace 수
+
+에러 메시지 형식: `tmux pane: X, cmux child: Y, total: Z`
+
+```bash
+# 한도 상향
+CLAUDE_MAX_CHILD_PANES=10
+
+# hook 영구 비활성
+export DISABLE_PANE_LIMIT_HOOK=1
+```
+
+### 4) token-stats.sh (Stop)
 
 응답이 끝날 때 직전 turn (마지막 user 메시지 이후 모든 assistant 줄) 의 토큰 사용량과 캐시 히트율을 한 줄로 inline 노출:
 
@@ -200,7 +221,7 @@ DOC_IMPACT=updated git commit -m "..."
 
 > ℹ️ `statusline-tokens.sh` 는 같은 데이터를 화면 하단 status bar 로 상시 표시하는 **opt-in 대안** — settings.json 의 `statusLine.command` 에 등록하고 `hooks.Stop` 에서 token-stats 제거해서 전환 가능. 기본은 Stop hook 의 inline 메시지.
 
-### 5) SessionStart inline
+### 6) SessionStart inline
 
 세션 시작 시 git worktree 목록 + 미커밋 변경 자동 출력.
 
