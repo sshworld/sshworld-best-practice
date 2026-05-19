@@ -99,7 +99,7 @@
 |---|---|---|
 | `CLAUDE_MAX_CHILD_PANES` | 5 | 자식 tmux pane 상한 — `limit-child-panes` hook 이 강제 |
 | `DISABLE_PANE_LIMIT_HOOK` | unset | `limit-child-panes` hook 영구 비활성화 |
-| `FORCE_SELF_KILL` | unset | `tmux-pane.sh kill` 의 자기 pane 거부 우회 |
+| `FORCE_SELF_KILL` | unset | `tmux-pane.sh kill` / `cmux-pane.sh kill` **workspace** ref 의 자기 거부 우회. surface ref 는 self-surface(`CMUX_SURFACE_ID` 일치) 만 거부, 그 외 surface 는 모두 허용 (영향 없음). |
 | `TMUX_PANE_NO_LAYOUT` | unset | `tmux-pane.sh launch` 의 main-vertical layout 자동 적용 끄기 |
 | `DISPATCH_CHILD_CMD` | unset | `dispatch-slice-pane.sh` 가 자식 명령으로 사용할 cmd 강제 (테스트용 substitute) |
 | `DISPATCH_DEFAULT_MODEL` | sonnet | `dispatch-slice-pane.sh` 의 자식 model 디폴트 (--model arg 가 우선) |

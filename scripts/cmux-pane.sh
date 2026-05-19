@@ -21,7 +21,7 @@
 #                                ws_sanitized = ${CMUX_WORKSPACE_ID//[:\/]/_}
 #   CBP_LIST_LINES             — list 명령 입력 mock (테스트용. set 시 실제 cmux 호출 생략)
 #   CLAUDE_FAKE_SELF_CMUX_WS   — 자기 workspace ref mock (테스트용)
-#   FORCE_SELF_KILL            — 자기 workspace kill 거부 우회
+#   FORCE_SELF_KILL            — 자기 workspace kill 거부 우회. surface kill 은 self-surface 만 거부 (FORCE_SELF_KILL 영향 없음).
 #   PROGRESS_DRY_RUN           — notify/set-status 가 실제 cmux 호출 없이 명령 echo 후 exit 0 (테스트용)
 
 set -uo pipefail
@@ -46,8 +46,9 @@ commands:
                                                 화면이 <idle>초 동안 변하지 않으면 반환.
                                                 디폴트: idle=3, timeout=120
   kill --pane=<ref>                             surface:N → close-surface + state remove.
+                                                  self-surface(CMUX_SURFACE_ID 일치) 만 거부, 그 외 허용.
                                                 workspace:N → close-workspace (기존).
-                                                자기 pane kill 거부 (FORCE_SELF_KILL=1 우회).
+                                                  자기 workspace kill 거부 (FORCE_SELF_KILL=1 우회).
   list                                          cbp- prefix workspace 목록 JSON 출력
   cleanup                                       cbp- prefix workspace 일괄 close (자기 workspace 보존)
   status                                        현재 workspace + cbp-* 목록 텍스트 출력
@@ -402,16 +403,14 @@ do_kill() {
 
   case "$PANE" in
     surface:*)
-      # surface ref: close-surface + state remove
-      if [ "${FORCE_SELF_KILL:-0}" != "1" ]; then
-        # 자기 surface kill 거부 (CMUX_SURFACE_ID match)
-        local self_surface="${CMUX_SURFACE_ID:-}"
-        if [ -n "$self_surface" ] && [ "$self_surface" = "$PANE" ]; then
-          cat >&2 <<EOF
-cmux-pane: 자기 surface kill 거부 — 우회: $CMUX_BIN close-surface --surface $PANE 직접 호출 또는 FORCE_SELF_KILL=1
+      # self-surface 만 거부 (CMUX_SURFACE_ID match). 그 외 surface 는 모두 허용.
+      # FORCE_SELF_KILL 영향 없음 (surface 는 부모 workspace 종속이므로 외부 surface kill 위험 낮음).
+      local self_surface="${CMUX_SURFACE_ID:-}"
+      if [ -n "$self_surface" ] && [ "$self_surface" = "$PANE" ]; then
+        cat >&2 <<EOF
+cmux-pane: 자기 surface kill 거부 — 우회: $CMUX_BIN close-surface --surface $PANE 직접 호출
 EOF
-          exit 2
-        fi
+        exit 2
       fi
       "$CMUX_BIN" close-surface --surface "$PANE" || die "kill: surface '$PANE' 없음 또는 close 실패" 3
       cbp_state_remove "$PANE"
