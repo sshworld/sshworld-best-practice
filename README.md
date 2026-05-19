@@ -120,9 +120,17 @@ scripts/
 | `slice/` prefix | 폐기됨 — `<type>/<slug>` 로 전환 (기존 `slice/` 브랜치는 dispatch 가 재사용 가능) |
 | push | `finish-plan-dev.sh` 가 develop 있으면 feature branch, 없으면 main 직접 push |
 
-### `/plan-dev --mode=pane` — implementor 를 tmux pane 으로
+### `dispatch-slice-pane.sh --mode` — dispatch driver 선택
 
-기본 subagent 모드 대신 `--mode=pane` 시 `scripts/dispatch-slice-pane.sh` 가 각 슬라이스를 tmux pane 에 띄움. 사용자가 `tmux attach -t tmux-pane-mgr` 로 자식 작업을 직접 모니터링/개입 가능.
+`scripts/dispatch-slice-pane.sh` 의 `--mode` 디폴트는 **`auto`** (env `DISPATCH_DEFAULT_MODE` override). auto 는 `detect-pane-env.sh` 결과로 분기:
+
+| 환경 | auto 결과 |
+|---|---|
+| TMUX 안 (`$TMUX` set) | tmux pane dispatch |
+| cmux 안 (`$CMUX_WORKSPACE_ID` set) | cmux workspace dispatch (부모 workspace 안 grid split — 사용자 화면에 자식 surface 분할 가시화) |
+| 둘 다 아님 (default) | die — `--mode=subagent` 명시 권장 |
+
+명시 가능 모드: `subagent`(Agent tool, 토큰 추적 ✓), `tmux`/`pane`, `cmux`, `auto`. `--mode=cmux` 사용 시 사용자가 cmux 화면 분할 + attach 로 작업을 직접 시각화 가능 (단점: 자식 토큰은 부모 token-stats 로 추적 안 됨).
 
 ### 직접 호출 (수동)
 
@@ -285,6 +293,7 @@ export DISABLE_CMUX_CONTEXT_HOOK=1
 | `TMUX_PANE_NO_LAYOUT=1` | off | tmux-pane.sh launch 의 main-vertical layout 자동 적용 끄기 |
 | `DISPATCH_DEFAULT_MODEL=<alias>` | sonnet | dispatch-slice-pane.sh 의 자식 model 디폴트 (--model arg 가 우선) |
 | `DISPATCH_DEFAULT_TYPE=<type>` | feat | dispatch-slice-pane.sh 의 --type 미지정 시 기본 type |
+| `DISPATCH_DEFAULT_MODE=<mode>` | auto | dispatch-slice-pane.sh 의 --mode 미지정 시 기본 driver (auto/tmux/cmux/pane/subagent). 기존 동작 복원: `pane` |
 | `DISPATCH_SKIP_CLEANUP=1` | off | dispatch-slice-pane.sh 가 main 진입 시 자식 pane 자동 정리 끄기 |
 | `SKIP_PLAN_DEV_FINISH=1` | off | Phase 5 (finish-plan-dev.sh) 1회 우회 |
 | `DISABLE_PLAN_DEV_FINISH=1` | off | Phase 5 영구 비활성화 |

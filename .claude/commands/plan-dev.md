@@ -65,14 +65,16 @@ Slice 정의 시 **type 도 같이 결정**: `feat|fix|refactor|test|docs|chore`
 
 ### Phase 2 모드 선택
 
-> ⚠️ `--mode=pane` 전 `detect-pane-env.sh` 확인 — tmux/cmux 환경 판별.
+> ⚠️ `dispatch-slice-pane.sh` 의 `--mode` 디폴트는 **`auto`** (env `DISPATCH_DEFAULT_MODE` override). auto = `detect-pane-env.sh` 결과로 분기 — TMUX 안 → tmux, cmux 안 → cmux, default 환경 → die (사용자가 `--mode=subagent` 명시).
 
 | 모드 | 효과 |
 |---|---|
-| (미지정) / `--mode=subagent` | Agent(implementor) — 디폴트 |
+| `--mode=auto` (기본) | 환경 자동 감지 |
+| `--mode=subagent` | Agent(implementor) — 부모 token-stats 추적 ✓, cmux 화면 분할 ✗ |
 | `--mode=pane` / `--mode=tmux` | tmux pane dispatch |
-| `--mode=cmux` | cmux workspace dispatch |
-| `--mode=auto` | 환경 자동 감지 |
+| `--mode=cmux` | cmux workspace dispatch (부모 workspace 안 grid split — 사용자가 attach/시각화) |
+
+**cmux 환경 권장**: 디폴트 auto 가 자동으로 cmux dispatch 선택 → 부모 workspace 안에 자식 surface 가 grid 분할되어 사용자가 화면에서 직접 진행 확인. 자식 토큰은 부모 token-stats 로 추적 안 됨 (trade-off).
 
 호출 예:
 ```bash
@@ -80,12 +82,13 @@ scripts/dispatch-slice-pane.sh \
   --slice=<kebab> \
   --type=<feat|fix|refactor|test|docs|chore> \
   --spec-file=<spec.md> \
-  --mode=auto   [--model=<alias>]
+  [--mode=auto|cmux|tmux|subagent]   [--model=<alias>]
 # stdout: {"pane":"...","worktree":"...","branch":"<type>/<slug>","driver":"tmux|cmux"}
 ```
 
 `--type` 미지정 시 `DISPATCH_DEFAULT_TYPE` env → 없으면 `feat`.
 `--model` 미지정 시 `DISPATCH_DEFAULT_MODEL` env → 없으면 `sonnet`.
+`--mode` 미지정 시 `DISPATCH_DEFAULT_MODE` env → 없으면 `auto`.
 
 사용자가 자식 pane 에 직접 attach:
 ```bash

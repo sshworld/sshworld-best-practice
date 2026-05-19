@@ -60,13 +60,16 @@ Branch: <type>/<slug>
 권장: rewind 후 재시도 (메인이 결정) — 실패 시도가 컨텍스트에 남으면 다음 reasoning 에 영향
 ```
 
-## pane 모드 안내 (Slice E 이후)
+## 호출 모드 안내 (subagent / tmux / cmux dispatch)
 
-본 implementor 는 두 호출 경로에서 동일 동작:
-- **subagent 모드** (기본) — Agent 도구로 spawn, worktree 자동 격리.
-- **tmux pane 모드** (`--mode=pane`) — `scripts/dispatch-slice-pane.sh --type=<type>` 가 worktree + tmux pane 띄우고 본 implementor 가 그 안에서 인터랙티브 Claude 로 동작.
+본 implementor 는 세 호출 경로에서 동일 동작 (출력 형식 `✅ <slice>:` / `❌ <slice>:` 양쪽 동일):
 
-출력 형식 (`✅ <slice>:` / `❌ <slice>:`) 은 양쪽 동일. 부모는 capture 결과의 마지막 부분에서 이 신호로 완료 판정. 사용자가 도중에 pane 에 attach 해서 메시지를 보내도 작업 흐름은 유지.
+- **subagent 모드** (`--mode=subagent`) — Agent 도구로 spawn, worktree 자동 격리. 부모 token-stats 로 토큰 추적 ✓, 화면 분할 ✗.
+- **tmux pane 모드** (`--mode=tmux`) — `scripts/dispatch-slice-pane.sh` 가 worktree + tmux pane 생성, 자식 Claude 가 spec-file 받아 인터랙티브 진행.
+- **cmux workspace 모드** (`--mode=cmux`) — 부모 cmux workspace 안에 surface 가 grid split. 사용자가 직접 attach/시각화. 자식 토큰 추적 ✗.
+- **auto 모드** (기본) — `detect-pane-env.sh` 결과로 자동 분기.
+
+dispatch 모드에서 자식 Claude 가 받는 spec-file 의 첫 줄은 항상 "너는 implementor 다. TDD R→G→R. 마지막에 `✅`/`❌` 출력." 명시. 부모는 `wait-idle` + `capture | grep -E '^(✅|❌)'` 로 회수.
 
 ## 안 하는 것
 

@@ -37,6 +37,7 @@
 #   DISPATCH_CHILD_CMD=<cmd>       자식 명령 강제 (테스트용 substitute. --model 보다 우선).
 #   DISPATCH_DEFAULT_MODEL=<alias> --model arg 가 없을 때의 기본 model (기본: sonnet).
 #   DISPATCH_DEFAULT_TYPE=<type>   --type 미지정 시 기본 type (기본: feat).
+#   DISPATCH_DEFAULT_MODE=<mode>   --mode 미지정 시 기본 driver mode (기본: auto). 기존 동작 복원: DISPATCH_DEFAULT_MODE=pane.
 #   DISPATCH_SKIP_CLEANUP=1        시작 시 자식 pane 자동 정리 끄기.
 
 set -uo pipefail
@@ -97,7 +98,7 @@ main() {
   local SLICE=""
   local SPEC_FILE=""
   local WORKTREE=""
-  local DRIVER_MODE="pane"   # tmux|cmux|pane|auto|subagent
+  local DRIVER_MODE=""       # tmux|cmux|pane|auto|subagent — env DISPATCH_DEFAULT_MODE 우선, 미지정 시 auto
   local MODEL=""
   local TYPE=""              # feat|fix|refactor|test|docs|chore (기본: feat)
 
@@ -121,6 +122,9 @@ main() {
       *)              die "unknown arg: $1" 2 ;;
     esac
   done
+
+  # --mode 결정: arg > env DISPATCH_DEFAULT_MODE > auto (환경 자동 감지)
+  [ -z "$DRIVER_MODE" ] && DRIVER_MODE="${DISPATCH_DEFAULT_MODE:-auto}"
 
   # --type 결정: arg > env > 기본값 feat
   [ -z "$TYPE" ] && TYPE="${DISPATCH_DEFAULT_TYPE:-feat}"
@@ -192,8 +196,8 @@ main() {
     fi
   elif [ "$DRIVER" = "cmux" ]; then
     local cmux_bin="${CMUX_BIN:-cmux}"
-    # "echo" 는 테스트 mock — 존재 검사 skip
-    if [ "$cmux_bin" != "echo" ] && [ "$cmux_bin" != "$( (command -v echo) 2>/dev/null || true)" ]; then
+    # "echo" 는 테스트 mock — 존재 검사 skip. DRY_RUN 도 실제 spawn 없으니 skip.
+    if [ "${DISPATCH_DRY_RUN:-0}" != "1" ] && [ "$cmux_bin" != "echo" ] && [ "$cmux_bin" != "$( (command -v echo) 2>/dev/null || true)" ]; then
       command -v "$cmux_bin" > /dev/null 2>&1 || die "cmux 미설치 — brew tap manaflow-ai/cmux && brew install cmux" 2
     fi
     if [ -x "$SCRIPT_DIR/cmux-pane.sh" ]; then

@@ -52,7 +52,8 @@ echo "test slice spec body for dispatcher" > "$tmpdir/spec.md"
 step 3 "dispatcher 호출 (DISPATCH_CHILD_CMD=zsh)"
 JSON=$(cd "$tmpdir" && DISPATCH_CHILD_CMD=zsh "$DISPATCH" \
   --slice=test-slice --spec-file="$tmpdir/spec.md" \
-  --worktree="$tmpdir/.worktrees/test-slice") || fail "dispatcher failed"
+  --worktree="$tmpdir/.worktrees/test-slice" \
+  --mode=tmux) || fail "dispatcher failed"
 echo "  json=$JSON"
 
 step 4 "JSON 파싱"

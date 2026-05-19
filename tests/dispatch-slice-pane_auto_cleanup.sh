@@ -52,7 +52,8 @@ BEFORE=$(tmux list-panes -s -t tmux-pane-mgr -F '#{pane_id}' 2>/dev/null | wc -l
 step 2 "dispatcher 호출 (DISPATCH_CHILD_CMD=zsh) — cleanup 자동 발동"
 JSON=$(cd "$tmpdir" && DISPATCH_CHILD_CMD=zsh "$DISPATCH" \
   --slice=auto-cleanup-test --spec-file="$tmpdir/spec.md" \
-  --worktree="$tmpdir/.worktrees/auto-cleanup-test" 2> /tmp/disp-err-$$) || fail "dispatcher fail"
+  --worktree="$tmpdir/.worktrees/auto-cleanup-test" \
+  --mode=tmux 2> /tmp/disp-err-$$) || fail "dispatcher fail"
 echo "  json=$JSON"
 grep -E "cleaning [0-9]+ child pane" /tmp/disp-err-$$ > /dev/null || { cat /tmp/disp-err-$$; fail "auto-cleanup 보고 누락"; }
 
@@ -69,7 +70,8 @@ BEFORE2=$(tmux list-panes -s -t tmux-pane-mgr -F '#{pane_id}' 2>/dev/null | wc -
 # 두 번째 dispatcher (다른 slice) — SKIP_CLEANUP 으로
 (cd "$tmpdir" && DISPATCH_SKIP_CLEANUP=1 DISPATCH_CHILD_CMD=zsh "$DISPATCH" \
   --slice=auto-cleanup-test-2 --spec-file="$tmpdir/spec.md" \
-  --worktree="$tmpdir/.worktrees/auto-cleanup-test-2" 2> /tmp/disp-err-$$) > /dev/null || fail "dispatcher 2 fail"
+  --worktree="$tmpdir/.worktrees/auto-cleanup-test-2" \
+  --mode=tmux 2> /tmp/disp-err-$$) > /dev/null || fail "dispatcher 2 fail"
 # SKIP 면 cleaning 보고 안 나옴
 if grep -E "cleaning [0-9]+ child pane" /tmp/disp-err-$$ > /dev/null; then
   cat /tmp/disp-err-$$
