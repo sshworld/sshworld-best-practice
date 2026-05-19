@@ -317,6 +317,7 @@ export DISABLE_CMUX_CONTEXT_HOOK=1
 | `DISPATCH_DEFAULT_TYPE=<type>` | feat | dispatch-slice-pane.sh 의 --type 미지정 시 기본 type |
 | `DISPATCH_DEFAULT_MODE=<mode>` | auto | dispatch-slice-pane.sh 의 --mode 미지정 시 기본 driver (auto/tmux/cmux/pane/subagent). 기존 동작 복원: `pane` |
 | `DISPATCH_SKIP_CLEANUP=1` | off | dispatch-slice-pane.sh 가 main 진입 시 자식 pane 자동 정리 끄기 |
+| `DISPATCH_PERMISSION_MODE=<mode>` | `bypassPermissions` | dispatch-slice-pane.sh 가 자식 claude 에 `--permission-mode <mode>` flag 전달. `default` 시 flag 생략. `DISPATCH_CHILD_CMD` set 시 무시. |
 | `SKIP_PLAN_DEV_FINISH=1` | off | Phase 5 (finish-plan-dev.sh) 1회 우회 |
 | `DISABLE_PLAN_DEV_FINISH=1` | off | Phase 5 영구 비활성화 |
 | `GIT_PUSH_CMD=<cmd>` | `git push` | finish-plan-dev.sh 의 push 명령 override (테스트용) |

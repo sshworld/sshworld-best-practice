@@ -19,7 +19,7 @@
 #   2. wrapper 결정 (tmux: tmux-cli 또는 tmux-pane.sh / cmux: cmux-pane.sh)
 #   3. git worktree 준비 (<type>/<kebab> 브랜치, 기본 경로 .worktrees/<kebab>)
 #   4. pane/workspace 띄움 (zsh) → cd <worktree> → 자식 명령 실행
-#   5. spec 파일 내용을 prompt 로 전송
+#   5. spec 파일 경로를 Read 지시 prompt 로 전송 (본문 inline 전송 금지)
 #   6. stdout 한 줄 JSON:
 #        일반:  {"pane":"...","worktree":"...","branch":"<type>/<kebab>","driver":"tmux|cmux"}
 #        DRY:   {"driver":"...","wrapper":"...","worktree":"...","branch":"<type>/<kebab>"}
@@ -32,13 +32,15 @@
 #   $wrapper capture   --pane=$pane | tail -50 | grep -E '^(✅|❌)'
 #
 # 환경변수:
-#   DISPATCH_DRY_RUN=1             wrapper 호출 직전 driver/wrapper/worktree JSON 출력 후 exit 0.
-#                                   테스트에서 실제 launch 없이 분기 검증 시 사용.
-#   DISPATCH_CHILD_CMD=<cmd>       자식 명령 강제 (테스트용 substitute. --model 보다 우선).
-#   DISPATCH_DEFAULT_MODEL=<alias> --model arg 가 없을 때의 기본 model (기본: sonnet).
-#   DISPATCH_DEFAULT_TYPE=<type>   --type 미지정 시 기본 type (기본: feat).
-#   DISPATCH_DEFAULT_MODE=<mode>   --mode 미지정 시 기본 driver mode (기본: auto). 기존 동작 복원: DISPATCH_DEFAULT_MODE=pane.
-#   DISPATCH_SKIP_CLEANUP=1        시작 시 자식 pane 자동 정리 끄기.
+#   DISPATCH_DRY_RUN=1              wrapper 호출 직전 driver/wrapper/worktree JSON 출력 후 exit 0.
+#                                    테스트에서 실제 launch 없이 분기 검증 시 사용.
+#   DISPATCH_CHILD_CMD=<cmd>        자식 명령 강제 (테스트용 substitute. --model 보다 우선).
+#   DISPATCH_DEFAULT_MODEL=<alias>  --model arg 가 없을 때의 기본 model (기본: sonnet).
+#   DISPATCH_DEFAULT_TYPE=<type>    --type 미지정 시 기본 type (기본: feat).
+#   DISPATCH_DEFAULT_MODE=<mode>    --mode 미지정 시 기본 driver mode (기본: auto). 기존 동작 복원: DISPATCH_DEFAULT_MODE=pane.
+#   DISPATCH_SKIP_CLEANUP=1         시작 시 자식 pane 자동 정리 끄기.
+#   DISPATCH_PERMISSION_MODE=<mode> 자식 claude 에 --permission-mode <mode> flag 전달. "default" 시 flag 생략.
+#                                    기본값: bypassPermissions. DISPATCH_CHILD_CMD set 시 무시.
 
 set -uo pipefail
 
@@ -55,11 +57,12 @@ dispatch-slice-pane.sh --slice=<kebab> --spec-file=<path> \
   subagent     안내만 출력 후 exit 0 (plan-dev 기본 흐름에서 직접 호출 불필요)
 
 환경변수:
-  DISPATCH_DRY_RUN=1             launch 없이 결정된 driver/wrapper/worktree JSON 출력 후 exit 0.
-  DISPATCH_CHILD_CMD=<cmd>       자식 명령 강제 (테스트용. --model 보다 우선).
-  DISPATCH_DEFAULT_MODEL=<alias> --model 미지정 시 기본 model (기본: sonnet).
-  DISPATCH_DEFAULT_TYPE=<type>   --type 미지정 시 기본 type (기본: feat).
-  DISPATCH_SKIP_CLEANUP=1        자동 pane 정리 끄기.
+  DISPATCH_DRY_RUN=1              launch 없이 결정된 driver/wrapper/worktree JSON 출력 후 exit 0.
+  DISPATCH_CHILD_CMD=<cmd>        자식 명령 강제 (테스트용. --model 보다 우선).
+  DISPATCH_DEFAULT_MODEL=<alias>  --model 미지정 시 기본 model (기본: sonnet).
+  DISPATCH_DEFAULT_TYPE=<type>    --type 미지정 시 기본 type (기본: feat).
+  DISPATCH_SKIP_CLEANUP=1         자동 pane 정리 끄기.
+  DISPATCH_PERMISSION_MODE=<mode> 자식 claude 에 --permission-mode <mode> flag 전달 (기본: bypassPermissions). "default" 시 flag 생략.
 USAGE
   exit 2
 }
@@ -81,12 +84,14 @@ validate_pane_ref() {
 
 # 순수 함수 — 부수효과 0, stdout 으로 CHILD_CMD 한 줄 반환.
 # 우선순위: child_cmd_env > model_arg > default_model_env > hard-coded "sonnet"
+# permission_mode_env: DISPATCH_PERMISSION_MODE 전달. "default" 시 flag 생략. 기본: bypassPermissions.
 # 참고: mode 인자(interactive/background)는 내부 호환 유지용, 외부 --mode 와 다름.
 build_child_cmd() {
   local child_cmd_env="${1:-}"
   local mode="${2:-interactive}"
   local model_arg="${3:-}"
   local default_model_env="${4:-}"
+  local permission_mode_env="${5:-}"
 
   if [ -n "$child_cmd_env" ]; then
     printf '%s' "$child_cmd_env"
@@ -97,14 +102,38 @@ build_child_cmd() {
   [ -z "$model" ] && model="$default_model_env"
   [ -z "$model" ] && model="sonnet"
 
+  local perm="$permission_mode_env"
+  [ -z "$perm" ] && perm="bypassPermissions"
+
   case "$mode" in
-    interactive) printf 'claude --model %s' "$model" ;;
+    interactive)
+      if [ "$perm" = "default" ]; then
+        printf 'claude --model %s' "$model"
+      else
+        printf 'claude --model %s --permission-mode %s' "$model" "$perm"
+      fi
+      ;;
     background)
       echo "dispatch: background 는 현재 stub — interactive 로 폴백" >&2
-      printf 'claude --model %s' "$model"
+      if [ "$perm" = "default" ]; then
+        printf 'claude --model %s' "$model"
+      else
+        printf 'claude --model %s --permission-mode %s' "$model" "$perm"
+      fi
       ;;
     *) die "unknown exec mode: $mode" 2 ;;
   esac
+}
+
+# 순수 함수 — spec 파일 경로를 자식 Claude 에게 Read 지시하는 짧은 prompt 반환.
+# 인자: spec_file_abs_path, slice
+# stdout: 자식에게 보낼 짧은 instruction prompt 한 줄.
+# 의도: spec 본문을 inline 전송하면 cmux send 에서 timeout 위험 → 경로만 전달 + Read 지시.
+build_spec_prompt() {
+  local spec_path="$1"
+  local slice="$2"
+  printf 'Read %s 한 후 그 spec 의 지시대로 TDD (Red→Green→Refactor) 로 작업해. 작업 끝나면 마지막 줄에 `✅ %s` (성공) 또는 `❌ %s <reason>` (실패) 만 출력.' \
+    "$spec_path" "$slice" "$slice"
 }
 
 main() {
@@ -254,7 +283,7 @@ main() {
 
   # 자식 명령 결정 (순수 함수 호출) — 내부 실행 모드는 항상 interactive
   local CHILD_CMD
-  CHILD_CMD=$(build_child_cmd "${DISPATCH_CHILD_CMD:-}" "interactive" "$MODEL" "${DISPATCH_DEFAULT_MODEL:-}")
+  CHILD_CMD=$(build_child_cmd "${DISPATCH_CHILD_CMD:-}" "interactive" "$MODEL" "${DISPATCH_DEFAULT_MODEL:-}" "${DISPATCH_PERMISSION_MODE:-}")
 
   # pane/workspace 띄우기 — 항상 zsh 먼저, 그 다음 cd + 자식 명령
   local PANE PANE_RAW
@@ -275,9 +304,11 @@ main() {
   "$WRAPPER" send "$CHILD_CMD" --pane="$PANE" --delay=0.3 >/dev/null || die "send child 실패"
   "$WRAPPER" wait-idle --pane="$PANE" --idle=1 --timeout=15 >/dev/null 2>&1 || true
 
-  local SPEC_BODY
-  SPEC_BODY=$(cat "$SPEC_FILE")
-  "$WRAPPER" send "$SPEC_BODY" --pane="$PANE" --delay=0.5 >/dev/null || die "send spec 실패"
+  local SPEC_FILE_ABS
+  SPEC_FILE_ABS="$(cd "$(dirname "$SPEC_FILE")" && pwd)/$(basename "$SPEC_FILE")"
+  local SPEC_PROMPT
+  SPEC_PROMPT=$(build_spec_prompt "$SPEC_FILE_ABS" "$SLICE")
+  "$WRAPPER" send "$SPEC_PROMPT" --pane="$PANE" --delay=0.5 >/dev/null || die "send spec-prompt 실패"
 
   printf '{"pane":"%s","worktree":"%s","branch":"%s/%s","driver":"%s"}\n' \
     "$PANE" "$WORKTREE_ABS" "$TYPE" "$SLICE" "$DRIVER"
