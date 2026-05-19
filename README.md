@@ -25,9 +25,10 @@
 │   ├── enforce-test-first.sh # production 파일 작성 전 테스트 존재 검사
 │   ├── enforce-doc-sync.sh   # commit 시점 DOC 영향 평가 강제
 │   ├── limit-child-panes.sh  # 자식 tmux pane spawn 상한 (CLAUDE_MAX_CHILD_PANES)
+│   ├── enforce-cmux-context.sh # cmux 안에서 tmux 계열 명령 시도 시 advisory warning
 │   ├── statusline-tokens.sh  # (opt-in) 하단 status bar 모드 — 기본은 token-stats.sh 사용
 │   └── token-stats.sh        # Stop hook 으로 직전 응답 토큰 사용량 + 캐시 히트율 inline 노출
-└── settings.json             # permissions(allow/deny) + 4 hooks
+└── settings.json             # permissions(allow/deny) + hooks
 scripts/
 ├── tmux-pane.sh              # 얇은 tmux wrapper — launch/send/capture/wait-idle/kill/list/status
 ├── cmux-pane.sh              # 얇은 cmux wrapper — launch/send/capture/kill/list/cleanup/status + state file 헬퍼
@@ -221,9 +222,37 @@ export DISABLE_PANE_LIMIT_HOOK=1
 
 > ℹ️ `statusline-tokens.sh` 는 같은 데이터를 화면 하단 status bar 로 상시 표시하는 **opt-in 대안** — settings.json 의 `statusLine.command` 에 등록하고 `hooks.Stop` 에서 token-stats 제거해서 전환 가능. 기본은 Stop hook 의 inline 메시지.
 
+### 5) enforce-cmux-context.sh (PreToolUse: Bash)
+
+cmux 앱 안에서 실행 중일 때(`CMUX_WORKSPACE_ID` set), 부모 Claude 가 `tmux` / `tmux-cli` / `tmux-pane.sh` 계열 명령을 호출하면 **advisory warning** 을 stderr 로 출력하고 통과.
+
+기본은 advisory 모드 (경고만, 실행 차단 안 함). `CMUX_CONTEXT_HOOK_STRICT=1` 설정 시에만 차단(exit 2).
+
+```bash
+# advisory (기본) — 경고만 출력, 실행은 통과
+CMUX_WORKSPACE_ID=ws:1 bash scripts/tmux-pane.sh launch zsh
+# stderr: ⚠️ cmux 안에서 tmux 계열 명령 시도 ...
+
+# strict 모드 — 차단
+CMUX_CONTEXT_HOOK_STRICT=1 bash scripts/tmux-pane.sh launch zsh
+# exit 2
+
+# 1회 우회
+SKIP_CMUX_CONTEXT_HOOK=1 bash scripts/tmux-pane.sh launch zsh
+
+# 영구 비활성화
+export DISABLE_CMUX_CONTEXT_HOOK=1
+```
+
 ### 6) SessionStart inline
 
-세션 시작 시 git worktree 목록 + 미커밋 변경 자동 출력.
+세션 시작 시 git worktree 목록 + 미커밋 변경 + **멀티플렉서 환경 1줄** 자동 출력.
+
+```
+=== 멀티플렉서: cmux (driver: scripts/cmux-pane.sh) ===
+```
+
+`default` 환경(tmux/cmux 없음)이면 `(driver: subagent 모드 사용)` 으로 표시.
 
 ---
 
@@ -248,6 +277,9 @@ export DISABLE_PANE_LIMIT_HOOK=1
 | `CBP_LIST_LINES=<str>` | unset | cmux-pane.sh list/cleanup/status 의 list-workspaces 입력 mock (테스트용) |
 | `CLAUDE_FAKE_SELF_CMUX_WS=<ref>` | unset | cmux-pane.sh kill/cleanup 의 자기 workspace ref mock (테스트용) |
 | `CBP_SPLIT_POLICY=<dir>` | unset (라운드로빈) | cmux-pane.sh grid split 방향 고정 (`down` 또는 `right`). unset 시 라운드로빈 (홀수→down, 짝수→right) |
+| `CMUX_CONTEXT_HOOK_STRICT=1` | off | enforce-cmux-context.sh strict 모드 — cmux 안 tmux 계열 명령 차단(exit 2) |
+| `SKIP_CMUX_CONTEXT_HOOK=1` | off | enforce-cmux-context.sh 1회 우회 (advisory 억제) |
+| `DISABLE_CMUX_CONTEXT_HOOK=1` | off | enforce-cmux-context.sh 영구 비활성화 |
 
 ---
 

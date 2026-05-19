@@ -131,6 +131,8 @@ ExitPlanMode 직전에 작성한 plan 을 **별도 컨텍스트의 Plan 서브�
 
 ### Phase 2 모드 선택
 
+> ⚠️ **`--mode=pane` 호출 전 `detect-pane-env.sh` 결과 확인** — tmux 안이면 tmux pane, cmux 안이면 cmux. 자동 분기 원하면 `--mode=auto`.
+
 | 모드 | 효과 |
 |---|---|
 | (미지정) / `--mode=subagent` | Agent(implementor) — 토큰 추적 ✓, 디폴트 |

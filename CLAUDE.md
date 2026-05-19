@@ -44,6 +44,7 @@
 | `.claude/skills/tmux-orchestrate/SKILL.md` | 부모-자식 Claude tmux pane 협업 패턴 가이드. |
 | `.claude/hooks/*.sh` | 런타임 강제. stderr 메시지에 우회 방법 항상 명시. |
 | `.claude/hooks/limit-child-panes.sh` | 자식 tmux pane + cmux child **합산** 상한 강제 (`CLAUDE_MAX_CHILD_PANES`). tmux 가용 시 `tmux-pane-mgr` 세션 pane 수, cmux 가용(ping 성공) 시 state file 라인 수 (폴백: `cbp-` workspace 수) 합산. 에러 메시지에 `tmux pane: X, cmux child: Y, total: Z` 표시. |
+| `.claude/hooks/enforce-cmux-context.sh` | cmux 안(`CMUX_WORKSPACE_ID` set)에서 부모가 tmux 계열 명령 시도 시 advisory warning (exit 0). `CMUX_CONTEXT_HOOK_STRICT=1` 시만 차단(exit 2). `SKIP_CMUX_CONTEXT_HOOK=1` / `DISABLE_CMUX_CONTEXT_HOOK=1` 우회. |
 | `.claude/hooks/statusline-tokens.sh` | (opt-in 대안) statusLine 으로 토큰 사용량 상시 표시. 기본은 `token-stats.sh` 의 inline 메시지. |
 | `.claude/settings.json` | permissions(allow/deny) + hooks. 광역 `Bash(tmux*)` 금지 — 좁힌 패턴만. |
 | `scripts/tmux-pane.sh` | tmux wrapper — launch/send/capture/wait-idle/kill/list/status. 외부 `tmux-cli` 와 명령 표면 정렬. |
@@ -102,6 +103,9 @@
 | `CBP_STATE_FILE` | `~/.cache/cbp/children-<ws>.json` | `cmux-pane.sh` state file 경로 override. sanitize 규칙: `${CMUX_WORKSPACE_ID//[:\/]/_}` (콜론/슬래시 → 언더스코어) |
 | `CBP_LIST_LINES` | unset | `cmux-pane.sh list/cleanup/status` 의 list-workspaces 입력 mock (테스트용). set 시 실제 cmux 호출 생략. |
 | `CLAUDE_FAKE_SELF_CMUX_WS` | unset | `cmux-pane.sh kill/cleanup` 의 자기 workspace ref mock (테스트용). `cmux identify` 대신 이 값 사용. |
+| `CMUX_CONTEXT_HOOK_STRICT` | unset | `enforce-cmux-context.sh` strict 모드 — cmux 안 tmux 계열 명령 차단(exit 2). unset 이면 advisory only. |
+| `SKIP_CMUX_CONTEXT_HOOK` | unset | `enforce-cmux-context.sh` 1회 우회 (advisory 억제, exit 0 통과) |
+| `DISABLE_CMUX_CONTEXT_HOOK` | unset | `enforce-cmux-context.sh` 영구 비활성화 |
 | `CBP_SPLIT_POLICY` | unset (라운드로빈) | `cmux-pane.sh` grid split 방향 고정 (`down` 또는 `right`). unset 시 라운드로빈 (count 홀수→down, 짝수→right). Slice A3 에서 확장 예정. |
 
 ## 향후 작업 (플러그인화)

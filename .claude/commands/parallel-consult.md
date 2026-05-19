@@ -10,6 +10,8 @@ args: <자식에게 보낼 질문>
 
 ## Prerequisite
 
+> ⚠️ **먼저 `bash scripts/detect-pane-env.sh` 호출** — 결과로 tmux/cmux/default 분기. cmux 안인데 tmux 명령 reach 금지.
+
 1. **터미널 환경 감지**: `env=$(scripts/detect-pane-env.sh)`. 결과별 분기:
    - `tmux` → 기존 tmux 흐름 (아래 단계 2 tmux 분기)
    - `cmux` → cmux-pane.sh 흐름 (아래 단계 2 cmux 분기)

@@ -1,12 +1,12 @@
 ---
 name: tmux-orchestrate
-description: 다른 tmux pane 의 CLI 에이전트(또 다른 Claude / 디버거 / 장시간 스크립트)와 통신. 부모-자식 Claude 협업 패턴. user 가 명시 요청하거나, /parallel-consult / /plan-dev --mode=pane 흐름에서 호출.
+description: 다른 tmux **또는 cmux** pane/surface 의 CLI 에이전트(다른 Claude / 디버거 / 장시간 스크립트)와 통신. 부모-자식 Claude 협업 패턴. user 가 명시 요청하거나, /parallel-consult / /plan-dev --mode=pane 흐름에서 호출.
 context: tmux
 ---
 
 # tmux-orchestrate
 
-부모 Claude 가 **다른 tmux pane** 의 CLI 에이전트(또 다른 Claude / Codex / 디버거 / 장시간 스크립트) 라이프사이클을 관리하는 패턴.
+부모 Claude 가 **다른 tmux pane 또는 cmux surface** 의 CLI 에이전트(또 다른 Claude / Codex / 디버거 / 장시간 스크립트) 라이프사이클을 관리하는 패턴.
 
 ## 핵심 패턴
 
