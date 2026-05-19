@@ -32,12 +32,18 @@
       "Bash(*/scripts/tmux-pane.sh*)",
       "Bash(*/scripts/dispatch-slice-pane.sh*)",
       "Bash(cmux new-workspace*)",
+      "Bash(cmux new-pane*)",
+      "Bash(cmux new-split*)",
+      "Bash(cmux rename-tab*)",
       "Bash(cmux send *)",
       "Bash(cmux send-key*)",
       "Bash(cmux read-screen*)",
       "Bash(cmux capture-pane*)",
       "Bash(cmux list-workspaces*)",
       "Bash(cmux list-panes*)",
+      "Bash(cmux close-surface*)",
+      "Bash(cmux close-workspace*)",
+      "Bash(cmux tree*)",
       "Bash(cmux ping*)",
       "Bash(cmux identify*)",
       "Bash(*/scripts/cmux-pane.sh*)",
@@ -76,7 +82,7 @@
           },
           {
             "type": "command",
-            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/enforce-cmux-context.sh"
+            "command": "CMUX_CONTEXT_HOOK_STRICT=1 $CLAUDE_PROJECT_DIR/.claude/hooks/enforce-cmux-context.sh"
           }
         ]
       }

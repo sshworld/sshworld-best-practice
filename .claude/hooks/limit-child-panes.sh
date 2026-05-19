@@ -60,16 +60,19 @@ if command -v "$CMUX_BIN_FOR_HOOK" > /dev/null 2>&1; then
         _sanitized=$(printf '%s' "$_ws" | tr ':/' '__')
         _STATE_FILE="${HOME}/.cache/cbp/children-${_sanitized}.json"
       fi
+      # grep -c 는 match 0 일 때도 "0" 한 줄을 stdout 출력 + exit 1.
+      # `|| echo 0` 를 붙이면 두 줄("0\n0")이 되어 산술 비교 깨짐. 안전하게 한 줄만 보장.
       if [ -f "$_STATE_FILE" ]; then
-        CMUX_COUNT=$(grep -c 'surface=' "$_STATE_FILE" 2>/dev/null || echo 0)
+        CMUX_COUNT=$(grep -c 'surface=' "$_STATE_FILE" 2>/dev/null | head -1)
       else
         # state file 없으면 폴백: cbp- workspace 수
-        CMUX_COUNT=$("$CMUX_BIN_FOR_HOOK" list-workspaces 2>/dev/null | grep -c '^cbp-' || echo 0)
+        CMUX_COUNT=$("$CMUX_BIN_FOR_HOOK" list-workspaces 2>/dev/null | grep -c '^cbp-' | head -1)
       fi
     else
       # CMUX_WORKSPACE_ID 미설정: 폴백 cbp- workspace 카운트
-      CMUX_COUNT=$("$CMUX_BIN_FOR_HOOK" list-workspaces 2>/dev/null | grep -c '^cbp-' || echo 0)
+      CMUX_COUNT=$("$CMUX_BIN_FOR_HOOK" list-workspaces 2>/dev/null | grep -c '^cbp-' | head -1)
     fi
+    [ -z "$CMUX_COUNT" ] && CMUX_COUNT=0
   fi
 fi
 

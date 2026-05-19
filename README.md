@@ -246,9 +246,11 @@ export DISABLE_PANE_LIMIT_HOOK=1
 
 ### 5) enforce-cmux-context.sh (PreToolUse: Bash)
 
-cmux 앱 안에서 실행 중일 때(`CMUX_WORKSPACE_ID` set), 부모 Claude 가 `tmux` / `tmux-cli` / `tmux-pane.sh` 계열 명령을 호출하면 **advisory warning** 을 stderr 로 출력하고 통과.
+cmux 앱 안에서 실행 중일 때(`CMUX_WORKSPACE_ID` set), 부모 Claude 가 `tmux` / `tmux-cli` / `tmux-pane.sh` 계열 명령을 호출하면 차단/경고.
 
-기본은 advisory 모드 (경고만, 실행 차단 안 함). `CMUX_CONTEXT_HOOK_STRICT=1` 설정 시에만 차단(exit 2).
+- **hook 자체의 디폴트**: advisory (경고만, 통과). `CMUX_CONTEXT_HOOK_STRICT=1` 설정 시 차단(exit 2).
+- **본 repo 의 settings.json (project + user)**: `CMUX_CONTEXT_HOOK_STRICT=1` 을 hook command 에 **inline 으로 강제** — 즉 본 repo 환경에서는 기본이 strict.
+- 다른 프로젝트에서 이 hook 만 가져다 쓰면 advisory 가 디폴트.
 
 ```bash
 # advisory (기본) — 경고만 출력, 실행은 통과
