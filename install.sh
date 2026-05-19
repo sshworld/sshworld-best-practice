@@ -35,6 +35,7 @@ FILES=(
   "skills/tmux-orchestrate/SKILL.md"
   "hooks/enforce-test-first.sh"
   "hooks/enforce-doc-sync.sh"
+  "hooks/enforce-cmux-context.sh"
   "hooks/limit-child-panes.sh"
   "hooks/statusline-tokens.sh"
   "hooks/token-stats.sh"
