@@ -340,9 +340,13 @@ export DISABLE_CMUX_CONTEXT_HOOK=1
 기본 allow:
 - `git status`, `diff`, `log`, `branch`, `checkout`, `switch`, `fetch`, `pull`, `add`, `commit`, `stash`, `merge`, `rebase`, `remote`, `tag`, `worktree`, `restore`
 - `BUILD_CMD` / `TEST_CMD` / `RUN_CMD` TODO 자리 (사용자가 프로젝트 빌드 명령으로 치환)
+- tmux 좁힌 패턴: `tmux new-window*`, `tmux send-keys*`, `tmux capture-pane*`, `tmux display-message*`, `tmux list-panes*`, `tmux kill-pane*`, `tmux-cli*`
+- cmux 관리: `cmux new-workspace*`, `cmux new-pane*`, `cmux new-split*`, `cmux rename-tab*`, `cmux send *`, `cmux send-key*`, `cmux read-screen*`, `cmux capture-pane*`, `cmux list-workspaces*`, `cmux list-panes*`, `cmux close-surface*`, `cmux close-workspace*`, `cmux tree*`, `cmux ping*`, `cmux identify*`
+- cmux 사이드바 UX: `cmux notify*`, `cmux set-status*`, `cmux set-progress*`, `cmux clear-status*`, `cmux clear-progress*` (plan-dev 진행률 push 용)
+- scripts: `*/scripts/tmux-pane.sh*`, `*/scripts/cmux-pane.sh*`, `*/scripts/detect-pane-env.sh*`, `*/scripts/dispatch-slice-pane.sh*`, `*/scripts/finish-plan-dev.sh*`, `*/scripts/plan-dev-progress.sh*`
 
 기본 deny:
-- `rm -rf*`, `git push --force*`, `git push -f*`, `git commit --no-verify*`, `git reset --hard*`
+- `rm -rf*`, `git push --force*`, `git push -f*`, `git commit --no-verify*`, `git reset --hard*`, `tmux kill-server*`
 
 ---
 

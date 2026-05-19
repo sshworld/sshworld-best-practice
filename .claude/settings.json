@@ -44,10 +44,17 @@
       "Bash(cmux close-surface*)",
       "Bash(cmux close-workspace*)",
       "Bash(cmux tree*)",
+      "Bash(cmux notify*)",
+      "Bash(cmux set-status*)",
+      "Bash(cmux set-progress*)",
+      "Bash(cmux clear-status*)",
+      "Bash(cmux clear-progress*)",
       "Bash(cmux ping*)",
       "Bash(cmux identify*)",
       "Bash(*/scripts/cmux-pane.sh*)",
-      "Bash(*/scripts/detect-pane-env.sh*)"
+      "Bash(*/scripts/detect-pane-env.sh*)",
+      "Bash(*/scripts/finish-plan-dev.sh*)",
+      "Bash(*/scripts/plan-dev-progress.sh*)"
     ],
     "deny": [
       "Bash(rm -rf*)",

@@ -40,4 +40,15 @@ deny=d.get('permissions',{}).get('deny',[])
 assert 'Bash(tmux kill-server*)' in deny, 'kill-server not denied'
 " || fail "kill-server deny missing"
 
+step 4 "cmux notify/set-status/set-progress/clear-status/clear-progress allow"
+grep -qF '"Bash(cmux notify*)"' "$SETTINGS" || fail "cmux notify allow missing"
+grep -qF '"Bash(cmux set-status*)"' "$SETTINGS" || fail "cmux set-status allow missing"
+grep -qF '"Bash(cmux set-progress*)"' "$SETTINGS" || fail "cmux set-progress allow missing"
+grep -qF '"Bash(cmux clear-status*)"' "$SETTINGS" || fail "cmux clear-status allow missing"
+grep -qF '"Bash(cmux clear-progress*)"' "$SETTINGS" || fail "cmux clear-progress allow missing"
+
+step 5 "plan-dev scripts allow"
+grep -qF '"Bash(*/scripts/finish-plan-dev.sh*)"' "$SETTINGS" || fail "finish-plan-dev allow missing"
+grep -qF '"Bash(*/scripts/plan-dev-progress.sh*)"' "$SETTINGS" || fail "plan-dev-progress allow missing"
+
 echo "OK"
