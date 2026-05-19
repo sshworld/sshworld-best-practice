@@ -15,6 +15,8 @@
 # 환경변수:
 #   CMUX_BIN                  — cmux 바이너리 경로 (미지정 시 PATH 의 cmux)
 #   CBP_WORKSPACE_PREFIX       — workspace 이름 prefix (디폴트 cbp-)
+#   CBP_STATE_FILE             — state file 경로 override (디폴트: ~/.cache/cbp/children-<ws_sanitized>.json)
+#                                ws_sanitized = ${CMUX_WORKSPACE_ID//[:\/]/_}
 #   CBP_LIST_LINES             — list 명령 입력 mock (테스트용. set 시 실제 cmux 호출 생략)
 #   CLAUDE_FAKE_SELF_CMUX_WS   — 자기 workspace ref mock (테스트용)
 #   FORCE_SELF_KILL            — 자기 workspace kill 거부 우회
@@ -77,6 +79,109 @@ rand_hex6() {
   fi
 }
 
+# ----------------------------------------------------------------
+# State file 헬퍼 함수 (private — do_launch/do_kill 등에서 사용)
+# state file: 각 줄 "surface=<ref>|name=<name>|ts=<unix>|ws=<workspace_id>"
+# jq 의존 없음. surface ref 에 '|' 또는 '=' 미포함 가정 (cmux ref = "surface:N" 형식).
+# ----------------------------------------------------------------
+
+# state file 경로 반환.
+# CBP_STATE_FILE env 가 set 이면 그 값 사용.
+# 미설정 시 ~/.cache/cbp/children-<ws_sanitized>.json
+# ws_sanitized = ${CMUX_WORKSPACE_ID//[:\/]/_}
+cbp_state_path() {
+  if [ -n "${CBP_STATE_FILE:-}" ]; then
+    printf '%s' "$CBP_STATE_FILE"
+    return 0
+  fi
+  local ws="${CMUX_WORKSPACE_ID:-default}"
+  local sanitized
+  # 콜론 / 슬래시 → 언더스코어
+  sanitized=$(printf '%s' "$ws" | tr ':/' '__')
+  local cache_dir="${HOME}/.cache/cbp"
+  mkdir -p "$cache_dir"
+  printf '%s' "${cache_dir}/children-${sanitized}.json"
+}
+
+# flock wrapper — flock 미설치(macOS 기본 X) 시 mkdir 기반 mutex 폴백.
+# 사용법: _cbp_lock <lockpath> <cmd> [args...]
+# lockpath = state file path + ".lock"
+_cbp_lock() {
+  local lockpath="$1"; shift
+  if command -v flock >/dev/null 2>&1; then
+    # flock -x <fd> 방식
+    (
+      exec 9>"$lockpath"
+      flock -x 9
+      "$@"
+    )
+  else
+    # mkdir atomic lock (macOS 기본 환경)
+    local lockdir="${lockpath}.d"
+    local waited=0
+    while ! mkdir "$lockdir" 2>/dev/null; do
+      sleep 0.05
+      waited=$(( waited + 1 ))
+      if [ "$waited" -ge 100 ]; then
+        # 5초 초과 → stale lock 제거 후 재시도
+        rmdir "$lockdir" 2>/dev/null || true
+        waited=0
+      fi
+    done
+    # lock 획득
+    "$@"
+    local rc=$?
+    rmdir "$lockdir" 2>/dev/null || true
+    return $rc
+  fi
+}
+
+# state file 에 한 줄 추가. 인자: surface_ref, name.
+# 각 라인: surface=<ref>|name=<name>|ts=<unix>|ws=<workspace_id>
+cbp_state_append() {
+  local surface_ref="$1"
+  local name="$2"
+  local sf
+  sf=$(cbp_state_path)
+  local lockpath="${sf}.lock"
+  local ts
+  ts=$(date +%s)
+  local ws="${CMUX_WORKSPACE_ID:-default}"
+  # shellcheck disable=SC2016
+  _cbp_lock "$lockpath" bash -c '
+    sf="$1" surface_ref="$2" name="$3" ts="$4" ws="$5"
+    mkdir -p "$(dirname "$sf")"
+    printf "surface=%s|name=%s|ts=%s|ws=%s\n" "$surface_ref" "$name" "$ts" "$ws" >> "$sf"
+  ' -- "$sf" "$surface_ref" "$name" "$ts" "$ws"
+}
+
+# state file 의 surface ref 목록을 한 줄당 하나 stdout.
+# state file 없으면 빈 출력 (empty).
+cbp_state_list() {
+  local sf
+  sf=$(cbp_state_path)
+  [ -f "$sf" ] || return 0
+  # 각 줄에서 surface= 필드 추출
+  grep -o 'surface=[^|]*' "$sf" | sed 's/surface=//'
+}
+
+# state file 에서 특정 surface_ref 줄 제거. 인자: surface_ref.
+cbp_state_remove() {
+  local surface_ref="$1"
+  local sf
+  sf=$(cbp_state_path)
+  [ -f "$sf" ] || return 0
+  local lockpath="${sf}.lock"
+  # shellcheck disable=SC2016
+  _cbp_lock "$lockpath" bash -c '
+    sf="$1" surface_ref="$2"
+    tmp=$(mktemp "${sf}.XXXXXX")
+    grep -v "surface=${surface_ref}|" "$sf" > "$tmp" 2>/dev/null || true
+    mv "$tmp" "$sf"
+  ' -- "$sf" "$surface_ref"
+}
+
+# ----------------------------------------------------------------
 do_launch() {
   local cmd="${1:-zsh}"
   local name="${CBP_WORKSPACE_PREFIX}$(rand_hex6)"

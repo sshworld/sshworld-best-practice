@@ -30,9 +30,9 @@
 └── settings.json             # permissions(allow/deny) + 4 hooks
 scripts/
 ├── tmux-pane.sh              # 얇은 tmux wrapper — launch/send/capture/wait-idle/kill/list/status
-├── cmux-pane.sh              # 얇은 cmux wrapper — launch/send/capture (tmux-pane.sh 과 명령 표면 정렬)
+├── cmux-pane.sh              # 얇은 cmux wrapper — launch/send/capture/kill/list/cleanup/status + state file 헬퍼
 ├── detect-pane-env.sh        # 터미널 환경 감지 — tmux | cmux | default
-└── dispatch-slice-pane.sh    # implementor 슬라이스를 tmux pane 으로 dispatch (plan-dev --mode=pane)
+└── dispatch-slice-pane.sh    # implementor 슬라이스를 tmux/cmux pane 으로 dispatch (plan-dev --mode=pane)
 ```
 
 ---
@@ -88,15 +88,14 @@ scripts/
 
 ---
 
-## 병렬 Claude 협업 (tmux / cmux)
+## 병렬 Claude 협업 (tmux pane)
 
-부모 Claude 세션에서 **다른 pane** 의 CLI 에이전트(또 다른 Claude / 디버거 / 장시간 스크립트)와 통신. tmux 와 cmux 양쪽 지원.
+부모 Claude 세션에서 **다른 tmux pane** 의 CLI 에이전트(또 다른 Claude / 디버거 / 장시간 스크립트)와 통신.
 
 ### Prerequisite
 
 - `tmux` — `brew install tmux`
-- 또는 `cmux` — macOS 네이티브 터미널 멀티플렉서 (`/opt/homebrew/bin/cmux` 또는 PATH 검색)
-- (권장, tmux 전용) 외부 `tmux-cli` — `uv tool install claude-code-tools`. 미설치 시 본 repo 의 `scripts/tmux-pane.sh` 가 폴백.
+- (권장) 외부 `tmux-cli` — `uv tool install claude-code-tools`. 미설치 시 본 repo 의 `scripts/tmux-pane.sh` 가 폴백.
 
 ### `/parallel-consult` — 자식 Claude 에게 한 번 묻기
 
@@ -106,16 +105,9 @@ scripts/
 
 부모가 자식 Claude pane 을 띄워 질문 → 응답 회수 → 부모 세션에 요약 + "자식 pane 유지/kill" 묻기. 자세한 흐름은 `.claude/commands/parallel-consult.md`.
 
-### `/plan-dev` 모드 옵션
+### `/plan-dev --mode=pane` — implementor 를 tmux pane 으로
 
-| 모드 | 효과 |
-|---|---|
-| (미지정) / `--mode=subagent` | Agent(implementor) — 토큰 추적 ✓, 디폴트 |
-| `--mode=pane` / `--mode=tmux` | tmux pane dispatch |
-| `--mode=cmux` | cmux workspace dispatch |
-| `--mode=auto` | 환경 자동 감지 (TMUX > CMUX > 에러) |
-
-기본 subagent 모드 대신 pane/cmux 모드 시 `scripts/dispatch-slice-pane.sh` 가 각 슬라이스를 tmux pane 또는 cmux workspace 에 띄움. 사용자가 자식 작업을 직접 모니터링/개입 가능.
+기본 subagent 모드 대신 `--mode=pane` 시 `scripts/dispatch-slice-pane.sh` 가 각 슬라이스를 tmux pane 에 띄움. 사용자가 `tmux attach -t tmux-pane-mgr` 로 자식 작업을 직접 모니터링/개입 가능.
 
 ### 직접 호출 (수동)
 
@@ -137,13 +129,7 @@ scripts/tmux-pane.sh kill --pane=$pane
 - 정리 대상: `tmux-pane-mgr` 세션 전체 + 현재 attached window 의 active/self 외 split pane
 - 보존: 사용자가 attach 중인 active pane + wrapper 가 도는 self pane
 - 우회: `DISPATCH_SKIP_CLEANUP=1`
-- 수동 정리: `scripts/tmux-pane.sh cleanup` (tmux) / `scripts/cmux-pane.sh cleanup` (cmux)
-
-cmux 환경에서의 자식 workspace 라이프사이클:
-- `cbp-` prefix workspace 만 관리 대상 (사용자 수동 workspace 보호)
-- `scripts/cmux-pane.sh list` — 관리 중인 workspace JSON 목록
-- `scripts/cmux-pane.sh cleanup` — `cbp-*` workspace 일괄 close (자기 workspace 보존)
-- `scripts/cmux-pane.sh kill --pane=<ref>` — 개별 workspace close (자기 workspace 거부, `FORCE_SELF_KILL=1` 우회)
+- 수동 정리: `scripts/tmux-pane.sh cleanup`
 
 ### 권장 `~/.tmux.conf` 설정 (세션명 표시)
 
@@ -201,18 +187,6 @@ DOC_IMPACT=updated git commit -m "..."
 
 > ℹ️ `statusline-tokens.sh` 는 같은 데이터를 화면 하단 status bar 로 상시 표시하는 **opt-in 대안** — settings.json 의 `statusLine.command` 에 등록하고 `hooks.Stop` 에서 token-stats 제거해서 전환 가능. 기본은 Stop hook 의 inline 메시지.
 
-### 4) limit-child-panes.sh (PreToolUse: Bash, spawn 명령)
-
-자식 pane/workspace 를 spawn 하는 명령 (`tmux-pane.sh launch`, `cmux-pane.sh launch`, `dispatch-slice-pane.sh`) 이 호출될 때 **tmux pane + cmux workspace 합산** 수가 `CLAUDE_MAX_CHILD_PANES` (기본 5) 이상이면 차단.
-
-```bash
-# 한도 상향
-CLAUDE_MAX_CHILD_PANES=10
-
-# hook 비활성
-export DISABLE_PANE_LIMIT_HOOK=1
-```
-
 ### 5) SessionStart inline
 
 세션 시작 시 git worktree 목록 + 미커밋 변경 자동 출력.
@@ -234,7 +208,11 @@ export DISABLE_PANE_LIMIT_HOOK=1
 | `TMUX_PANE_NO_LAYOUT=1` | off | tmux-pane.sh launch 의 main-vertical layout 자동 적용 끄기 |
 | `DISPATCH_DEFAULT_MODEL=<alias>` | sonnet | dispatch-slice-pane.sh 의 자식 model 디폴트 (--model arg 가 우선) |
 | `DISPATCH_SKIP_CLEANUP=1` | off | dispatch-slice-pane.sh 가 main 진입 시 자식 pane 자동 정리 끄기 |
-| `DISPATCH_DRY_RUN=1` | off | dispatch-slice-pane.sh 가 launch 없이 driver/wrapper/worktree JSON 출력 후 exit 0 (테스트용) |
+| `CMUX_BIN=<path>` | `cmux` | cmux-pane.sh / detect-pane-env.sh 가 사용할 cmux 바이너리 경로 (테스트 mock 에 사용) |
+| `CBP_STATE_FILE=<path>` | `~/.cache/cbp/children-<ws>.json` | cmux-pane.sh state file 경로 override (ws sanitize 규칙: `${CMUX_WORKSPACE_ID//[:\/]/_}`) |
+| `CBP_WORKSPACE_PREFIX=<str>` | `cbp-` | cmux-pane.sh launch 의 workspace 이름 prefix |
+| `CBP_LIST_LINES=<str>` | unset | cmux-pane.sh list/cleanup/status 의 list-workspaces 입력 mock (테스트용) |
+| `CLAUDE_FAKE_SELF_CMUX_WS=<ref>` | unset | cmux-pane.sh kill/cleanup 의 자기 workspace ref mock (테스트용) |
 
 ---
 
