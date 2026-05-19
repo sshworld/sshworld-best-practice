@@ -2,12 +2,14 @@
 # plan-dev-session.sh — plan-dev 세션 marker 헬퍼.
 #
 # 사용:
-#   plan-dev-session.sh start [--base=<branch>] [--quiet]
+#   plan-dev-session.sh start [--base=<branch>] [--total=<n>] [--quiet]
 #   plan-dev-session.sh query [--json|--key=<field>]
+#   plan-dev-session.sh progress [--inc] [--set-done=<n>] [--set-total=<n>]
 #   plan-dev-session.sh clear
 #
 # marker 경로: $(git rev-parse --git-common-dir)/plan-dev-session.json
-# 키: start_ref, base_branch, work_branch, start_ts, start_pid, auto_branch
+# 키: start_ref, base_branch, work_branch, start_ts, start_pid, auto_branch,
+#     total_slices, done_slices
 
 set -uo pipefail
 
@@ -16,9 +18,10 @@ usage() {
 plan-dev-session.sh <command> [args]
 
 commands:
-  start [--base=<branch>] [--quiet]   세션 marker 생성
-  query [--json|--key=<field>]        marker 내용 조회
-  clear                               marker 삭제
+  start [--base=<branch>] [--total=<n>] [--quiet]          세션 marker 생성
+  query [--json|--key=<field>]                              marker 내용 조회
+  progress [--inc] [--set-done=<n>] [--set-total=<n>]      진행률 업데이트/조회
+  clear                                                      marker 삭제
 USAGE
   exit 2
 }
@@ -119,13 +122,14 @@ resolve_base_branch() {
 # subcommand: start
 # ─────────────────────────────────────────
 do_start() {
-  local base_arg="" quiet=0
+  local base_arg="" quiet=0 total=0
 
   for arg in "$@"; do
     case "$arg" in
-      --base=*) base_arg="${arg#*=}" ;;
-      --quiet)  quiet=1 ;;
-      *)        ;;
+      --base=*)  base_arg="${arg#*=}" ;;
+      --quiet)   quiet=1 ;;
+      --total=*) total="${arg#*=}" ;;
+      *)         ;;
     esac
   done
 
@@ -184,12 +188,14 @@ do_start() {
   python3 -c "
 import json
 d = {
-    'start_ref':   '$start_ref',
-    'base_branch': '$base_branch',
-    'work_branch': '$cur_branch',
-    'start_ts':    '$start_ts',
-    'start_pid':   $$,
-    'auto_branch': $( [ "$auto_branch" = "true" ] && echo "True" || echo "False" ),
+    'start_ref':    '$start_ref',
+    'base_branch':  '$base_branch',
+    'work_branch':  '$cur_branch',
+    'start_ts':     '$start_ts',
+    'start_pid':    $$,
+    'auto_branch':  $( [ "$auto_branch" = "true" ] && echo "True" || echo "False" ),
+    'total_slices': $total,
+    'done_slices':  0,
 }
 with open('$marker', 'w') as f:
     json.dump(d, f, indent=2)
@@ -231,6 +237,65 @@ do_query() {
 }
 
 # ─────────────────────────────────────────
+# subcommand: progress
+# ─────────────────────────────────────────
+do_progress() {
+  local inc=0 set_done="" set_total=""
+
+  for arg in "$@"; do
+    case "$arg" in
+      --inc)          inc=1 ;;
+      --set-done=*)   set_done="${arg#*=}" ;;
+      --set-total=*)  set_total="${arg#*=}" ;;
+      *)              ;;
+    esac
+  done
+
+  local marker
+  marker="$(marker_path)"
+
+  if [ ! -f "$marker" ]; then
+    echo "plan-dev-session: 마커 없음" >&2
+    exit 1
+  fi
+
+  INC="$inc" SET_DONE="$set_done" SET_TOTAL="$set_total" MARKER_FILE="$marker" \
+  python3 -c "
+import json, os
+
+f = os.environ['MARKER_FILE']
+inc = os.environ['INC'] == '1'
+set_done = os.environ.get('SET_DONE', '')
+set_total = os.environ.get('SET_TOTAL', '')
+
+d = json.load(open(f))
+done = int(d.get('done_slices', 0))
+total = int(d.get('total_slices', 0))
+
+if inc:
+    done += 1
+if set_done != '':
+    done = int(set_done)
+if set_total != '':
+    total = int(set_total)
+
+d['done_slices'] = done
+d['total_slices'] = total
+
+if inc or set_done != '' or set_total != '':
+    with open(f, 'w') as fp:
+        json.dump(d, fp, indent=2)
+        fp.write('\n')
+
+if total > 0:
+    pct = done * 100 // total
+    print(str(done) + '/' + str(total) + ' (' + str(pct) + '%)')
+else:
+    print(str(done))
+"
+}
+
+# ─────────────────────────────────────────
 # subcommand: clear
 # ─────────────────────────────────────────
 do_clear() {
@@ -253,8 +318,9 @@ do_clear() {
 CMD="$1"; shift
 
 case "$CMD" in
-  start) do_start "$@" ;;
-  query) do_query "$@" ;;
-  clear) do_clear "$@" ;;
-  *)     usage ;;
+  start)    do_start "$@" ;;
+  query)    do_query "$@" ;;
+  progress) do_progress "$@" ;;
+  clear)    do_clear "$@" ;;
+  *)        usage ;;
 esac
