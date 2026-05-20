@@ -10,8 +10,12 @@
 #
 # 동작:
 #   - commands/agents/skills/hooks 디렉토리의 파일을 복사. 기존 파일 있으면 .bak.<ts> 로 백업.
-#   - settings.json 은 자동 병합하지 않고 settings.example.json 으로 복사.
-#     기존 settings.json 이 있으면 사용자가 수동 병합 필요.
+#   - settings.json 이 있으면 jq 로 자동 병합:
+#       * permissions.allow / permissions.deny: union (unique)
+#       * hooks.<event>: 기존에 없는 event 키만 추가 (기존 hook 은 덮어쓰지 않음)
+#       * 그 외 top-level 키: 기존 우선
+#     INSTALL_NO_MERGE=1 → 기존 동작 복원 (example 만 복사하고 수동 병합 안내).
+#     jq 미설치 → 자동 병합 불가, example 만 복사 + 안내.
 #   - hook 스크립트는 실행 권한(chmod +x) 유지.
 #
 # uninstall 동작:
@@ -171,9 +175,47 @@ do_install() {
       fi
     fi
 
+    local example_created=0
     if [ -f "$settings_dest" ]; then
-      cp "$settings_processed" "$settings_example"
-      echo "  📋 settings.example.json 복사 — 기존 settings.json 과 수동 병합 필요"
+      if [ "${INSTALL_NO_MERGE:-}" = "1" ] || ! command -v jq > /dev/null 2>&1; then
+        cp "$settings_processed" "$settings_example"
+        example_created=1
+        if [ "${INSTALL_NO_MERGE:-}" = "1" ]; then
+          echo "  📋 INSTALL_NO_MERGE=1 — settings.example.json 만 복사 (수동 병합)"
+        else
+          echo "  ⚠️  jq 미설치 — settings.example.json 만 복사 (수동 병합)"
+        fi
+      else
+        local merged_tmp settings_bak
+        merged_tmp="$(mktemp)"
+        settings_bak="$settings_dest.bak.$TS"
+        # 병합 정책:
+        #   allow / deny: union (unique)
+        #   hooks.<event>: 기존에 없는 event 키만 추가 (기존 event 의 hook 배열은 보존)
+        #   그 외 top-level 키: 기존 우선
+        if jq -s '
+          .[0] as $cur | .[1] as $new |
+          $cur
+          | .permissions.allow = (((.permissions.allow // []) + ($new.permissions.allow // [])) | unique)
+          | .permissions.deny  = (((.permissions.deny  // []) + ($new.permissions.deny  // [])) | unique)
+          | (
+              ($cur.hooks // {}) as $ch
+              | ($new.hooks // {}) as $nh
+              | .hooks = reduce ($nh | keys[]) as $k ($ch; if has($k) then . else .[$k] = $nh[$k] end)
+            )
+        ' "$settings_dest" "$settings_processed" > "$merged_tmp"; then
+          cp "$settings_dest" "$settings_bak"
+          mv "$merged_tmp" "$settings_dest"
+          echo "  🔀 settings.json 자동 병합 (백업: ${settings_bak##*/})"
+          # 이전 설치의 stale example 잔재 정리
+          [ -f "$settings_example" ] && rm -f "$settings_example"
+        else
+          rm -f "$merged_tmp"
+          echo "  ❌ settings.json 병합 실패 — example 로 폴백" >&2
+          cp "$settings_processed" "$settings_example"
+          example_created=1
+        fi
+      fi
     else
       cp "$settings_processed" "$settings_dest"
       echo "  ✓ settings.json"
@@ -184,9 +226,9 @@ do_install() {
 
   echo ""
   echo "✅ 설치 완료."
-  if [ -f "$settings_example" ]; then
+  if [ "${example_created:-0}" = "1" ]; then
     echo ""
-    echo "⚠️  settings.example.json 이 만들어졌습니다. 다음 키를 기존 settings.json 에 병합하세요:"
+    echo "⚠️  자동 병합 안 됨 — settings.example.json 이 만들어졌습니다. 다음 키를 기존 settings.json 에 병합하세요:"
     echo "    - permissions.allow / permissions.deny"
     echo "    - hooks.PreToolUse / hooks.Stop / hooks.SessionStart"
   fi
