@@ -25,6 +25,13 @@ dispatch 가 `--type=<feat|fix|refactor|test|docs|chore>` 를 받아 자동 생�
      전체 빌드 예: ./gradlew build | npm run build | cargo build
 -->
 
+### 0. Setup — cwd 검증 (필수)
+
+작업 시작 즉시 `pwd` 출력. spec 의 "작업 디렉토리" 경로와 일치하지 않으면 즉시 `❌ <slice>: cwd mismatch` 보고 후 중단. 절대 `cd` / `pushd` 로 worktree 밖으로 이동 금지 — main repo 의 파일을 건드리지 않기 위한 1차 방어선.
+
+- spec 안에 명시된 worktree 경로만 작업 영역.
+- 외부 디렉토리에서 Read 는 허용 (참고용). 단, Write/Edit 는 worktree 안의 파일만.
+
 ### Red — 실패하는 테스트 먼저
 
 1. 슬라이스 명세의 테스트 목록을 프로젝트 test 디렉토리에 작성.
@@ -69,7 +76,7 @@ Branch: <type>/<slug>
 - **cmux workspace 모드** (`--mode=cmux`) — 부모 cmux workspace 안에 surface 가 grid split. 사용자가 직접 attach/시각화. 자식 토큰 추적 ✗.
 - **auto 모드** (기본) — `detect-pane-env.sh` 결과로 자동 분기.
 
-dispatch 모드에서 자식 Claude 가 받는 spec-file 의 첫 줄은 항상 "너는 implementor 다. TDD R→G→R. 마지막에 `✅`/`❌` 출력." 명시. 부모는 `wait-idle` + `capture | grep -E '^(✅|❌)'` 로 회수.
+dispatch 모드에서 자식 Claude 가 받는 spec-file 의 첫 줄/상단 블록은 항상 "너는 implementor 다. TDD R→G→R. 마지막에 `✅`/`❌` 출력." + **작업 디렉토리 절대경로** + "시작 시 `pwd` 검증" 명시. 부모는 `wait-idle` + `capture | grep -E '^(✅|❌)'` 로 회수.
 
 ## 안 하는 것
 
@@ -77,3 +84,5 @@ dispatch 모드에서 자식 Claude 가 받는 spec-file 의 첫 줄은 항상 "
 - 테스트 skip (어노테이션 / 플래그 / 제외 옵션) — 금지.
 - 명세 외 다른 슬라이스 파일 수정 — 침범 감지 시 메인에 경고 후 중단 (위 실패 형식으로 보고하고 rewind 권장).
 - worktree 내에서 `git commit` / `git push` — 머지는 메인이 담당.
+- `cd` / `pushd` 로 worktree 밖으로 이동 금지. main repo 의 working tree 또는 다른 worktree 의 파일을 수정하면 부모가 cherry-pick 복구해야 함.
+- spec 의 "작업 디렉토리" 경로와 다른 worktree 에서 작업 금지.
