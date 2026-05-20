@@ -26,6 +26,8 @@
 │   ├── enforce-doc-sync.sh   # commit 시점 DOC 영향 평가 강제
 │   ├── limit-child-panes.sh  # 자식 tmux pane spawn 상한 (CLAUDE_MAX_CHILD_PANES)
 │   ├── enforce-cmux-context.sh # cmux 안에서 tmux 계열 명령 시도 시 advisory warning
+│   ├── track-cmux-edit-burst.sh # cmux env Edit/Write 누적 advisory (dispatch-first 유도)
+│   ├── cmux-dispatch-hint.sh # SessionStart — cmux env 안내 메시지 inject
 │   ├── statusline-tokens.sh  # (opt-in) 하단 status bar 모드 — 기본은 token-stats.sh 사용
 │   └── token-stats.sh        # Stop hook 으로 직전 응답 토큰 사용량 + 캐시 히트율 inline 노출
 └── settings.json             # permissions(allow/deny) + hooks
