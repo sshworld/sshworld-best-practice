@@ -41,13 +41,21 @@ scripts/plan-dev-session.sh start
 | **재량 명확화** (어느 쪽이든 합리적) | "묻지 말고 진행" 지시 있으면 Assumptions 에 기록 |
 
 ### 1-2. EnterPlanMode → plan 파일 작성
-필수 섹션: Context / Explored Files / Assumptions / Vertical Slices / TDD Strategy / Verification.
+필수 섹션: Context / Explored Files / Assumptions / Vertical Slices / **Slice File Map** / TDD Strategy / Verification.
 **Plan 파일 200줄 이하** — 넘으면 슬라이스 추가 분해.
+
+**Slice File Map** — 각 슬라이스의 산출 파일 목록 (Write/Edit 대상). rebase fast-forward 충돌 예방 목적. 형식:
+| Slice | Files |
+|---|---|
+| S1 | scripts/foo.sh, README.md |
+| S2 | .claude/agents/bar.md |
 
 Slice 정의 시 **type 도 같이 결정**: `feat|fix|refactor|test|docs|chore`.
 
 ### 1-3. Plan Review (강력 권장, 단 1회)
 `Agent(subagent_type="Plan")` 으로 staff engineer 비평 수령. 5분 이내.
+
+**충돌 사전 점검**: Slice File Map 의 파일 교집합 존재 시 그 슬라이스들은 의존성 있음으로 분류 — 병렬 X, 순차로 강등하거나 단일 슬라이스로 병합.
 
 ### 1-4. ExitPlanMode → 사용자 승인 (MANDATORY)
 승인 전 Phase 2 진입 금지.
@@ -192,3 +200,4 @@ git worktree list --porcelain
 - ❌ pane 모드에서 자식 결과(`✅` / `❌`) **회수 전 머지** 시도
 - ❌ Phase 5 우회 (`SKIP_PLAN_DEV_FINISH`) 를 기본값처럼 사용
 - ❌ `PROGRESS_DRY_RUN=1` 을 기본값처럼 켜두기 (테스트 전용, 실제 push 억제됨)
+- ❌ 두 슬라이스가 같은 파일의 같은 영역 수정 — plan 단계에서 Slice File Map 으로 의존성 분석 후 순차 강등 또는 병합.

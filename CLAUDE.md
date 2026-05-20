@@ -25,6 +25,7 @@
 4. **Vertical slice — Horizontal phases 금지**
    - 슬라이스는 cross-layer feature 단위 (DB+service+UI 같이).
    - "1단계: 모든 entity, 2단계: 모든 service" 식 분해 금지.
+   - 슬라이스별 산출 파일 목록(`Slice File Map`) 을 plan 에 명시. 다른 슬라이스와 같은 파일·같은 영역 수정 시 단일 슬라이스로 병합 또는 순차 강등.
 
 5. **README/CLAUDE.md 동기화**
    - 본 repo 안에서 `.claude/` 또는 `install.sh` 의 동작이 바뀌면 README.md 의 해당 섹션을 같이 업데이트.
@@ -93,6 +94,7 @@
 - ❌ Phase 5 (Branch & Push) 를 `SKIP_PLAN_DEV_FINISH=1` 로 기본값처럼 우회 — 예외적 사용만
 - ❌ `PROGRESS_DRY_RUN=1` 을 환경변수로 항상 켜두기 — 진행률이 push 되지 않아 cmux 좌측에 표시가 멈춤. 테스트 시 일회성으로만.
 - ❌ `dispatch-slice-pane.sh` 의 spec 본문을 `wrapper send` 로 inline 전송 — cmux send 에서 timeout 위험. 항상 spec-file 경로만 전달 + 자식에게 Read 지시.
+- ❌ Slice File Map 없이 슬라이스 분해 — rebase fast-forward 시 같은 파일 영역 충돌로 부모 수동 복구 비용 발생.
 
 ## 환경변수 (tmux / cmux 통합)
 
