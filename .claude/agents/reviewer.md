@@ -25,6 +25,7 @@ model: haiku
 - **민감 데이터 외부 송신**: 토큰·비밀번호·PII 가 외부 API 호출(`http.post`, `fetch` 등) 인자나 로그에 포함됨 / 마스킹 없이 외부 시스템 전송
 - **TDD 위반**: 테스트 skip 어노테이션·플래그 잔존 / 테스트 없이 추가된 public API
 - **데이터 유실**: 트랜잭션 없는 다중 쓰기 / cascade 없는 orphan 생성
+- **기능 변경 vs 회귀 테스트 충돌**: 이번 PR 의 코드 변경이 기존 회귀 테스트의 expected 와 충돌. 두 가능성 — 회귀의 의도된 update 인지 / 새 회귀 버그인지 모호. 메인 분류 필요 → 블로킹.
 
 ## 제안 이슈 (논블로킹)
 
@@ -59,3 +60,4 @@ model: haiku
 - 직접 파일 수정 — 보고만, 적용은 메인이 담당.
 - 스타일·포맷 이슈 블로킹 — formatter 영역.
 - 테스트 코드 품질 지적 — production 코드만.
+- 회귀 테스트의 expected 자동 update 권장 — verifier 의 분류 책임. reviewer 는 충돌 보고만.
