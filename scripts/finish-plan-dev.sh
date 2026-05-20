@@ -92,6 +92,14 @@ COMMON_DIR="$(git rev-parse --git-common-dir 2>/dev/null)" || {
 MARKER="${COMMON_DIR}/plan-dev-session.json"
 
 if [ ! -f "$MARKER" ]; then
+  if [ "${FINISH_AUTO_PUSH_WITHOUT_MARKER:-0}" = "1" ]; then
+    _cur_branch=$(git symbolic-ref --short HEAD 2>/dev/null || true)
+    if [ -n "$_cur_branch" ]; then
+      echo "no marker — FINISH_AUTO_PUSH_WITHOUT_MARKER=1 → push $_cur_branch to origin"
+      ${GIT_PUSH_CMD:-git push} -u origin "$_cur_branch"
+      exit $?
+    fi
+  fi
   echo "no marker — skip"
   exit 0
 fi

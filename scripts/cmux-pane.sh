@@ -4,7 +4,7 @@
 #
 # 사용:
 #   cmux-pane launch [<cmd>]
-#   cmux-pane send <text> --pane=<ref> [--enter=false] [--delay=<sec>]
+#   cmux-pane send <text> --pane=<ref> [--enter=false] [--delay=<sec>] [--enter-count=<n>]
 #   cmux-pane capture --pane=<ref> [--lines=<n>]
 #   cmux-pane wait-idle --pane=<ref> [--idle=<sec>] [--timeout=<sec>]
 #   cmux-pane kill --pane=<ref>
@@ -39,8 +39,8 @@ commands:
                                                   stdout=surface ref (예: surface:4).
                                                 CMUX_WORKSPACE_ID unset → new-workspace 흐름.
                                                   stdout=workspace ref (예: workspace:cbp-abc123).
-  send <text> --pane=<ref> [--enter=false] [--delay=<sec>]
-                                                텍스트 전송 후 Enter
+  send <text> --pane=<ref> [--enter=false] [--delay=<sec>] [--enter-count=<n>]
+                                                텍스트 전송 후 Enter (--enter-count=N 회, 기본 1, 0이면 생략)
   capture --pane=<ref> [--lines=<n>]            workspace 화면 내용 stdout
   wait-idle --pane=<ref> [--idle=<sec>] [--timeout=<sec>]
                                                 화면이 <idle>초 동안 변하지 않으면 반환.
@@ -73,9 +73,11 @@ parse_long_opts() {
       --pane)      PANE="$2"; shift 2 ;;
       --enter=*)   ENTER="${1#*=}"; shift ;;
       --enter)     ENTER="$2"; shift 2 ;;
-      --delay=*)   DELAY="${1#*=}"; shift ;;
-      --delay)     DELAY="$2"; shift 2 ;;
-      --lines=*)   LINES="${1#*=}"; shift ;;
+      --delay=*)        DELAY="${1#*=}"; shift ;;
+      --delay)          DELAY="$2"; shift 2 ;;
+      --enter-count=*)  ENTER_COUNT="${1#*=}"; shift ;;
+      --enter-count)    ENTER_COUNT="$2"; shift 2 ;;
+      --lines=*)        LINES="${1#*=}"; shift ;;
       --lines)     LINES="$2"; shift 2 ;;
       --idle=*)    IDLE="${1#*=}"; shift ;;
       --idle)      IDLE="$2"; shift 2 ;;
@@ -290,7 +292,7 @@ _do_launch_grid() {
 
 do_send() {
   local text="$1"; shift
-  local PANE="" ENTER="true" DELAY="1.5"
+  local PANE="" ENTER="true" DELAY="1.5" ENTER_COUNT="1"
   parse_long_opts "$@"
   [ -z "$PANE" ] && die "send: --pane=<ref> 필요" 2
   # surface:* → --surface, 그 외 → --workspace
@@ -300,9 +302,14 @@ do_send() {
     *)         pane_flag="--workspace" ;;
   esac
   "$CMUX_BIN" send "$pane_flag" "$PANE" "$text" || die "send: 실패" 3
-  if [ "$ENTER" = "true" ]; then
+  if [ "$ENTER" = "true" ] && [ "$ENTER_COUNT" != "0" ]; then
     sleep "$DELAY"
-    "$CMUX_BIN" send-key "$pane_flag" "$PANE" Enter || die "send: Enter 실패" 3
+    local i=0
+    while [ "$i" -lt "$ENTER_COUNT" ]; do
+      "$CMUX_BIN" send-key "$pane_flag" "$PANE" Enter || die "send: Enter 실패" 3
+      i=$((i + 1))
+      [ "$i" -lt "$ENTER_COUNT" ] && sleep 0.3
+    done
   fi
 }
 

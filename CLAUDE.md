@@ -111,6 +111,7 @@
 | `DISPATCH_PERMISSION_MODE` | `bypassPermissions` | `dispatch-slice-pane.sh` 가 자식 `claude` 명령에 `--permission-mode <mode>` flag 로 전달. `default` 시 flag 생략. `DISPATCH_CHILD_CMD` 가 set 되면 무시. |
 | `SKIP_PLAN_DEV_FINISH` | unset | `finish-plan-dev.sh` Phase 5 1회 우회 (exit 0 + "skipped") |
 | `DISABLE_PLAN_DEV_FINISH` | unset | `finish-plan-dev.sh` 영구 비활성화 (exit 0 + "disabled") |
+| `FINISH_AUTO_PUSH_WITHOUT_MARKER` | unset | `finish-plan-dev.sh` 가 marker 없을 때 silent skip 대신 현재 HEAD branch 의 upstream 으로 `git push -u` 자동 시도. 부모가 후속 fix commit 후 marker 가 stale 일 때 유용. |
 | `GIT_PUSH_CMD` | `git push` | `finish-plan-dev.sh` 의 push 명령 override (테스트용) |
 | `PLAN_DEV_SESSION_BIN` | `scripts/plan-dev-session.sh` | `finish-plan-dev.sh` / `plan-dev-progress.sh` 가 marker 조작에 사용할 헬퍼 경로 override (테스트용) |
 | `CMUX_PANE_BIN` | `scripts/cmux-pane.sh` | `plan-dev-progress.sh` 가 cmux push 에 사용할 wrapper 경로 override (테스트용) |

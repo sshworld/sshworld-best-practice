@@ -320,6 +320,7 @@ export DISABLE_CMUX_CONTEXT_HOOK=1
 | `DISPATCH_PERMISSION_MODE=<mode>` | `bypassPermissions` | dispatch-slice-pane.sh 가 자식 claude 에 `--permission-mode <mode>` flag 전달. `default` 시 flag 생략. `DISPATCH_CHILD_CMD` set 시 무시. |
 | `SKIP_PLAN_DEV_FINISH=1` | off | Phase 5 (finish-plan-dev.sh) 1회 우회 |
 | `DISABLE_PLAN_DEV_FINISH=1` | off | Phase 5 영구 비활성화 |
+| `FINISH_AUTO_PUSH_WITHOUT_MARKER=1` | off | marker 없을 때 silent skip 대신 현재 HEAD branch 로 `git push -u origin` 자동 시도 |
 | `GIT_PUSH_CMD=<cmd>` | `git push` | finish-plan-dev.sh 의 push 명령 override (테스트용) |
 | `PLAN_DEV_SESSION_BIN=<path>` | `scripts/plan-dev-session.sh` | 세션 헬퍼 경로 override (`finish-plan-dev.sh` / `plan-dev-progress.sh` 공용, 테스트용) |
 | `CMUX_PANE_BIN=<path>` | `scripts/cmux-pane.sh` | `plan-dev-progress.sh` 가 cmux push 에 사용할 wrapper 경로 override (테스트용) |

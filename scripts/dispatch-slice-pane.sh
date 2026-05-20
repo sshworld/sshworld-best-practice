@@ -308,7 +308,12 @@ main() {
   SPEC_FILE_ABS="$(cd "$(dirname "$SPEC_FILE")" && pwd)/$(basename "$SPEC_FILE")"
   local SPEC_PROMPT
   SPEC_PROMPT=$(build_spec_prompt "$SPEC_FILE_ABS" "$SLICE")
-  "$WRAPPER" send "$SPEC_PROMPT" --pane="$PANE" --delay=0.5 >/dev/null || die "send spec-prompt 실패"
+  if [ "$DRIVER" = "cmux" ]; then
+    "$WRAPPER" send "$SPEC_PROMPT" --pane="$PANE" --delay=0.5 --enter-count=2 >/dev/null || die "send spec-prompt 실패"
+  else
+    "$WRAPPER" send "$SPEC_PROMPT" --pane="$PANE" --delay=0.5 >/dev/null || die "send spec-prompt 실패"
+  fi
+  "$WRAPPER" wait-idle --pane="$PANE" --idle=2 --timeout=8 >/dev/null 2>&1 || true
 
   printf '{"pane":"%s","worktree":"%s","branch":"%s/%s","driver":"%s"}\n' \
     "$PANE" "$WORKTREE_ABS" "$TYPE" "$SLICE" "$DRIVER"
