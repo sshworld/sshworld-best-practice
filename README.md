@@ -171,6 +171,35 @@ cmux 앱 안에서 실행 중일 때 (`CMUX_WORKSPACE_ID` set) `scripts/cmux-pan
 
 `CMUX_WORKSPACE_ID` unset 환경에서는 기존 new-workspace 흐름 그대로 (회귀 zero).
 
+#### cmux dispatch 진단 가이드 (자식이 진행 안 하는 듯할 때)
+
+`scripts/dispatch-slice-pane.sh --mode=cmux` 의 spec prompt 송신은 **자동 `--enter-count=2`** 적용 — Claude TUI paste mode 끝의 첫 Enter 가 newline 으로 처리되어 자식이 spec 받고도 명령 실행 안 하던 issue (rnd-ax 회차 보고) 해소.
+
+그래도 자식이 멈춰 보이면 진단:
+
+```bash
+# 1. surface 살아 있는지
+cmux tree | grep surface:<N>
+
+# 2. PTY 활성화 확인 — "Terminal surface not found" 면 detached
+cmux read-screen --surface surface:<N> --lines 5
+
+# 3. detached 면 Enter 송신으로 활성화
+cmux send-key --surface surface:<N> Enter
+cmux send-key --surface surface:<N> Enter
+
+# 4. 활성화 후 read-screen 재시도 — Forming/Undulating/Actioning 이면 정상
+cmux read-screen --surface surface:<N> --lines 30
+```
+
+부모 회수 패턴:
+```bash
+scripts/cmux-pane.sh wait-idle --pane=surface:<N> --idle=15 --timeout=900
+cmux read-screen --surface surface:<N> --lines 30 | grep -E '^(✅|❌)'
+```
+
+사용자 시각 확인: cmux 사이드바의 surface 탭 클릭 → 자식 화면 attach.
+
 ### cmux 진행률 push (`plan-dev-progress.sh`)
 
 `plan-dev` 실행 중 cmux 좌측 사이드바 status pill 및 알림 패널에 슬라이스 진행률을 실시간 push.

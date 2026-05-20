@@ -89,6 +89,17 @@ scripts/plan-dev-progress.sh start --total=<N>
 
 **cmux 환경 권장**: 디폴트 auto 가 자동으로 cmux dispatch 선택 → 부모 workspace 안에 자식 surface 가 grid 분할되어 사용자가 화면에서 직접 진행 확인. 자식 토큰은 부모 token-stats 로 추적 안 됨 (trade-off).
 
+#### cmux dispatch 동작 모델 (진단 가이드)
+
+- `dispatch-slice-pane.sh --mode=cmux` 호출 → `scripts/cmux-pane.sh launch` 가 cmux new-split 으로 surface 생성 + zsh + 자식 `claude --permission-mode bypassPermissions` 실행 + spec prompt 송신.
+- spec prompt 송신은 자동으로 **`--enter-count=2`** 적용 (Claude TUI paste mode 끝의 첫 Enter 는 newline 으로 처리되어 명령 실행 안 됨 — 추가 Enter 필요). 단, **cmux 신규 surface 가 PTY detached 인 케이스** 에서는 첫 Enter 만으로 PTY 가 활성화되고 명령 실행이 안 될 수 있음.
+- 진단 시퀀스 (자식이 진행 안 하는 듯할 때):
+  1. `cmux tree | grep surface:<N>` — surface 살아 있는지.
+  2. `cmux read-screen --surface surface:<N>` — `Terminal surface not found` 이면 detached. `cmux send-key --surface surface:<N> Enter` 1~2회로 활성화.
+  3. 활성화 후 자식이 spec prompt 받은 상태 (`✳ Forming…` / `Undulating…` 등 thinking) 이면 정상.
+- 부모가 회수: `scripts/cmux-pane.sh wait-idle --pane=surface:<N> --idle=15 --timeout=900` → `cmux read-screen --surface surface:<N> --lines 30 | grep -E '^(✅|❌)'`.
+- 사용자가 직접 자식 화면 보기: cmux 사이드바의 surface 탭 클릭.
+
 호출 예:
 ```bash
 scripts/dispatch-slice-pane.sh \
