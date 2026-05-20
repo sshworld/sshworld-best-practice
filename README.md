@@ -72,12 +72,12 @@ scripts/
 
 자동 진행 흐름:
 0. **Session Start** (Phase 0): `plan-dev-session.sh start` 자동 호출 — start_ref, base_branch 기록
-1. **Explore**: 관련 파일 자동 스캔
+1. **Explore**: 관련 파일 자동 스캔 — 단축키·라우팅·전역 listener 류 작업은 `page.tsx` / `layout.tsx` 같은 상위 컨테이너 컴포넌트 포함
 2. **빈틈 진단**: `AskUserQuestion` 으로 요구사항 명확화 반복
-3. **EnterPlanMode**: plan 파일 작성 (200줄 이하 권장) + slice 별 type 결정
+3. **EnterPlanMode**: plan 파일 작성 (200줄 이하 권장) + slice 별 type 결정 + Slice File Map 의 `Mode` / `DOC_IMPACT` 컬럼 미리 결정
 4. **Staff Engineer Plan Review**: Plan 서브에이전트 비평 (선택)
 5. **ExitPlanMode**: 사용자 승인
-6. **TDD Execute**: 병렬 implementor → `<type>/<slug>` worktree 격리, Red→Green→Refactor
+6. **TDD Execute**: 병렬 implementor → `<type>/<slug>` worktree 격리, Red→Green→Refactor — 진단 기록은 plan 파일 또는 `<plan>-notes.md` 에 즉시 기록
 7. **Verify**: rebase fast-forward 머지 + verifier 빌드/테스트 (max 5회 루프)
 8. **Review**: reviewer 치명적 이슈 점검 (선택)
 9. **Commit**: commit-advisor 다중 커밋 분석 → 한글 메시지 + `<type>/<slug>` 브랜치명 추천
@@ -173,7 +173,7 @@ cmux 앱 안에서 실행 중일 때 (`CMUX_WORKSPACE_ID` set) `scripts/cmux-pan
 
 #### cmux dispatch 진단 가이드 (자식이 진행 안 하는 듯할 때)
 
-`scripts/dispatch-slice-pane.sh --mode=cmux` 의 spec prompt 송신은 **자동 `--enter-count=2`** 적용 — Claude TUI paste mode 끝의 첫 Enter 가 newline 으로 처리되어 자식이 spec 받고도 명령 실행 안 하던 issue (rnd-ax 회차 보고) 해소.
+`scripts/dispatch-slice-pane.sh --mode=cmux` 의 spec prompt 송신은 **자동 `--enter-count=2`** 적용 — Claude TUI paste mode 끝의 첫 Enter 가 newline 으로 처리되어 자식이 spec 받고도 명령 실행 안 하던 이슈 해소.
 
 그래도 자식이 멈춰 보이면 진단:
 

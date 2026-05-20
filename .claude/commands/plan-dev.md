@@ -32,6 +32,9 @@ scripts/plan-dev-session.sh start
 ### 1-0. Explore (필수, 30초~2분)
 요구사항을 받자마자 관련 파일 5~10개 스캔. 빈틈 진단의 전제.
 
+- 단축키 / 라우팅 / 전역 listener 류 작업은 `page.tsx` / `layout.tsx` 같은 **상위 컨테이너 컴포넌트** 를 explore 기본 포함.
+- 관찰된 패턴: 자식 컴포넌트만 보고 단축키를 새로 구현 → 상위에 같은 단축키가 이미 있어 회귀 발생. plan 단계에서 catch 못하면 implementor 단계 비용 N 배.
+
 ### 1-1. 빈틈 진단 + 명확화
 체크리스트: Scope / Acceptance criteria / Edge case / 사용자·데이터 범위 / 의존성 / 테스트 전략.
 
@@ -45,10 +48,13 @@ scripts/plan-dev-session.sh start
 **Plan 파일 200줄 이하** — 넘으면 슬라이스 추가 분해.
 
 **Slice File Map** — 각 슬라이스의 산출 파일 목록 (Write/Edit 대상). rebase fast-forward 충돌 예방 목적. 형식:
-| Slice | Files |
-|---|---|
-| S1 | scripts/foo.sh, README.md |
-| S2 | .claude/agents/bar.md |
+| Slice | Files | Mode | DOC_IMPACT |
+|---|---|---|---|
+| S1 | scripts/foo.sh, README.md | dispatch | updated |
+| S2 | .claude/agents/bar.md | direct-edit | none |
+
+- `Mode` — `dispatch` (cmux/tmux/subagent dispatch) / `direct-edit` (부모가 직접 Edit) 중 슬라이스 처리 방식 plan 단계에 미리 결정.
+- `DOC_IMPACT` — `none` / `updated` 중 plan 단계에 미리 결정 (commit 시점에 발견하면 hook 차단 후 재시도 비용).
 
 Slice 정의 시 **type 도 같이 결정**: `feat|fix|refactor|test|docs|chore`.
 
@@ -66,6 +72,8 @@ scripts/plan-dev-progress.sh start --total=<N>
 ```
 
 ## Phase 2 — TDD Execute (비동기)
+
+> **진단 기록 가이드**: Phase 2 진행 중 발견한 진단·결정·우회는 plan 파일 (200줄 한도면 별도 `<plan>-notes.md`) 에 즉시 기록. 세션이 중간에 끊겨도 다음 세션이 1턴 만에 컨텍스트 복원 가능.
 
 **의존성 없는 슬라이스는 병렬, 의존 있으면 순차.**
 
@@ -212,3 +220,5 @@ git worktree list --porcelain
 - ❌ Phase 5 우회 (`SKIP_PLAN_DEV_FINISH`) 를 기본값처럼 사용
 - ❌ `PROGRESS_DRY_RUN=1` 을 기본값처럼 켜두기 (테스트 전용, 실제 push 억제됨)
 - ❌ 두 슬라이스가 같은 파일의 같은 영역 수정 — plan 단계에서 Slice File Map 으로 의존성 분석 후 순차 강등 또는 병합.
+- ❌ Phase 1-0 Explore 에서 `page.tsx` / `layout.tsx` 같은 상위 컨테이너 컴포넌트 제외 — 단축키·라우팅·전역 listener 중복 구현 회귀로 비용 폭증.
+- ❌ plan 에 cmux dispatch 의도된 슬라이스를 Phase 2 진입 후 "가벼우니 직접 Edit" 로 강등하면서 사용자에게 명시 공지 안 함 — Slice File Map 의 `Mode` 컬럼과 어긋남.
