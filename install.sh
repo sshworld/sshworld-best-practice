@@ -48,6 +48,7 @@ SCRIPTS=(
   "scripts/detect-pane-env.sh"
   "scripts/dispatch-slice-pane.sh"
   "scripts/plan-dev-session.sh"
+  "scripts/plan-dev-progress.sh"
   "scripts/finish-plan-dev.sh"
 )
 
