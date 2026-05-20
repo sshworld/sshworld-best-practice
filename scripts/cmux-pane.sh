@@ -311,6 +311,7 @@ do_send() {
       [ "$i" -lt "$ENTER_COUNT" ] && sleep 0.3
     done
   fi
+  return 0
 }
 
 do_capture() {
