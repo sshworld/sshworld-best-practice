@@ -317,7 +317,22 @@ SKIP_CMUX_CONTEXT_HOOK=1 bash scripts/tmux-pane.sh launch zsh
 export DISABLE_CMUX_CONTEXT_HOOK=1
 ```
 
-### 6) SessionStart inline
+### 6) track-cmux-edit-burst.sh (PreToolUse: Write|Edit)
+
+cmux 환경에서 Edit/Write 누적 횟수를 카운트해 임계치(기본 3회) 도달 시 `dispatch-slice-pane.sh --mode=cmux` 사용을 안내하는 advisory 출력. 5분 idle 시 자동 리셋. `dispatch-slice-pane.sh` launch 시 명시 리셋.
+
+```bash
+CMUX_EDIT_BURST_STRICT=1       # 차단 모드 (exit 2)
+CMUX_EDIT_BURST_THRESHOLD=N    # 임계치 조정
+SKIP_CMUX_EDIT_BURST=1         # 1회 우회
+DISABLE_CMUX_EDIT_BURST_HOOK=1 # 영구 비활성화
+```
+
+### 7) cmux-dispatch-hint.sh (SessionStart)
+
+cmux 환경 세션 시작 시 dispatch-first 패턴 안내를 stdout 으로 출력(additionalContext inject). 비-cmux 환경엔 출력 없음.
+
+### 8) SessionStart inline
 
 세션 시작 시 git worktree 목록 + 미커밋 변경 + **멀티플렉서 환경 1줄** 자동 출력.
 

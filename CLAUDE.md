@@ -55,6 +55,8 @@
 | `scripts/plan-dev-session.sh` | plan-dev 세션 marker 관리 (start/query/clear). start 시 start_ref, base_branch, work_branch, start_ts, start_pid, auto_branch 기록. detached HEAD 차단. 기존 살아있는 세션 재진입 안전 처리. |
 | `scripts/plan-dev-progress.sh` | plan-dev 진행률 cmux push 헬퍼 (start/tick/show). `PLAN_DEV_SESSION_BIN` / `CMUX_PANE_BIN` env 로 mock 가능. `PROGRESS_DRY_RUN=1` 로 notify/set-status dry-run. cmux 환경 외에서는 tick stdout 만 출력. |
 | `scripts/finish-plan-dev.sh` | develop/main 분기 push 자동화 + marker clear. `origin/develop` 있으면 feature branch push, 없으면 main 직접 push. branch 이름 충돌 시 suffix -2~-5 자동 부여. `SKIP_PLAN_DEV_FINISH` / `DISABLE_PLAN_DEV_FINISH` 우회 지원. |
+| `.claude/hooks/track-cmux-edit-burst.sh` | PreToolUse Write\|Edit. cmux env Edit/Write 누적 N회 advisory (기본 임계치 3). `CMUX_EDIT_BURST_STRICT=1` 시 차단(exit 2). mtime idle 기반 자동 리셋. dispatch-slice-pane.sh launch 시 명시 리셋. |
+| `.claude/hooks/cmux-dispatch-hint.sh` | SessionStart. cmux env 감지 시 dispatch-first 안내 stdout 출력 (additionalContext inject). 비-cmux 환경엔 출력 없음. |
 
 ## 추가 / 수정 체크리스트
 
@@ -97,6 +99,7 @@
 - ❌ Slice File Map 없이 슬라이스 분해 — rebase fast-forward 시 같은 파일 영역 충돌로 부모 수동 복구 비용 발생.
 - ❌ Dead code 판정 시 사용처 grep + 테스트 prop 직접 주입 확인 누락 — 부모가 prop 으로 set 하는 분기를 "도달 불가" 로 오판해 삭제하면 기존 테스트가 회귀로 catch.
 - ❌ 검증용 단순 curl / sleep 단독 호출 — Bash 자동 background 진입으로 동기 결과 못 받음. `timeout 5 curl ...` 또는 cmux browser eval 사용.
+- ❌ cmux 환경에서 슬라이스/멀티-파일 작업을 dispatch 없이 직접 Edit 으로 일관 — `track-cmux-edit-burst` advisory 무시 누적은 사용자 인프라 무력화 신호.
 
 ## 환경변수 (tmux / cmux 통합)
 
@@ -129,6 +132,12 @@
 | `SKIP_CMUX_CONTEXT_HOOK` | unset | `enforce-cmux-context.sh` 1회 우회 (advisory 억제, exit 0 통과) |
 | `DISABLE_CMUX_CONTEXT_HOOK` | unset | `enforce-cmux-context.sh` 영구 비활성화 |
 | `CBP_SPLIT_POLICY` | unset (라운드로빈) | `cmux-pane.sh` grid split 방향 고정 (`down` 또는 `right`). unset 시 라운드로빈 (count 홀수→down, 짝수→right). Slice A3 에서 확장 예정. |
+| `CMUX_EDIT_BURST_THRESHOLD` | 3 | `track-cmux-edit-burst` hook 의 advisory 임계치 |
+| `CMUX_EDIT_BURST_IDLE_SEC` | 300 | `track-cmux-edit-burst` hook 의 자동 리셋 idle 초 |
+| `CMUX_EDIT_BURST_STRICT` | unset | `track-cmux-edit-burst` hook strict 모드 (exit 2 차단) |
+| `SKIP_CMUX_EDIT_BURST` | unset | `track-cmux-edit-burst` hook 1회 우회 |
+| `DISABLE_CMUX_EDIT_BURST_HOOK` | unset | `track-cmux-edit-burst` hook 영구 비활성화 |
+| `CBP_BURST_FILE` | unset | `track-cmux-edit-burst` hook 카운터 파일 경로 override (테스트 mock) |
 
 ## 향후 작업 (플러그인화)
 

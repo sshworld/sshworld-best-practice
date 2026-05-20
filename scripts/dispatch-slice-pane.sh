@@ -136,6 +136,21 @@ build_spec_prompt() {
     "$spec_path" "$slice" "$slice"
 }
 
+# launch 시작 시 cmux edit-burst 카운터 리셋 (track-cmux-edit-burst hook 과 연동)
+_cmux_burst_reset() {
+  [ -z "${CMUX_WORKSPACE_ID:-}" ] && return 0
+  local f
+  if [ -n "${CBP_BURST_FILE:-}" ]; then
+    f="$CBP_BURST_FILE"
+  else
+    local sanitized
+    sanitized=$(printf '%s' "$CMUX_WORKSPACE_ID" | tr ':/' '__')
+    f="${HOME}/.cache/cbp/edit-burst-${sanitized}.count"
+  fi
+  [ -f "$f" ] && rm -f "$f"
+  return 0
+}
+
 main() {
   local SLICE=""
   local SPEC_FILE=""
@@ -191,6 +206,9 @@ main() {
     echo "dispatch: subagent 모드는 dispatch-slice-pane.sh 미사용 — plan-dev Phase 2 의 Agent 호출로 진행" >&2
     exit 0
   fi
+
+  # cmux edit-burst 카운터 리셋 — dry-run 포함 항상 실행
+  _cmux_burst_reset
 
   # DRY_RUN 아닐 때만 spec-file 존재 검사
   if [ "${DISPATCH_DRY_RUN:-0}" != "1" ]; then
