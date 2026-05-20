@@ -95,6 +95,8 @@
 - ❌ `PROGRESS_DRY_RUN=1` 을 환경변수로 항상 켜두기 — 진행률이 push 되지 않아 cmux 좌측에 표시가 멈춤. 테스트 시 일회성으로만.
 - ❌ `dispatch-slice-pane.sh` 의 spec 본문을 `wrapper send` 로 inline 전송 — cmux send 에서 timeout 위험. 항상 spec-file 경로만 전달 + 자식에게 Read 지시.
 - ❌ Slice File Map 없이 슬라이스 분해 — rebase fast-forward 시 같은 파일 영역 충돌로 부모 수동 복구 비용 발생.
+- ❌ Dead code 판정 시 사용처 grep + 테스트 prop 직접 주입 확인 누락 — 부모가 prop 으로 set 하는 분기를 "도달 불가" 로 오판해 삭제하면 기존 테스트가 회귀로 catch.
+- ❌ 검증용 단순 curl / sleep 단독 호출 — Bash 자동 background 진입으로 동기 결과 못 받음. `timeout 5 curl ...` 또는 cmux browser eval 사용.
 
 ## 환경변수 (tmux / cmux 통합)
 

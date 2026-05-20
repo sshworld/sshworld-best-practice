@@ -86,3 +86,6 @@ dispatch 모드에서 자식 Claude 가 받는 spec-file 의 첫 줄/상단 블�
 - worktree 내에서 `git commit` / `git push` — 머지는 메인이 담당.
 - `cd` / `pushd` 로 worktree 밖으로 이동 금지. main repo 의 working tree 또는 다른 worktree 의 파일을 수정하면 부모가 cherry-pick 복구해야 함.
 - spec 의 "작업 디렉토리" 경로와 다른 worktree 에서 작업 금지.
+- 단순 `curl` / `sleep` 단독 호출 — Bash 자동 background 진입으로 동기적 검증 흐름이 끊김. 검증용 짧은 HTTP/CLI 명령은 다음 둘 중 하나:
+  - 명시적 `timeout 5 curl ...` (또는 적절한 짧은 timeout 수치) — Bash 자동 background 회피.
+  - 또는 cmux browser eval — 결과를 `String(JSON.stringify(...))` 로 강제.
