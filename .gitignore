@@ -26,6 +26,12 @@ Thumbs.db
 # tmux pane dispatcher artifacts
 .worktrees/
 
+# statusline-dashboard 캐시 (ccusage 결과 캐싱)
+.claude/cache/
+
+# dashboard 개인 설정 (예제만 commit, 실값은 로컬에만)
+.claude/dashboard-config.json
+
 # Node / Python (있다면)
 node_modules/
 __pycache__/

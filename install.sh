@@ -42,9 +42,11 @@ FILES=(
   "hooks/enforce-cmux-context.sh"
   "hooks/limit-child-panes.sh"
   "hooks/statusline-tokens.sh"
+  "hooks/statusline-dashboard.py"
   "hooks/token-stats.sh"
   "hooks/track-cmux-edit-burst.sh"
   "hooks/cmux-dispatch-hint.sh"
+  "dashboard-config.example.json"
 )
 
 # scripts/ 는 .claude/ 밖이라 별도 카테고리 (실행 권한 부여 대상)
@@ -120,7 +122,7 @@ do_install() {
 
     # hook 스크립트는 실행 권한 부여
     case "$rel" in
-      hooks/*.sh) chmod +x "$dest_file" ;;
+      hooks/*.sh|hooks/*.py) chmod +x "$dest_file" ;;
     esac
 
     echo "  ✓ $rel"
@@ -164,16 +166,19 @@ do_install() {
       else
         tmp_created="$(mktemp)"
         jq '
-          if has("hooks") then
+          (if has("hooks") then
             .hooks |= walk(
               if type == "object" and (.command? | type) == "string" then
                 .command |= gsub("\\$CLAUDE_PROJECT_DIR"; "$HOME")
               else . end
             )
-          else . end
+          else . end)
+          | (if has("statusLine") and (.statusLine.command? | type) == "string" then
+              .statusLine.command |= gsub("\\$CLAUDE_PROJECT_DIR"; "$HOME")
+            else . end)
         ' "$settings_src" > "$tmp_created"
         settings_processed="$tmp_created"
-        echo "  🔧 user scope: hook 경로를 \$HOME/.claude/hooks/... 로 변환"
+        echo "  🔧 user scope: hook / statusLine 경로를 \$HOME/.claude/... 로 변환"
       fi
     fi
 
@@ -194,6 +199,7 @@ do_install() {
         # 병합 정책:
         #   allow / deny: union (unique)
         #   hooks.<event>: 기존에 없는 event 키만 추가 (기존 event 의 hook 배열은 보존)
+        #   statusLine: 기존에 없으면 추가, 있으면 보존 (사용자 커스텀 우선)
         #   그 외 top-level 키: 기존 우선
         if jq -s '
           .[0] as $cur | .[1] as $new |
@@ -205,6 +211,9 @@ do_install() {
               | ($new.hooks // {}) as $nh
               | .hooks = reduce ($nh | keys[]) as $k ($ch; if has($k) then . else .[$k] = $nh[$k] end)
             )
+          | (if (.statusLine // null) == null and ($new.statusLine // null) != null
+             then .statusLine = $new.statusLine
+             else . end)
         ' "$settings_dest" "$settings_processed" > "$merged_tmp"; then
           cp "$settings_dest" "$settings_bak"
           mv "$merged_tmp" "$settings_dest"

@@ -29,8 +29,12 @@
 │   ├── track-cmux-edit-burst.sh # cmux env Edit/Write 누적 advisory (dispatch-first 유도)
 │   ├── cmux-dispatch-hint.sh # SessionStart — cmux env 안내 메시지 inject
 │   ├── statusline-tokens.sh  # (opt-in) 하단 status bar 모드 — 기본은 token-stats.sh 사용
+│   ├── statusline-dashboard.py # 모델/컨텍스트바/세션비용/5h·7d 사용률을 한 줄로 — ccusage 연동, 기본 statusLine
 │   └── token-stats.sh        # Stop hook 으로 직전 응답 토큰 사용량 + 캐시 히트율 inline 노출
-└── settings.json             # permissions(allow/deny) + hooks
+├── dashboard-config.example.json # statusline-dashboard 플랜 한도/캐시 TTL 템플릿
+└── settings.json             # permissions(allow/deny) + statusLine + hooks
+cmux/
+└── ghostty.conf.example      # cmux(내장 Ghostty) 폰트/테마 — ~/.config/ghostty/config 로 복사
 scripts/
 ├── tmux-pane.sh              # 얇은 tmux wrapper — launch/send/capture/wait-idle/kill/list/status
 ├── cmux-pane.sh              # 얇은 cmux wrapper — launch/send/capture/kill/list/cleanup/status + state file 헬퍼
@@ -294,6 +298,8 @@ export DISABLE_PANE_LIMIT_HOOK=1
 `DISABLE_TOKEN_STATS=1` 로 끄기.
 
 > ℹ️ `statusline-tokens.sh` 는 같은 데이터를 화면 하단 status bar 로 상시 표시하는 **opt-in 대안** — settings.json 의 `statusLine.command` 에 등록하고 `hooks.Stop` 에서 token-stats 제거해서 전환 가능. 기본은 Stop hook 의 inline 메시지.
+>
+> 본 repo 의 `settings.json` 은 별도로 **`statusline-dashboard.py`** 를 statusLine 으로 기본 등록 — 토큰 통계와는 다른 정보(모델/컨텍스트바/세션비용/5h·7d 사용률)를 보여줍니다. token-stats.sh (Stop) 와 dashboard (statusLine) 는 표시 위치가 달라서 충돌 없이 공존. 자세한 건 아래 「9) statusline-dashboard.py」.
 
 ### 5) enforce-cmux-context.sh (PreToolUse: Bash)
 
@@ -343,6 +349,77 @@ cmux 환경 세션 시작 시 dispatch-first 패턴 안내를 stdout 으로 출�
 ```
 
 `default` 환경(tmux/cmux 없음)이면 `(driver: subagent 모드 사용)` 으로 표시.
+
+### 9) statusline-dashboard.py (statusLine)
+
+화면 하단 status bar 에 **모델 / 컨텍스트 바 / 세션 비용 / 5h·7d 사용률** 을 한 줄로 상시 표시:
+
+```
+🤖 Opus │ ████░░░░░░ 42% │ 420K/1.0M │ $1.25 │ 5h: 23% (4h22m) │ 7d: 3%
+```
+
+| 칸 | 의미 | 데이터 소스 |
+|---|---|---|
+| 🤖 Opus | 모델 display name | statusLine stdin JSON `model.display_name` |
+| ████░░░░░░ 42% | 컨텍스트 진행률 (50%↓ 녹색 / 80%↓ 노랑 / 그 이상 빨강) | 트랜스크립트 마지막 assistant 메시지의 `usage.input + cache_read + cache_creation` |
+| 420K/1.0M | 사용 토큰 / 컨텍스트 윈도우 | `[1m]` 모델 · `exceeds_200k_tokens` · 실측치 기준 200K/1M 자동 전환 |
+| $1.25 | 세션 누적 비용 | statusLine stdin JSON `cost.total_cost_usd` |
+| 5h: 23% (4h22m) | 5시간 빌링 블록 사용률 + 잔여 시간 | `npx ccusage blocks --active --json --offline` (30s 캐시) |
+| 7d: 3% | 최근 7일 사용률 | `npx ccusage daily --since=<7d ago> --json --offline` (300s 캐시) |
+
+**Prerequisite**: `npx` (Node) — `ccusage` 자체는 `npx -y ccusage@latest` 로 자동 가져와짐. 첫 호출만 느리고 이후는 캐시.
+
+**플랜 한도 조정** (`%` 값 의미 있게 만들려면): `~/.claude/dashboard-config.json` 에 본인 플랜 기준 cost 한도 명시.
+
+```json
+{
+  "plan_5h_limit_usd": 30.0,   // Max 20x ≈ 30, Pro ≈ 5 같은 식으로 본인 한도 추정
+  "plan_7d_limit_usd": 200.0,
+  "context_window_default": 200000,
+  "context_window_1m": 1000000,
+  "bar_width": 10,
+  "blocks_ttl_seconds": 30,
+  "daily_ttl_seconds": 300
+}
+```
+
+설정 파일이 없으면 위 디폴트로 동작. 템플릿은 `.claude/dashboard-config.example.json` 참조.
+
+**캐시 위치**: `~/.claude/cache/statusline/` — ccusage 결과만 짧게 저장. 깃에 들어가지 않도록 `.gitignore` 에 포함.
+
+**비활성화**: settings.json 의 `statusLine` 블록 자체를 지우거나, 다른 command 로 교체 (예: `statusline-tokens.sh`).
+
+---
+
+## cmux 외형 (폰트 / 테마)
+
+cmux 는 내부 Ghostty 엔진으로 렌더하기 때문에 폰트·테마는 **Ghostty 표준 config** (`~/.config/ghostty/config`) 로 설정합니다. cmux 전용 설정 키는 없음.
+
+`cmux/ghostty.conf.example` 에 권장 구성 (Hack Nerd Font Mono + Apple SD Gothic Neo 한글 fallback + catppuccin-mocha) 이 들어 있습니다.
+
+```bash
+# 1) 폰트 설치 (NerdFont — ASCII + 아이콘 글리프)
+brew install --cask font-hack-nerd-font
+
+# 2) config 복사
+mkdir -p ~/.config/ghostty
+cp cmux/ghostty.conf.example ~/.config/ghostty/config
+
+# 3) cmux 재시작 또는 cmd+shift+, (Reload Configuration)
+```
+
+내용:
+
+```
+font-family = "Hack Nerd Font Mono"
+font-family = "Apple SD Gothic Neo"
+font-size = 14
+theme = catppuccin-mocha
+```
+
+Ghostty 는 `font-family` 라인을 여러 개 쓰면 글자 단위 fallback 체인으로 동작 — ASCII/기호는 Hack, 한글은 macOS 기본 한글 폰트로 자동 분기. 한글이 모노스페이스가 아니라 박스 그리기에서 살짝 어긋날 수 있는데, 그게 거슬리면 `font-family = "NanumGothicCoding"` (`brew install --cask font-nanum-gothic-coding`) 로 교체.
+
+테마 변경: `theme =` 값만 바꾸면 됨. 번들 테마 463종은 `ls /Applications/cmux.app/Contents/Resources/ghostty/themes/` 로 확인.
 
 ---
 

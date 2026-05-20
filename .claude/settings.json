@@ -65,6 +65,11 @@
       "Bash(tmux kill-server*)"
     ]
   },
+  "statusLine": {
+    "type": "command",
+    "command": "python3 $CLAUDE_PROJECT_DIR/.claude/hooks/statusline-dashboard.py",
+    "padding": 0
+  },
   "hooks": {
     "PreToolUse": [
       {

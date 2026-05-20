@@ -1,0 +1,11 @@
+{
+  "plan_5h_limit_usd": 30.0,
+  "plan_7d_limit_usd": 200.0,
+  "context_window_default": 200000,
+  "context_window_1m": 1000000,
+  "bar_width": 10,
+  "color": true,
+  "blocks_ttl_seconds": 30,
+  "daily_ttl_seconds": 300,
+  "ccusage_timeout_seconds": 12
+}
