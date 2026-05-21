@@ -60,7 +60,7 @@ scripts/
 ./install.sh uninstall project [TARGET_DIR]
 ```
 
-기존 파일이 있으면 `.bak.<ts>` 백업 후 덮어씁니다. `settings.json` 은 `jq` 가 있으면 **자동 병합** — `permissions.allow` / `permissions.deny` 는 union, `hooks.<event>` 는 기존 키 보존 + 누락 키만 추가. 충돌 위험 없는 정책이라 사용자 커스텀 hook 안 건드림. `INSTALL_NO_MERGE=1` 또는 `jq` 미설치 시 `settings.example.json` 로 폴백 (수동 병합 안내).
+기존 파일이 있으면 `.bak.<ts>` 백업 후 덮어씁니다. `settings.json` 은 `jq` 가 있으면 **자동 병합** — `permissions.allow` / `permissions.deny` 는 union, `hooks.<event>` 는 matcher/command 단위 union — 동일 matcher 안에서 기존 hook 보존하고 새 command 만 추가, 중복 command 는 dedup. 사용자 커스텀 hook 도 안 잃음. `INSTALL_NO_MERGE=1` 또는 `jq` 미설치 시 `settings.example.json` 로 폴백 (수동 병합 안내).
 
 ---
 

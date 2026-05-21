@@ -12,7 +12,7 @@
 #   - commands/agents/skills/hooks 디렉토리의 파일을 복사. 기존 파일 있으면 .bak.<ts> 로 백업.
 #   - settings.json 이 있으면 jq 로 자동 병합:
 #       * permissions.allow / permissions.deny: union (unique)
-#       * hooks.<event>: 기존에 없는 event 키만 추가 (기존 hook 은 덮어쓰지 않음)
+#       * hooks.<event>: matcher/command 단위 union — 동일 matcher 의 hooks 는 command 키로 dedup, 기존 hook 보존
 #       * 그 외 top-level 키: 기존 우선
 #     INSTALL_NO_MERGE=1 → 기존 동작 복원 (example 만 복사하고 수동 병합 안내).
 #     jq 미설치 → 자동 병합 불가, example 만 복사 + 안내.
@@ -193,17 +193,34 @@ do_install() {
         settings_bak="$settings_dest.bak.$TS"
         # 병합 정책:
         #   allow / deny: union (unique)
-        #   hooks.<event>: 기존에 없는 event 키만 추가 (기존 event 의 hook 배열은 보존)
+        #   hooks.<event>: matcher/command 단위 union (기존 matcher 보존, 새 command 만 추가, dedup)
         #   그 외 top-level 키: 기존 우선
         if jq -s '
           .[0] as $cur | .[1] as $new |
           $cur
           | .permissions.allow = (((.permissions.allow // []) + ($new.permissions.allow // [])) | unique)
           | .permissions.deny  = (((.permissions.deny  // []) + ($new.permissions.deny  // [])) | unique)
-          | (
+          | .hooks = (
               ($cur.hooks // {}) as $ch
               | ($new.hooks // {}) as $nh
-              | .hooks = reduce ($nh | keys[]) as $k ($ch; if has($k) then . else .[$k] = $nh[$k] end)
+              | (($ch | keys_unsorted) + (($nh | keys_unsorted) - ($ch | keys_unsorted))) as $events
+              | reduce $events[] as $e ({}; .[$e] = (
+                  ($ch[$e] // []) as $cur_arr
+                  | ($nh[$e] // []) as $new_arr
+                  | (
+                      ($cur_arr | map(.matcher // ""))
+                      + (($new_arr | map(.matcher // "")) - ($cur_arr | map(.matcher // "")))
+                    ) as $matchers
+                  | reduce $matchers[] as $m ([]; . + [{
+                      matcher: $m,
+                      hooks: (
+                        (($cur_arr | map(select((.matcher // "") == $m)) | map(.hooks // []) | add) // []) as $cur_hooks
+                        | (($new_arr | map(select((.matcher // "") == $m)) | map(.hooks // []) | add) // []) as $new_hooks
+                        | ($cur_hooks | map(.command)) as $cur_cmds
+                        | $cur_hooks + ($new_hooks | map(select(.command as $c | $cur_cmds | index($c) | not)))
+                      )
+                    }])
+                ))
             )
         ' "$settings_dest" "$settings_processed" > "$merged_tmp"; then
           cp "$settings_dest" "$settings_bak"
