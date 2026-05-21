@@ -115,12 +115,19 @@ scripts/plan-dev-progress.sh start --total=<N>
 - (c) classifier/sandbox 가 권한 거부 메시지에 "사용자에게 설명/확인" 안내를 포함하면 그대로 따른다. 자동 fallback 금지.
 - (d) 사용자가 명시 선택한 mode 의 **핵심 가치** (cmux=시각화, subagent=토큰 추적, pane=tmux 격리) 를 날리는 fallback 결정은 **AskUserQuestion 으로 확인**. 자동 결정 금지.
 
+#### Spec 파일 위치 (컨벤션)
+
+- **위치**: `.claude/specs/<slug>.spec.md` (slug = `--slice=<slug>` 와 동일 kebab-case)
+- **명명**: `<slug>.spec.md` 접미사 사용
+- **추적**: commit 가능 (`b2ad060` 의 reference spec 들처럼 보존 OK). 일회용도 무방, 사용자가 정리.
+- **금지**: `/tmp/<slug>-spec.md` 같은 외부 임시 디렉토리 — classifier 가 같은 turn 의 Write 추적 못 해 dispatch 거부될 수 있음.
+
 호출 예:
 ```bash
 scripts/dispatch-slice-pane.sh \
   --slice=<kebab> \
   --type=<feat|fix|refactor|test|docs|chore> \
-  --spec-file=<spec.md> \
+  --spec-file=.claude/specs/<kebab>.spec.md \
   [--mode=auto|cmux|tmux|subagent]   [--model=<alias>]
 # stdout: {"pane":"...","worktree":"...","branch":"<type>/<slug>","driver":"tmux|cmux"}
 ```
@@ -233,3 +240,4 @@ git worktree list --porcelain
 - ❌ 검색 권한 거부를 실행 권한 거부로 단정 — system-reminder / CLAUDE.md / 메모리에 절대경로 노출돼 있으면 그 경로로 직접 호출 시도.
 - ❌ classifier/sandbox "사용자에게 설명" 안내 무시하고 자동 fallback — 권한 확장 또는 우회 명시 요청 필요.
 - ❌ 작업 중 발견한 별개 버그를 단발 보고만 하고 다음 turn 으로 떠넘기기 — 임시 cleanup 가능하면 즉시 수행 + AskUserQuestion 으로 follow-up plan-dev 진입 여부 확인.
+- ❌ dispatch spec-file 을 `/tmp/<slug>-spec.md` 등 repo 밖 임시 디렉토리에 쓰기 — classifier 가 같은 turn 의 Write 추적 못 해 dispatch 거부 위험. `.claude/specs/<slug>.spec.md` 사용.

@@ -100,6 +100,7 @@
 - ❌ Dead code 판정 시 사용처 grep + 테스트 prop 직접 주입 확인 누락 — 부모가 prop 으로 set 하는 분기를 "도달 불가" 로 오판해 삭제하면 기존 테스트가 회귀로 catch.
 - ❌ 검증용 단순 curl / sleep 단독 호출 — Bash 자동 background 진입으로 동기 결과 못 받음. `timeout 5 curl ...` 또는 cmux browser eval 사용.
 - ❌ cmux 환경에서 슬라이스/멀티-파일 작업을 dispatch 없이 직접 Edit 으로 일관 — `track-cmux-edit-burst` advisory 무시 누적은 사용자 인프라 무력화 신호.
+- ❌ dispatch spec-file 을 `/tmp/<slug>-spec.md` 등 repo 밖에 두기 — classifier transcript-blind 시 dispatch 거부 위험. `.claude/specs/<slug>.spec.md` 컨벤션 사용.
 
 ## 환경변수 (tmux / cmux 통합)
 

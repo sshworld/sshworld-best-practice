@@ -2,9 +2,12 @@
 # dispatch-slice-pane.sh — implementor 슬라이스를 tmux/cmux pane/workspace 에서 실행하기 위한 spawner.
 #
 # 사용:
-#   dispatch-slice-pane.sh --slice=<kebab> --spec-file=<path> \
+#   dispatch-slice-pane.sh --slice=<kebab> --spec-file=.claude/specs/<kebab>.spec.md \
 #                          [--worktree=<path>] [--mode=tmux|cmux|pane|auto|subagent] \
 #                          [--model=<alias>] [--type=feat|fix|refactor|test|docs|chore]
+#
+# 권장 spec-file 위치: .claude/specs/<slug>.spec.md (kebab-case slug + .spec.md 접미사).
+# /tmp/ 등 repo 밖 위치는 classifier transcript-blind 시 dispatch 거부될 수 있어 비권장.
 #
 # --mode 옵션 (driver 선택):
 #   tmux      — tmux pane dispatch (tmux-cli 또는 tmux-pane.sh wrapper)
@@ -46,9 +49,11 @@ set -uo pipefail
 
 usage() {
   cat >&2 <<'USAGE'
-dispatch-slice-pane.sh --slice=<kebab> --spec-file=<path> \
+dispatch-slice-pane.sh --slice=<kebab> --spec-file=.claude/specs/<kebab>.spec.md \
                        [--worktree=<path>] [--mode=tmux|cmux|pane|auto|subagent] \
                        [--model=<alias>] [--type=feat|fix|refactor|test|docs|chore]
+
+권장 spec-file 위치: .claude/specs/<slug>.spec.md (kebab-case + .spec.md).
 
 모드:
   tmux / pane  tmux pane dispatch (기본, 기존 호환)
