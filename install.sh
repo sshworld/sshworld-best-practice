@@ -167,7 +167,7 @@ do_install() {
           if has("hooks") then
             .hooks |= walk(
               if type == "object" and (.command? | type) == "string" then
-                .command |= gsub("\\$CLAUDE_PROJECT_DIR"; "$HOME")
+                .command |= gsub("\\$\\{?CLAUDE_PROJECT_DIR\\}?"; "$HOME")
               else . end
             )
           else . end
