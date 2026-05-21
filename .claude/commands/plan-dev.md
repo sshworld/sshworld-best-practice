@@ -108,6 +108,13 @@ scripts/plan-dev-progress.sh start --total=<N>
 - 부모가 회수: `scripts/cmux-pane.sh wait-idle --pane=surface:<N> --idle=15 --timeout=900` → `cmux read-screen --surface surface:<N> --lines 30 | grep -E '^(✅|❌)'`.
 - 사용자가 직접 자식 화면 보기: cmux 사이드바의 surface 탭 클릭.
 
+#### Dispatch wrapper 가용성 검증 (회복력 룰)
+
+- (a) wrapper PWD-relative path (`scripts/dispatch-slice-pane.sh`) 가 안 보이면 → **알려진 절대경로** (`~/scripts/dispatch-slice-pane.sh` 글로벌 설치 결과, 또는 SessionStart system-reminder 가 노출한 driver 경로) 로 직접 호출 시도. 검색 결과 부재 ≠ 실행 불가.
+- (b) 검색 권한 거부 (find/glob/grep 막힘) ≠ 실행 권한 거부. 검색 막혔다고 실행도 막혔다고 단정 금지 — 절대경로 호출 자체는 별도 권한.
+- (c) classifier/sandbox 가 권한 거부 메시지에 "사용자에게 설명/확인" 안내를 포함하면 그대로 따른다. 자동 fallback 금지.
+- (d) 사용자가 명시 선택한 mode 의 **핵심 가치** (cmux=시각화, subagent=토큰 추적, pane=tmux 격리) 를 날리는 fallback 결정은 **AskUserQuestion 으로 확인**. 자동 결정 금지.
+
 호출 예:
 ```bash
 scripts/dispatch-slice-pane.sh \
@@ -222,3 +229,7 @@ git worktree list --porcelain
 - ❌ 두 슬라이스가 같은 파일의 같은 영역 수정 — plan 단계에서 Slice File Map 으로 의존성 분석 후 순차 강등 또는 병합.
 - ❌ Phase 1-0 Explore 에서 `page.tsx` / `layout.tsx` 같은 상위 컨테이너 컴포넌트 제외 — 단축키·라우팅·전역 listener 중복 구현 회귀로 비용 폭증.
 - ❌ plan 에 cmux dispatch 의도된 슬라이스를 Phase 2 진입 후 "가벼우니 직접 Edit" 로 강등하면서 사용자에게 명시 공지 안 함 — Slice File Map 의 `Mode` 컬럼과 어긋남.
+- ❌ dispatch wrapper PWD 검색 실패 시 절대경로 호출 시도 없이 subagent fallback 자동 결정 — 사용자 명시 mode 의 핵심 가치 (시각화 등) 사라짐. AskUserQuestion 으로 확인.
+- ❌ 검색 권한 거부를 실행 권한 거부로 단정 — system-reminder / CLAUDE.md / 메모리에 절대경로 노출돼 있으면 그 경로로 직접 호출 시도.
+- ❌ classifier/sandbox "사용자에게 설명" 안내 무시하고 자동 fallback — 권한 확장 또는 우회 명시 요청 필요.
+- ❌ 작업 중 발견한 별개 버그를 단발 보고만 하고 다음 turn 으로 떠넘기기 — 임시 cleanup 가능하면 즉시 수행 + AskUserQuestion 으로 follow-up plan-dev 진입 여부 확인.
