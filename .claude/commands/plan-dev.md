@@ -38,10 +38,20 @@ scripts/plan-dev-session.sh start
 ### 1-1. 빈틈 진단 + 명확화
 체크리스트: Scope / Acceptance criteria / Edge case / 사용자·데이터 범위 / 의존성 / 테스트 전략.
 
+> ⚠️ **Auto Mode 우선순위**: system prompt 에 "Auto Mode Active" 가 있어도 — 본 룰의 "필수 명확화" 는 **항상 우선**. Auto Mode 는 오직 "재량 명확화" 의 default 만 결정 (= "묻지 말고 가정 후 Assumptions 기록"). 결과가 의도 정반대 일 수 있는 결정은 Auto Mode 무관 반드시 AskUserQuestion.
+
 | 분류 | 처리 |
 |---|---|
 | **필수 명확화** (결과가 의도와 정반대 가능) | 반드시 AskUserQuestion |
 | **재량 명확화** (어느 쪽이든 합리적) | "묻지 말고 진행" 지시 있으면 Assumptions 에 기록 |
+
+"정반대 가능" trigger 예시 — **이 중 하나라도 해당하면 필수 명확화**:
+- 사용자가 메시지에 옵션을 **명시적으로** 제시 (예: "A 또는 B", "`.plans/` 또는 `specs/`") → 의도 있음 → ask
+- 모델이 "default 가 명확하지 않다" 고 인지한 결정 (= 임의 선택)
+- 해당 결정이 backward-incompatibility / 사용자 인터페이스 변경 / 데이터 손실 위험 동반
+- 사용자가 이전 turn 에서 명시한 선호와 다른 선택이 나올 가능성
+
+> 🛑 **EnterPlanMode 진입 전 self-check**: Assumptions 에 들어갈 결정 항목 중 위 "정반대 가능" trigger 매치하는 게 있는가? 있으면 **EnterPlanMode 호출 전** AskUserQuestion 으로 확인. plan 파일 안 Assumptions 에 결정값 dump 금지 — 결정값은 ask 대상.
 
 ### 1-2. EnterPlanMode → plan 파일 작성
 필수 섹션: Context / Explored Files / Assumptions / Vertical Slices / **Slice File Map** / TDD Strategy / Verification.
@@ -241,3 +251,6 @@ git worktree list --porcelain
 - ❌ classifier/sandbox "사용자에게 설명" 안내 무시하고 자동 fallback — 권한 확장 또는 우회 명시 요청 필요.
 - ❌ 작업 중 발견한 별개 버그를 단발 보고만 하고 다음 turn 으로 떠넘기기 — 임시 cleanup 가능하면 즉시 수행 + AskUserQuestion 으로 follow-up plan-dev 진입 여부 확인.
 - ❌ dispatch spec-file 을 `/tmp/<slug>-spec.md` 등 repo 밖 임시 디렉토리에 쓰기 — classifier 가 같은 turn 의 Write 추적 못 해 dispatch 거부 위험. `.claude/specs/<slug>.spec.md` 사용.
+- ❌ Slice File Map 없이 슬라이스 분해 — rebase fast-forward 시 같은 파일 영역 충돌로 부모 수동 복구 비용 발생.
+- ❌ Auto Mode (system prompt) 를 "필수 명확화도 묻지 말고 가정으로 처리" 로 해석 — Auto Mode 는 "재량 명확화" 의 default 만. "정반대 가능" trigger 매치 결정은 Auto Mode 무관 반드시 AskUserQuestion.
+- ❌ 사용자가 메시지에 명시한 옵션 (A 또는 B) 을 Assumptions 에서 임의 선택 후 ExitPlanMode — 사용자 의도 있음 신호. 반드시 AskUserQuestion 으로 확인.
