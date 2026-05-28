@@ -26,6 +26,9 @@ Thumbs.db
 # tmux pane dispatcher artifacts
 .worktrees/
 
+# Claude Code built-in subagent worktrees (agent-*/worktree-agent-* 브랜치)
+.claude/worktrees/
+
 # Node / Python (있다면)
 node_modules/
 __pycache__/
