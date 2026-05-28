@@ -133,6 +133,8 @@
 | `SKIP_CMUX_CONTEXT_HOOK` | unset | `enforce-cmux-context.sh` 1회 우회 (advisory 억제, exit 0 통과) |
 | `DISABLE_CMUX_CONTEXT_HOOK` | unset | `enforce-cmux-context.sh` 영구 비활성화 |
 | `CBP_SPLIT_POLICY` | unset (라운드로빈) | `cmux-pane.sh` grid split 방향 고정 (`down` 또는 `right`). unset 시 라운드로빈 (count 홀수→down, 짝수→right). Slice A3 에서 확장 예정. |
+| `CBP_DISABLE_WARMUP` | unset | `cmux-pane.sh launch` 의 PTY warmup (surface 생성 후 send-key Enter + sleep) 끄기. 신규 surface 가 PTY detached 상태로 첫 send 를 swallow 하는 케이스 우회용 (디폴트 on). |
+| `CBP_WARMUP_SLEEP` | 0.5 | `cmux-pane.sh launch` PTY warmup 의 sleep 초. |
 | `CMUX_EDIT_BURST_THRESHOLD` | 3 | `track-cmux-edit-burst` hook 의 advisory 임계치 |
 | `CMUX_EDIT_BURST_IDLE_SEC` | 300 | `track-cmux-edit-burst` hook 의 자동 리셋 idle 초 |
 | `CMUX_EDIT_BURST_STRICT` | unset | `track-cmux-edit-burst` hook strict 모드 (exit 2 차단) |

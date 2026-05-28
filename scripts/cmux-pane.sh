@@ -287,6 +287,13 @@ _do_launch_grid() {
   # rename-tab (stdout/stderr 모두 redirect — rename-tab 이 OK 한 줄 stdout 출력하므로)
   "$CMUX_BIN" rename-tab --surface "$surface_ref" "$name" >/dev/null 2>&1 || true
 
+  # PTY warmup — surface 신규 생성 후 underlying tty 가 첫 send 입력을 swallow 하는 경우 우회.
+  # send-key Enter 로 PTY 강제 attach + 짧은 sleep. 우회: CBP_DISABLE_WARMUP=1.
+  if [ "${CBP_DISABLE_WARMUP:-0}" != "1" ]; then
+    "$CMUX_BIN" send-key --surface "$surface_ref" Enter >/dev/null 2>&1 || true
+    sleep "${CBP_WARMUP_SLEEP:-0.5}"
+  fi
+
   printf '%s\n' "$surface_ref"
 }
 
