@@ -61,9 +61,9 @@ scripts/plan-dev-session.sh start
 | Slice | Files | Mode | DOC_IMPACT |
 |---|---|---|---|
 | S1 | scripts/foo.sh, README.md | dispatch | updated |
-| S2 | .claude/agents/bar.md | direct-edit | none |
+| S2 | .claude/agents/bar.md | direct-edit (단일 파일 <20줄) | none |
 
-- `Mode` — `dispatch` (cmux/tmux/subagent dispatch) / `direct-edit` (부모가 직접 Edit) 중 슬라이스 처리 방식 plan 단계에 미리 결정.
+- `Mode` — **`Mode 컬럼 필수`**, 빈 셀 금지. `dispatch` (cmux/tmux/subagent dispatch) / `direct-edit` (부모가 직접 Edit) 중 슬라이스 처리 방식 plan 단계에 미리 결정. **`direct-edit 선택 시 1줄 justification 의무`** (예: "단일 파일 <20줄", "config 한 줄 변경", "시각화 가치 없음").
 - `DOC_IMPACT` — `none` / `updated` 중 plan 단계에 미리 결정 (commit 시점에 발견하면 hook 차단 후 재시도 비용).
 
 Slice 정의 시 **type 도 같이 결정**: `feat|fix|refactor|test|docs|chore`.
@@ -72,6 +72,13 @@ Slice 정의 시 **type 도 같이 결정**: `feat|fix|refactor|test|docs|chore`
 `Agent(subagent_type="Plan")` 으로 staff engineer 비평 수령. 5분 이내.
 
 **충돌 사전 점검**: Slice File Map 의 파일 교집합 존재 시 그 슬라이스들은 의존성 있음으로 분류 — 병렬 X, 순차로 강등하거나 단일 슬라이스로 병합.
+
+> 🚀 **dispatch default 룰** (cmux 환경): 모든 슬라이스는 **dispatch default**. `direct-edit` 은 명시 justification 필요. 사유 카테고리:
+> - 단일 파일 + 변경 <20줄 → direct-edit 허용
+> - 사용자가 화면에서 자식 진행을 볼 가치 없는 mechanical 변경 → direct-edit 허용
+> - 그 외 — Mode 컬럼에 `dispatch (cmux)` 명시 후 `scripts/dispatch-slice-pane.sh --mode=cmux` 호출.
+>
+> 본 repo 의 settings.json 은 cmux 환경에서 Edit/Write 누적 2회 시 hook 으로 차단 (`CMUX_EDIT_BURST_STRICT=1` inline). 우회는 SKIP env 명시.
 
 ### 1-4. ExitPlanMode → 사용자 승인 (MANDATORY)
 승인 전 Phase 2 진입 금지.
@@ -178,6 +185,8 @@ git worktree remove .worktrees/<slug>
 - rebase 완료 후 `verifier` 에이전트 호출.
 - 실패 시 원인 + 수정안 적용 → 재호출. 최대 5회.
 
+> 🔬 **통합 테스트 의무** (격리 dispatch 사용 시): rebase 후 verifier 는 **슬라이스별 격리 테스트** (각 worktree 안에서 PASS 확인된 것) + **전체 통합 테스트** (rebase 머지 후 부모 branch 에서 BUILD + TEST 전체 실행) 둘 다 실행. 격리 PASS 인데 통합 FAIL = 슬라이스 간 숨은 의존성 노출 — root cause 분석 후 fix 슬라이스 추가 또는 슬라이스 재분해. 격리만 보고 PASS 처리 금지.
+
 ## Phase 3.5 — Review (선택)
 
 verifier PASS 후 commit 전 코드 리뷰를 원하면 `reviewer` 에이전트 호출.
@@ -254,3 +263,5 @@ git worktree list --porcelain
 - ❌ Slice File Map 없이 슬라이스 분해 — rebase fast-forward 시 같은 파일 영역 충돌로 부모 수동 복구 비용 발생.
 - ❌ Auto Mode (system prompt) 를 "필수 명확화도 묻지 말고 가정으로 처리" 로 해석 — Auto Mode 는 "재량 명확화" 의 default 만. "정반대 가능" trigger 매치 결정은 Auto Mode 무관 반드시 AskUserQuestion.
 - ❌ 사용자가 메시지에 명시한 옵션 (A 또는 B) 을 Assumptions 에서 임의 선택 후 ExitPlanMode — 사용자 의도 있음 신호. 반드시 AskUserQuestion 으로 확인.
+- ❌ Slice File Map 의 Mode 컬럼 비워두거나 모호하게 ("적당히") 두기 — plan 단계 dispatch/direct-edit 분기 흐려져 Phase 2 진입 후 디폴트로 direct-edit 흐름. 빈 셀 = ExitPlanMode 차단 신호로 self-check.
+- ❌ cmux 환경에서 justification 없이 direct-edit 선택 — 시각화/병렬 가치 날림. dispatch default + direct-edit 사유 명시 룰 따름.
