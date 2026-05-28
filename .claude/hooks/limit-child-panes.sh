@@ -39,7 +39,7 @@ esac
 # 현재 자식 수 합산 카운트
 # 1) tmux: 관리 세션 'tmux-pane-mgr' 기준 (tmux 없으면 0)
 # 2) cmux: cbp- prefix workspace 카운트 (cmux 없거나 ping 실패 시 0)
-LIMIT="${CLAUDE_MAX_CHILD_PANES:-5}"
+LIMIT="${CLAUDE_MAX_CHILD_PANES:-99}"
 TMUX_COUNT=0
 CMUX_COUNT=0
 
