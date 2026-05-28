@@ -48,7 +48,7 @@ CUR=$((CUR + 1))
 echo "$CUR" > "$COUNT_FILE"
 
 # 임계치 체크
-THRESHOLD="${CMUX_EDIT_BURST_THRESHOLD:-5}"
+THRESHOLD="${CMUX_EDIT_BURST_THRESHOLD:-50}"
 if [ "$CUR" -lt "$THRESHOLD" ]; then
   exit 0
 fi

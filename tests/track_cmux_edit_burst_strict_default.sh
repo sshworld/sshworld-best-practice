@@ -9,8 +9,8 @@ t_settings_no_inline_strict() {
   ! grep -F 'CMUX_EDIT_BURST_STRICT=1' "$REPO/.claude/settings.json"
 }
 
-t_hook_threshold_default_5() {
-  grep -F 'CMUX_EDIT_BURST_THRESHOLD:-5' "$REPO/.claude/hooks/track-cmux-edit-burst.sh" >/dev/null
+t_hook_threshold_default_50() {
+  grep -F 'CMUX_EDIT_BURST_THRESHOLD:-50' "$REPO/.claude/hooks/track-cmux-edit-burst.sh" >/dev/null
 }
 
 t_skip_advisory_message() {
@@ -45,7 +45,7 @@ t_hook_pass_under_threshold() {
   git -C $fake_repo init -q
   git -C $fake_repo commit --allow-empty -q -m init 2>/dev/null
   local count_file=$tmp/burst.count
-  echo 3 > $count_file
+  echo 30 > $count_file
   local payload='{"tool_name":"Edit"}'
   CMUX_WORKSPACE_ID=test-ws \
   CBP_BURST_FILE=$count_file \
@@ -54,7 +54,7 @@ t_hook_pass_under_threshold() {
   local after_count=$(cat $count_file)
   rm -rf $tmp
   # 4회: 임계치 5 미만 → 메시지 없이 exit 0
-  [ "$exit_code" = "0" ] && [ "$after_count" = "4" ]
+  [ "$exit_code" = "0" ] && [ "$after_count" = "31" ]
 }
 
 t_hook_advisory_only_default() {
@@ -64,7 +64,7 @@ t_hook_advisory_only_default() {
   git -C $fake_repo init -q
   git -C $fake_repo commit --allow-empty -q -m init 2>/dev/null
   local count_file=$tmp/burst.count
-  echo 5 > $count_file  # 이미 5
+  echo 50 > $count_file  # 이미 5
   local payload='{"tool_name":"Edit"}'
   CMUX_WORKSPACE_ID=test-ws \
   CBP_BURST_FILE=$count_file \
@@ -73,7 +73,7 @@ t_hook_advisory_only_default() {
   local after_count=$(cat $count_file)
   rm -rf $tmp
   # 6회째: advisory (stderr) + exit 0 (차단 아님)
-  [ "$exit_code" = "0" ] && [ "$after_count" = "6" ]
+  [ "$exit_code" = "0" ] && [ "$after_count" = "51" ]
 }
 
 t_hook_strict_env_still_blocks() {
@@ -83,7 +83,7 @@ t_hook_strict_env_still_blocks() {
   git -C $fake_repo init -q
   git -C $fake_repo commit --allow-empty -q -m init 2>/dev/null
   local count_file=$tmp/burst.count
-  echo 5 > $count_file
+  echo 50 > $count_file
   local payload='{"tool_name":"Edit"}'
   CMUX_WORKSPACE_ID=test-ws \
   CBP_BURST_FILE=$count_file \
@@ -96,7 +96,7 @@ t_hook_strict_env_still_blocks() {
 }
 
 run "settings.json inline strict 부재" t_settings_no_inline_strict
-run "hook 디폴트 임계치 5" t_hook_threshold_default_5
+run "hook 디폴트 임계치 50" t_hook_threshold_default_50
 run "SKIP 메시지 권고 보존" t_skip_advisory_message
 run "자식 worktree skip" t_hook_skips_in_child_worktree
 run "임계치 미만 silently pass" t_hook_pass_under_threshold

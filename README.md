@@ -329,7 +329,7 @@ cmux 환경에서 Edit/Write 누적 횟수를 카운트해 임계치(기본 2회
 
 ```bash
 CMUX_EDIT_BURST_STRICT=1       # 차단 모드 (exit 2, 디폴트 unset)
-CMUX_EDIT_BURST_THRESHOLD=N    # 임계치 조정 (디폴트 5)
+CMUX_EDIT_BURST_THRESHOLD=N    # 임계치 조정 (디폴트 50)
 SKIP_CMUX_EDIT_BURST=1         # 1회 우회
 DISABLE_CMUX_EDIT_BURST_HOOK=1 # 영구 비활성화
 ```

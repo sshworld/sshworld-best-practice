@@ -117,7 +117,7 @@ test -x scripts/foo.sh
 > - 사용자가 화면에서 자식 진행을 볼 가치 없는 mechanical 변경 → direct-edit 허용
 > - 그 외 — Mode 컬럼에 `dispatch (cmux)` 명시 후 `scripts/dispatch-slice-pane.sh --mode=cmux` 호출.
 >
-> 본 repo 의 settings.json 의 cmux Edit/Write 누적 hook 은 **advisory only** (디폴트 임계치 5). 6번째부터 stderr 메시지만 — 차단 없음. `CMUX_EDIT_BURST_STRICT=1` env 명시 시만 차단 (회귀 가드 보존).
+> 본 repo 의 settings.json 의 cmux Edit/Write 누적 hook 은 **advisory only** (디폴트 임계치 50). 51번째부터 stderr 메시지만 — 차단 없음. `CMUX_EDIT_BURST_STRICT=1` env 명시 시만 차단 (회귀 가드 보존).
 
 ### 1-4. ExitPlanMode → 사용자 승인 (MANDATORY)
 승인 전 Phase 2 진입 금지.
