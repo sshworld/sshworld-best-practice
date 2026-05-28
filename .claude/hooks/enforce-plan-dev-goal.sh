@@ -130,4 +130,97 @@ if [[ -n "${PLAN_DEV_GOAL_VERBOSE:-}" ]]; then
   echo "$TAG ✅ $PASS/$TOTAL passed" >&2
 fi
 
+# ── Agent layer (S1) ──────────────────────────────────────────────
+run_agent_layer() {
+  local plan_path="$1" session_file="$2" project_dir="$3"
+
+  if [[ -n "${DISABLE_GOAL_AGENT:-}" ]]; then
+    echo "$TAG agent layer disabled (DISABLE_GOAL_AGENT=1)" >&2
+    return 0
+  fi
+  if [[ -n "${SKIP_GOAL_AGENT:-}" ]]; then
+    echo "$TAG agent layer skipped (SKIP_GOAL_AGENT=1)" >&2
+    return 0
+  fi
+  if ! command -v claude &>/dev/null; then
+    echo "$TAG claude binary unavailable — agent layer skipped" >&2
+    return 0
+  fi
+
+  local sem_goal start_ref diff_stat log prompt agent_out agent_pass
+
+  sem_goal=$(awk '/[Ss]emantic goal/{flag=1; next} flag && /^##/{flag=0} flag' "$plan_path" | head -10)
+
+  start_ref=""
+  if command -v jq &>/dev/null; then
+    start_ref=$(jq -r '.start_ref // empty' "$session_file" 2>/dev/null || true)
+  fi
+  if [[ -z "$start_ref" ]] && command -v python3 &>/dev/null; then
+    start_ref=$(python3 -c "import json,sys; d=json.load(open(sys.argv[1])); print(d.get('start_ref',''))" "$session_file" 2>/dev/null || true)
+  fi
+  if [[ -z "$start_ref" ]]; then
+    echo "$TAG start_ref 없음 — agent layer skipped" >&2
+    return 0
+  fi
+
+  diff_stat=$(cd "$project_dir" && git diff "$start_ref..HEAD" --stat 2>/dev/null | tail -20 || true)
+  log=$(cd "$project_dir" && git log "$start_ref..HEAD" --oneline 2>/dev/null | head -20 || true)
+
+  prompt=$(cat <<PROMPTEOF
+You are goal-checker. Evaluate if Semantic goal is met by changes.
+
+Semantic goal:
+$sem_goal
+
+Commits:
+$log
+
+Diff stat:
+$diff_stat
+
+Output JSON only: {"pass": true|false, "missing": ["..."]}. No other text.
+PROMPTEOF
+)
+
+  if command -v timeout &>/dev/null; then
+    agent_out=$(timeout 30s claude -p --output-format text "$prompt" 2>/dev/null || true)
+  else
+    agent_out=$(claude -p --output-format text "$prompt" 2>/dev/null || true)
+  fi
+
+  local missing_file="/tmp/goal_agent_missing.$$"
+  agent_pass=$(printf '%s' "$agent_out" | python3 -c "
+import json,sys,re
+t = sys.stdin.read()
+m = re.search(r'\{.*?\}', t, re.DOTALL)
+if not m: sys.exit(2)
+try:
+    d = json.loads(m.group(0))
+    print('true' if d.get('pass') else 'false')
+    miss = d.get('missing', [])
+    if miss and not d.get('pass'):
+        print('---', file=sys.stderr)
+        for x in miss: print('- ' + str(x), file=sys.stderr)
+except Exception:
+    sys.exit(3)
+" 2>"$missing_file" || echo "parse-fail")
+
+  if [[ "$agent_pass" = "false" ]]; then
+    echo "$TAG ❌ agent layer: Semantic goal 미충족" >&2
+    cat "$missing_file" >&2 2>/dev/null || true
+    rm -f "$missing_file"
+    echo "$TAG 우회: SKIP_GOAL_AGENT=1 (1회) / DISABLE_GOAL_AGENT=1 (영구)" >&2
+    return 2
+  elif [[ "$agent_pass" = "true" ]]; then
+    if [[ -n "${PLAN_DEV_GOAL_VERBOSE:-}" ]]; then
+      echo "$TAG ✅ agent layer PASS" >&2
+    fi
+  else
+    echo "$TAG agent layer parse-fail — bash-only PASS" >&2
+  fi
+  rm -f "$missing_file"
+  return 0
+}
+run_agent_layer "$PLAN_PATH" "$SESSION_FILE" "$PROJECT_DIR" || exit $?
+
 exit 0
