@@ -35,6 +35,7 @@ FILES=(
   "agents/verifier.md"
   "agents/reviewer.md"
   "agents/commit-advisor.md"
+  "agents/goal-checker.md"
   "skills/fork/SKILL.md"
   "skills/tmux-orchestrate/SKILL.md"
   "hooks/enforce-test-first.sh"
