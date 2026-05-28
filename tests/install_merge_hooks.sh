@@ -134,5 +134,45 @@ run "T4 새 event 추가" t4_new_event
 run "T5 permissions 회귀" t5_perms
 run "T6 다른 top-level 키 보존" t6_other_top
 
+# T7: STRICT prepend dedup — 기존 plain hook + repo STRICT=1 inline 시, repo 가 winner (1라인만 + STRICT 포함)
+t7_strict_prepend_dedup() {
+  local TMP; TMP=$(mktemp -d); trap "rm -rf $TMP" RETURN
+  mk_existing_settings "$TMP" '{
+    "hooks": {
+      "PreToolUse": [
+        { "matcher": "Write|Edit",
+          "hooks": [{"type":"command","command":"$HOME/.claude/hooks/track-cmux-edit-burst.sh"}] }
+      ]
+    }
+  }'
+  HOME="$TMP" "$REPO/install.sh" user > /dev/null 2>&1 || return 1
+  local count
+  count=$(jq '[.hooks.PreToolUse[] | select(.matcher == "Write|Edit") | .hooks[] | select(.command | test("track-cmux-edit-burst\\.sh"))] | length' "$TMP/.claude/settings.json")
+  [ "$count" -eq 1 ] || return 1
+  jq -e '.hooks.PreToolUse[] | select(.matcher == "Write|Edit") | .hooks[] | select(.command | test("track-cmux-edit-burst\\.sh")) | .command | contains("CMUX_EDIT_BURST_STRICT=1")' \
+    "$TMP/.claude/settings.json" >/dev/null || return 1
+  return 0
+}
+
+# T8: 비-hook custom 명령 보존 — hooks/ 경로 아닌 사용자 custom 은 그대로
+t8_custom_non_hook_preserved() {
+  local TMP; TMP=$(mktemp -d); trap "rm -rf $TMP" RETURN
+  mk_existing_settings "$TMP" '{
+    "hooks": {
+      "PreToolUse": [
+        { "matcher": "Write|Edit",
+          "hooks": [{"type":"command","command":"my-custom-bash-script.sh"}] }
+      ]
+    }
+  }'
+  "$REPO/install.sh" project "$TMP" > /dev/null 2>&1 || return 1
+  jq -e '[.hooks.PreToolUse[] | select(.matcher == "Write|Edit") | .hooks[] | .command] | index("my-custom-bash-script.sh") | . != null' \
+    "$TMP/.claude/settings.json" >/dev/null || return 1
+  return 0
+}
+
+run "T7 STRICT prepend dedup (repo winner)" t7_strict_prepend_dedup
+run "T8 비-hook custom 명령 보존" t8_custom_non_hook_preserved
+
 echo "PASS=$PASS FAIL=$FAIL"
 [ "$FAIL" -eq 0 ] && echo "✅ all pass" || { echo "❌ FAILED: ${FAILED[*]}"; exit 1; }

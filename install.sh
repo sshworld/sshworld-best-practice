@@ -216,8 +216,11 @@ do_install() {
                       hooks: (
                         (($cur_arr | map(select((.matcher // "") == $m)) | map(.hooks // []) | add) // []) as $cur_hooks
                         | (($new_arr | map(select((.matcher // "") == $m)) | map(.hooks // []) | add) // []) as $new_hooks
-                        | ($cur_hooks | map(.command)) as $cur_cmds
-                        | $cur_hooks + ($new_hooks | map(select(.command as $c | $cur_cmds | index($c) | not)))
+                        | ($new_hooks | map((try (.command | capture("hooks/(?<n>[a-zA-Z0-9_.-]+\\.sh)").n)) // .command)) as $new_keys
+                        | ($cur_hooks | map(select(
+                            ((try (.command | capture("hooks/(?<n>[a-zA-Z0-9_.-]+\\.sh)").n)) // .command) as $k
+                            | $new_keys | index($k) | not
+                          ))) + $new_hooks
                       )
                     }])
                 ))
