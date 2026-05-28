@@ -76,7 +76,7 @@
           },
           {
             "type": "command",
-            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/track-cmux-edit-burst.sh"
+            "command": "CMUX_EDIT_BURST_STRICT=1 $CLAUDE_PROJECT_DIR/.claude/hooks/track-cmux-edit-burst.sh"
           }
         ]
       },

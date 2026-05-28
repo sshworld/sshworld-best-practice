@@ -321,7 +321,7 @@ export DISABLE_CMUX_CONTEXT_HOOK=1
 
 ### 6) track-cmux-edit-burst.sh (PreToolUse: Write|Edit)
 
-cmux 환경에서 Edit/Write 누적 횟수를 카운트해 임계치(기본 3회) 도달 시 `dispatch-slice-pane.sh --mode=cmux` 사용을 안내하는 advisory 출력. 5분 idle 시 자동 리셋. `dispatch-slice-pane.sh` launch 시 명시 리셋.
+cmux 환경에서 Edit/Write 누적 횟수를 카운트해 임계치(기본 2회) 도달 시 `dispatch-slice-pane.sh --mode=cmux` 사용을 안내하는 advisory 출력. 5분 idle 시 자동 리셋. `dispatch-slice-pane.sh` launch 시 명시 리셋.
 
 ```bash
 CMUX_EDIT_BURST_STRICT=1       # 차단 모드 (exit 2)
@@ -329,6 +329,8 @@ CMUX_EDIT_BURST_THRESHOLD=N    # 임계치 조정
 SKIP_CMUX_EDIT_BURST=1         # 1회 우회
 DISABLE_CMUX_EDIT_BURST_HOOK=1 # 영구 비활성화
 ```
+
+- **본 repo 의 settings.json**: `CMUX_EDIT_BURST_STRICT=1` 을 hook command 에 inline 으로 강제 → 본 repo 환경에서 임계치 도달 시 차단(exit 2). 우회는 `SKIP_CMUX_EDIT_BURST=1` / `DISABLE_CMUX_EDIT_BURST_HOOK=1`.
 
 ### 7) cmux-dispatch-hint.sh (SessionStart)
 

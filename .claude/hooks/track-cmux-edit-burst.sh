@@ -39,7 +39,7 @@ CUR=$((CUR + 1))
 echo "$CUR" > "$COUNT_FILE"
 
 # 임계치 체크
-THRESHOLD="${CMUX_EDIT_BURST_THRESHOLD:-3}"
+THRESHOLD="${CMUX_EDIT_BURST_THRESHOLD:-2}"
 if [ "$CUR" -lt "$THRESHOLD" ]; then
   exit 0
 fi
@@ -48,6 +48,7 @@ MSG=$(cat <<EOF
 ⚠️  cmux 환경 Edit/Write 누적 ${CUR}회 (임계치 ${THRESHOLD}) — dispatch 미사용 의심.
    가시화/병렬 가치가 있으면: scripts/dispatch-slice-pane.sh --mode=cmux --type=<type> --spec-file=<spec.md>
    소규모/직접 편집이 맞으면: 무시 (이 메시지는 advisory).
+   ↳ 우회하기 전: dispatch 선택지 (cmux-pane.sh launch) 를 의식적으로 검토했는지 확인.
 
 우회:
   SKIP_CMUX_EDIT_BURST=1         — 1회 우회

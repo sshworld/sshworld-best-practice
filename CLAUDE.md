@@ -55,7 +55,7 @@
 | `scripts/plan-dev-session.sh` | plan-dev 세션 marker 관리 (start/query/clear). start 시 start_ref, base_branch, work_branch, start_ts, start_pid, auto_branch 기록. detached HEAD 차단. 기존 살아있는 세션 재진입 안전 처리. |
 | `scripts/plan-dev-progress.sh` | plan-dev 진행률 cmux push 헬퍼 (start/tick/show). `PLAN_DEV_SESSION_BIN` / `CMUX_PANE_BIN` env 로 mock 가능. `PROGRESS_DRY_RUN=1` 로 notify/set-status dry-run. cmux 환경 외에서는 tick stdout 만 출력. |
 | `scripts/finish-plan-dev.sh` | develop/main 분기 push 자동화 + marker clear. `origin/develop` 있으면 feature branch push, 없으면 main 직접 push. branch 이름 충돌 시 suffix -2~-5 자동 부여. `SKIP_PLAN_DEV_FINISH` / `DISABLE_PLAN_DEV_FINISH` 우회 지원. |
-| `.claude/hooks/track-cmux-edit-burst.sh` | PreToolUse Write\|Edit. cmux env Edit/Write 누적 N회 advisory (기본 임계치 3). `CMUX_EDIT_BURST_STRICT=1` 시 차단(exit 2). mtime idle 기반 자동 리셋. dispatch-slice-pane.sh launch 시 명시 리셋. |
+| `.claude/hooks/track-cmux-edit-burst.sh` | PreToolUse Write\|Edit. cmux env Edit/Write 누적 N회 advisory (기본 임계치 2). `CMUX_EDIT_BURST_STRICT=1` 시 차단(exit 2). mtime idle 기반 자동 리셋. dispatch-slice-pane.sh launch 시 명시 리셋. |
 | `.claude/hooks/cmux-dispatch-hint.sh` | SessionStart. cmux env 감지 시 dispatch-first 안내 stdout 출력 (additionalContext inject). 비-cmux 환경엔 출력 없음. |
 
 ## 추가 / 수정 체크리스트
@@ -135,7 +135,7 @@
 | `CBP_SPLIT_POLICY` | unset (라운드로빈) | `cmux-pane.sh` grid split 방향 고정 (`down` 또는 `right`). unset 시 라운드로빈 (count 홀수→down, 짝수→right). Slice A3 에서 확장 예정. |
 | `CBP_DISABLE_WARMUP` | unset | `cmux-pane.sh launch` 의 PTY warmup (surface 생성 후 send-key Enter + sleep) 끄기. 신규 surface 가 PTY detached 상태로 첫 send 를 swallow 하는 케이스 우회용 (디폴트 on). |
 | `CBP_WARMUP_SLEEP` | 0.5 | `cmux-pane.sh launch` PTY warmup 의 sleep 초. |
-| `CMUX_EDIT_BURST_THRESHOLD` | 3 | `track-cmux-edit-burst` hook 의 advisory 임계치 |
+| `CMUX_EDIT_BURST_THRESHOLD` | 2 | `track-cmux-edit-burst` hook 의 advisory 임계치 |
 | `CMUX_EDIT_BURST_IDLE_SEC` | 300 | `track-cmux-edit-burst` hook 의 자동 리셋 idle 초 |
 | `CMUX_EDIT_BURST_STRICT` | unset | `track-cmux-edit-burst` hook strict 모드 (exit 2 차단) |
 | `SKIP_CMUX_EDIT_BURST` | unset | `track-cmux-edit-burst` hook 1회 우회 |
