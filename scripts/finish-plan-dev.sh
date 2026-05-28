@@ -18,6 +18,7 @@ set -uo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 GIT_PUSH_CMD="${GIT_PUSH_CMD:-git push}"
 PLAN_DEV_SESSION_BIN="${PLAN_DEV_SESSION_BIN:-$SCRIPT_DIR/plan-dev-session.sh}"
+CMUX_PANE_BIN="${CMUX_PANE_BIN:-$SCRIPT_DIR/cmux-pane.sh}"
 
 DRY_RUN=0
 REMOTE="origin"
@@ -142,6 +143,27 @@ if [ "$NEW_COMMITS" = "0" ]; then
   exit 0
 fi
 
+# ── cmux cleanup 헬퍼 (S3) ────────────────────────────────────────
+do_cmux_cleanup() {
+  if [ "${SKIP_PLAN_DEV_CMUX_CLEANUP:-0}" = "1" ]; then
+    echo "cmux cleanup skipped (SKIP_PLAN_DEV_CMUX_CLEANUP=1)" >&2
+    return 0
+  fi
+  if [ "${DISABLE_PLAN_DEV_CMUX_CLEANUP:-0}" = "1" ]; then
+    echo "cmux cleanup disabled (DISABLE_PLAN_DEV_CMUX_CLEANUP=1)" >&2
+    return 0
+  fi
+  if [ -z "${CMUX_WORKSPACE_ID:-}" ]; then
+    return 0  # cmux 환경 아님
+  fi
+  if [ ! -x "$CMUX_PANE_BIN" ]; then
+    echo "cmux-pane.sh 부재 — cleanup skip" >&2
+    return 0
+  fi
+  echo "finish-plan-dev: cmux 자식 surface cleanup 실행" >&2
+  "$CMUX_PANE_BIN" cleanup 2>&1 | sed 's/^/  /' >&2 || true
+}
+
 # ── clear marker 헬퍼 ─────────────────────────────────────────────
 
 clear_marker() {
@@ -207,6 +229,7 @@ if [ "$USE_DEVELOP_CASE" = "1" ]; then
 
   # push 실행
   if ${GIT_PUSH_CMD} -u "$REMOTE" "$FINAL_BRANCH"; then
+    do_cmux_cleanup
     clear_marker
     echo "pushed: $FINAL_BRANCH → $REMOTE (base=develop)"
   else
@@ -232,6 +255,7 @@ else
   fi
 
   if ${GIT_PUSH_CMD} "$REMOTE" "$CUR_BRANCH"; then
+    do_cmux_cleanup
     clear_marker
     echo "pushed: $CUR_BRANCH → $REMOTE (no develop)"
   else
