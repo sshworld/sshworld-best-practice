@@ -11,6 +11,15 @@ PAYLOAD=$(cat)
 
 [ -z "${CMUX_WORKSPACE_ID:-}" ] && exit 0
 
+# 자식 worktree 환경 감지 — false-positive 회피
+# git-dir != git-common-dir 이면 worktree 안 (자식 dispatch surface). 자식은 이미 dispatch 안에서
+# 작업 중이므로 hook 의 'dispatch 강제' 의미 없음 → skip.
+GIT_DIR=$(git rev-parse --git-dir 2>/dev/null || true)
+GIT_COMMON=$(git rev-parse --git-common-dir 2>/dev/null || true)
+if [ -n "$GIT_DIR" ] && [ -n "$GIT_COMMON" ] && [ "$GIT_DIR" != "$GIT_COMMON" ]; then
+  exit 0
+fi
+
 TOOL=$(printf '%s' "$PAYLOAD" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('tool_name',''))" 2>/dev/null || echo "")
 case "$TOOL" in Write|Edit) ;; *) exit 0 ;; esac
 
