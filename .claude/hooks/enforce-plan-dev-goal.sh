@@ -22,6 +22,14 @@ if [[ ! -f "$SESSION_FILE" ]]; then
   exit 0
 fi
 
+# Active dispatch worktree (자식 implementor 진행 중) → skip
+# Goal Statement 평가는 자식 작업 완료 전엔 자연히 미충족이므로 hook 차단 false-positive
+# `git worktree list --porcelain` 결과의 .worktrees/ 안 active worktree 만 감지 (stale dir 무시)
+ACTIVE_WT=$(git -C "$PROJECT_DIR" worktree list --porcelain 2>/dev/null | grep -c "^worktree.*\.worktrees/" || true)
+if [[ "${ACTIVE_WT:-0}" -gt 0 ]]; then
+  exit 0
+fi
+
 # Determine plan path
 if [[ -n "${PLAN_DEV_GOAL_PLAN_PATH:-}" ]]; then
   PLAN_PATH="$PLAN_DEV_GOAL_PLAN_PATH"
