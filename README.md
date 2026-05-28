@@ -26,7 +26,7 @@
 │   ├── enforce-doc-sync.sh   # commit 시점 DOC 영향 평가 강제
 │   ├── limit-child-panes.sh  # 자식 tmux pane spawn 상한 (CLAUDE_MAX_CHILD_PANES)
 │   ├── enforce-cmux-context.sh # cmux 안에서 tmux 계열 명령 시도 시 advisory warning
-│   ├── track-cmux-edit-burst.sh # cmux env Edit/Write 누적 advisory (dispatch-first 유도)
+│   ├── track-cmux-edit-burst.sh # cmux env Edit/Write 누적 advisory (dispatch-first 유도). 자식 worktree 감지 시 skip
 │   ├── cmux-dispatch-hint.sh # SessionStart — cmux env 안내 메시지 inject
 │   ├── statusline-tokens.sh  # (opt-in) 하단 status bar 모드 — 기본은 token-stats.sh 사용
 │   └── token-stats.sh        # Stop hook 으로 직전 응답 토큰 사용량 + 캐시 히트율 inline 노출
@@ -320,7 +320,7 @@ SKIP_CMUX_CONTEXT_HOOK=1 bash scripts/tmux-pane.sh launch zsh
 export DISABLE_CMUX_CONTEXT_HOOK=1
 ```
 
-### 6) track-cmux-edit-burst.sh (PreToolUse: Write|Edit)
+### 6) track-cmux-edit-burst.sh (PreToolUse: Write|Edit) — **자식 worktree 자동 skip**
 
 cmux 환경에서 Edit/Write 누적 횟수를 카운트해 임계치(기본 2회) 도달 시 `dispatch-slice-pane.sh --mode=cmux` 사용을 안내하는 advisory 출력. 5분 idle 시 자동 리셋. `dispatch-slice-pane.sh` launch 시 명시 리셋.
 
@@ -368,7 +368,7 @@ cmux 환경 세션 시작 시 dispatch-first 패턴 안내를 stdout 으로 출�
 | `DISPATCH_SKIP_CLEANUP=1` | off | dispatch-slice-pane.sh 가 main 진입 시 자식 pane 자동 정리 끄기 |
 | `DISPATCH_PERMISSION_MODE=<mode>` | `bypassPermissions` | dispatch-slice-pane.sh 가 자식 claude 에 `--permission-mode <mode>` flag 전달. `default` 시 flag 생략. `DISPATCH_CHILD_CMD` set 시 무시. |
 | `SKIP_PLAN_DEV_FINISH=1` | off | Phase 5 (finish-plan-dev.sh) 1회 우회 |
-| `SKIP_PLAN_DEV_GOAL=1` | off | Stop hook (enforce-plan-dev-goal.sh) 1회 우회 — Goal Statement loop bypass |
+| `SKIP_PLAN_DEV_GOAL=1` | off | Stop hook (enforce-plan-dev-goal.sh) 1회 우회 — Goal Statement loop bypass. 자식 dispatch worktree 진행 중에는 hook 자체가 자동 skip 하므로 보통 불필요. |
 | `DISABLE_PLAN_DEV_GOAL_HOOK=1` | off | Stop hook 영구 비활성화 |
 | `PLAN_DEV_GOAL_PLAN_PATH=<path>` | auto | hook 가 평가할 plan 파일 경로 override (테스트 mock) |
 | `PLAN_DEV_GOAL_SESSION_FILE=<path>` | `.git/plan-dev-session.json` | marker 파일 경로 override (테스트 mock) |
