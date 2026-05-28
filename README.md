@@ -75,7 +75,7 @@ scripts/
 자동 진행 흐름:
 0. **Session Start** (Phase 0): `plan-dev-session.sh start` 자동 호출 — start_ref, base_branch 기록
 1. **Explore**: 관련 파일 자동 스캔 — 단축키·라우팅·전역 listener 류 작업은 `page.tsx` / `layout.tsx` 같은 상위 컨테이너 컴포넌트 포함
-2. **빈틈 진단**: `AskUserQuestion` 으로 요구사항 명확화 반복
+2. **빈틈 진단**: `AskUserQuestion` 으로 요구사항 명확화 반복 (옵션 list 제시 시 plain text dump 금지)
 3. **EnterPlanMode**: plan 파일 작성 (200줄 이하 권장) + slice 별 type 결정 + Slice File Map 의 `Mode` / `DOC_IMPACT` 컬럼 미리 결정
 4. **Staff Engineer Plan Review**: Plan 서브에이전트 비평 (선택)
 5. **ExitPlanMode**: 사용자 승인
@@ -85,6 +85,7 @@ scripts/
 9. **Commit**: commit-advisor 다중 커밋 분석 → 한글 메시지 + `<type>/<slug>` 브랜치명 추천
 10. **Branch & Push** (Phase 5): `finish-plan-dev.sh` 로 develop/main 분기 push 자동화
 11. **Context 정리** (Phase 6): 다음 추천 명령 노출 + unlocked worktree-agent-* 자동 cleanup
+12. **Goal Loop** (자동, 백그라운드): plan 의 `## Goal Statement` 의 `<!-- machine-checks -->` bash block 을 Stop hook 가 매 model turn 종료 시 평가. 미충족 시 자동 다음 turn 재진입 (native /goal flow 자체 재현). 사용자 입력 0.
 
 ### 보조 — `/fork`
 
@@ -367,6 +368,11 @@ cmux 환경 세션 시작 시 dispatch-first 패턴 안내를 stdout 으로 출�
 | `DISPATCH_SKIP_CLEANUP=1` | off | dispatch-slice-pane.sh 가 main 진입 시 자식 pane 자동 정리 끄기 |
 | `DISPATCH_PERMISSION_MODE=<mode>` | `bypassPermissions` | dispatch-slice-pane.sh 가 자식 claude 에 `--permission-mode <mode>` flag 전달. `default` 시 flag 생략. `DISPATCH_CHILD_CMD` set 시 무시. |
 | `SKIP_PLAN_DEV_FINISH=1` | off | Phase 5 (finish-plan-dev.sh) 1회 우회 |
+| `SKIP_PLAN_DEV_GOAL=1` | off | Stop hook (enforce-plan-dev-goal.sh) 1회 우회 — Goal Statement loop bypass |
+| `DISABLE_PLAN_DEV_GOAL_HOOK=1` | off | Stop hook 영구 비활성화 |
+| `PLAN_DEV_GOAL_PLAN_PATH=<path>` | auto | hook 가 평가할 plan 파일 경로 override (테스트 mock) |
+| `PLAN_DEV_GOAL_SESSION_FILE=<path>` | `.git/plan-dev-session.json` | marker 파일 경로 override (테스트 mock) |
+| `PLAN_DEV_GOAL_VERBOSE=1` | off | PASS 도 stderr 에 요약 출력 |
 | `DISABLE_PLAN_DEV_FINISH=1` | off | Phase 5 영구 비활성화 |
 | `FINISH_AUTO_PUSH_WITHOUT_MARKER=1` | off | marker 없을 때 silent skip 대신 현재 HEAD branch 로 `git push -u origin` 자동 시도 |
 | `GIT_PUSH_CMD=<cmd>` | `git push` | finish-plan-dev.sh 의 push 명령 override (테스트용) |

@@ -56,6 +56,7 @@
 | `scripts/plan-dev-progress.sh` | plan-dev 진행률 cmux push 헬퍼 (start/tick/show). `PLAN_DEV_SESSION_BIN` / `CMUX_PANE_BIN` env 로 mock 가능. `PROGRESS_DRY_RUN=1` 로 notify/set-status dry-run. cmux 환경 외에서는 tick stdout 만 출력. |
 | `scripts/finish-plan-dev.sh` | develop/main 분기 push 자동화 + marker clear. `origin/develop` 있으면 feature branch push, 없으면 main 직접 push. branch 이름 충돌 시 suffix -2~-5 자동 부여. `SKIP_PLAN_DEV_FINISH` / `DISABLE_PLAN_DEV_FINISH` 우회 지원. |
 | `.claude/hooks/track-cmux-edit-burst.sh` | PreToolUse Write\|Edit. cmux env Edit/Write 누적 N회 advisory (기본 임계치 2). `CMUX_EDIT_BURST_STRICT=1` 시 차단(exit 2). mtime idle 기반 자동 리셋. dispatch-slice-pane.sh launch 시 명시 리셋. |
+| `.claude/hooks/enforce-plan-dev-goal.sh` | Stop hook. plan-dev-session marker 활성 + plan 파일 Goal Statement 의 `<!-- machine-checks -->` bash block 매 turn 종료 시 실행. 전부 PASS → exit 0 (Stop 허용) / 하나라도 fail → exit 2 + stderr reason → 모델 자동 다음 turn. native /goal 의 self-built 대체. |
 | `.claude/hooks/cmux-dispatch-hint.sh` | SessionStart. cmux env 감지 시 dispatch-first 안내 stdout 출력 (additionalContext inject). 비-cmux 환경엔 출력 없음. |
 
 ## 추가 / 수정 체크리스트
@@ -101,6 +102,9 @@
 - ❌ 검증용 단순 curl / sleep 단독 호출 — Bash 자동 background 진입으로 동기 결과 못 받음. `timeout 5 curl ...` 또는 cmux browser eval 사용.
 - ❌ cmux 환경에서 슬라이스/멀티-파일 작업을 dispatch 없이 직접 Edit 으로 일관 — `track-cmux-edit-burst` advisory 무시 누적은 사용자 인프라 무력화 신호.
 - ❌ dispatch spec-file 을 `/tmp/<slug>-spec.md` 등 repo 밖에 두기 — classifier transcript-blind 시 dispatch 거부 위험. `.claude/specs/<slug>.spec.md` 컨벤션 사용.
+- ❌ Goal Statement 에 `<!-- machine-checks -->` bash block 누락 — Stop hook 가 평가할 입력 없음 → exit 0 으로 통과해 loop 의미 상실. 형식 박스 그대로 따를 것.
+- ❌ Goal Statement 에 측정 불가 추상 표현 ("품질 향상", "안정성 강화") 만 박기 — Stop hook 가 평가 못 함 / false-positive. `grep` / `test` / `jq` / shell command 결과 기반 bash one-liner 만.
+- ❌ 옵션 list (A/B/C) 를 plain text 로 응답 끝에 dump 하고 turn 종료 — selection chip UI 가 안 떠 사용자 입력 비용 증가, plan-dev 흐름 끊김. AskUserQuestion 의무 (Phase 1-1 `정반대 가능` trigger 매치 시).
 
 ## 환경변수 (tmux / cmux 통합)
 
@@ -141,6 +145,11 @@
 | `SKIP_CMUX_EDIT_BURST` | unset | `track-cmux-edit-burst` hook 1회 우회 |
 | `DISABLE_CMUX_EDIT_BURST_HOOK` | unset | `track-cmux-edit-burst` hook 영구 비활성화 |
 | `CBP_BURST_FILE` | unset | `track-cmux-edit-burst` hook 카운터 파일 경로 override (테스트 mock) |
+| `SKIP_PLAN_DEV_GOAL` | unset | `enforce-plan-dev-goal.sh` Stop hook 1회 우회 — Goal Statement loop bypass |
+| `DISABLE_PLAN_DEV_GOAL_HOOK` | unset | `enforce-plan-dev-goal.sh` Stop hook 영구 비활성화 |
+| `PLAN_DEV_GOAL_PLAN_PATH` | auto | hook 가 평가할 plan 파일 경로 override (테스트 mock). 미지정 시 marker 의 plan_path 필드 또는 `~/.claude/plans/` 최신 mtime fallback |
+| `PLAN_DEV_GOAL_SESSION_FILE` | `.git/plan-dev-session.json` | marker 파일 경로 override (테스트 mock) |
+| `PLAN_DEV_GOAL_VERBOSE` | unset | PASS 도 stderr 에 요약 출력 |
 
 ## 향후 작업 (플러그인화)
 
