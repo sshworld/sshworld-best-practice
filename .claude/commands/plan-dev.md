@@ -50,11 +50,14 @@ scripts/plan-dev-session.sh start
 - 모델이 "default 가 명확하지 않다" 고 인지한 결정 (= 임의 선택)
 - 해당 결정이 backward-incompatibility / 사용자 인터페이스 변경 / 데이터 손실 위험 동반
 - 사용자가 이전 turn 에서 명시한 선호와 다른 선택이 나올 가능성
+- **사용자 선택을 요구하는 option list** (A/B/C 중 고르세요 형태) 를 제시하는 응답 — 반드시 AskUserQuestion 으로 전달 (plain text dump 금지). 단순 정보 enumeration ("다음 2가지 결과가 나옴: ...") 은 해당 없음.
 
 > 🛑 **EnterPlanMode 진입 전 self-check**: Assumptions 에 들어갈 결정 항목 중 위 "정반대 가능" trigger 매치하는 게 있는가? 있으면 **EnterPlanMode 호출 전** AskUserQuestion 으로 확인. plan 파일 안 Assumptions 에 결정값 dump 금지 — 결정값은 ask 대상.
 
+> 💡 **Phase 1-1 ↔ Phase 1-2 연결**: 1-1 의 Acceptance criteria 가 1-2 의 Goal Statement 의 source. 같은 항목을 측정 가능 form (grep/test/명령) 으로만 transform.
+
 ### 1-2. EnterPlanMode → plan 파일 작성
-필수 섹션: Context / Explored Files / Assumptions / Vertical Slices / **Slice File Map** / TDD Strategy / Verification.
+필수 섹션: Context / Explored Files / Assumptions / Vertical Slices / **Slice File Map** / TDD Strategy / Verification / **Goal Statement**.
 **Plan 파일 200줄 이하** — 넘으면 슬라이스 추가 분해.
 
 **Slice File Map** — 각 슬라이스의 산출 파일 목록 (Write/Edit 대상). rebase fast-forward 충돌 예방 목적. 형식:
@@ -67,6 +70,34 @@ scripts/plan-dev-session.sh start
 - `DOC_IMPACT` — `none` / `updated` 중 plan 단계에 미리 결정 (commit 시점에 발견하면 hook 차단 후 재시도 비용).
 
 Slice 정의 시 **type 도 같이 결정**: `feat|fix|refactor|test|docs|chore`.
+
+#### Goal Statement — plan-dev 자체 loop 의 gate
+
+**목적**: plan-dev workflow 가 native `/goal` 처럼 자체 loop 하는 mechanism. Stop hook (`enforce-plan-dev-goal.sh`) 가 매 model turn 종료 시점에 plan 파일의 `<!-- machine-checks -->` bash block 실행. 전부 PASS → Stop 허용. 하나라도 fail → exit 2 + stderr reason → 모델 자동 다음 turn (보완 작업). 사용자 `/goal` 입력 0.
+
+**출처**: Phase 1-1 의 Acceptance criteria 를 측정 가능 form 으로 transform.
+
+**형식** (plan 파일 마지막 섹션):
+~~~markdown
+## Goal Statement
+
+<!-- machine-checks -->
+~~~bash
+grep -c "X" file | awk '$1>=3{exit 0}{exit 1}'
+test -x scripts/foo.sh
+~~~
+<!-- /machine-checks -->
+
+**Semantic goal**: 한 문장 자연어 — commit-advisor 메시지 + 사람 가독성. hook 평가 대상 X.
+~~~
+
+**제약**:
+- machine-checks 라인 = bash one-liner (exit 0 = PASS)
+- **측정 가능** 만 — `grep` / `test` / `jq` / shell command 결과 기반
+- 추상 표현 금지 (e.g. "품질 향상" ✗, `grep -c "X" file` ≥ 3 ✓)
+- 전체 길이 ≤4000 chars (native /goal condition 한도 호환)
+
+**우회** (예외): `SKIP_PLAN_DEV_GOAL=1` (1회) / `DISABLE_PLAN_DEV_GOAL_HOOK=1` (영구)
 
 ### 1-3. Plan Review (강력 권장, 단 1회)
 `Agent(subagent_type="Plan")` 으로 staff engineer 비평 수령. 5분 이내.
@@ -265,3 +296,6 @@ git worktree list --porcelain
 - ❌ 사용자가 메시지에 명시한 옵션 (A 또는 B) 을 Assumptions 에서 임의 선택 후 ExitPlanMode — 사용자 의도 있음 신호. 반드시 AskUserQuestion 으로 확인.
 - ❌ Slice File Map 의 Mode 컬럼 비워두거나 모호하게 ("적당히") 두기 — plan 단계 dispatch/direct-edit 분기 흐려져 Phase 2 진입 후 디폴트로 direct-edit 흐름. 빈 셀 = ExitPlanMode 차단 신호로 self-check.
 - ❌ cmux 환경에서 justification 없이 direct-edit 선택 — 시각화/병렬 가치 날림. dispatch default + direct-edit 사유 명시 룰 따름.
+- ❌ 옵션 list (A/B/C) 를 plain text 로 응답 끝에 dump 하고 turn 종료 — selection chip UI 안 떠 사용자 입력 비용 증가, plan-dev 흐름 끊김. **AskUserQuestion 의무**.
+- ❌ Goal Statement 에 측정 불가 추상 표현 ("품질 향상", "안정성 강화") 만 박기 — Stop hook 가 평가 못 함. grep/test/명령 결과로 확인 가능한 항목만 허용.
+- ❌ Goal Statement 섹션에 `<!-- machine-checks -->` 블록 누락 — hook 가 평가할 입력 없음 → exit 0 통과로 loop 의미 상실. 형식 박스 그대로 따를 것.
