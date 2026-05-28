@@ -69,6 +69,7 @@
 - [ ] README.md 의 "구성" / "사용" 섹션 업데이트.
 
 새 hook 추가 시:
+- [ ] **install.sh 의 hooks list (line 40~ array) 에 새 hook 파일명 추가** — 글로벌 `~/.claude/hooks/` propagate 보장. 누락 시 다른 프로젝트에서 hook 부재 → 동일 워크플로 깨짐.
 - [ ] stderr 메시지에 **우회 방법** 명시 (`SKIP_*`, `DISABLE_*_HOOK` 등).
 - [ ] 차단(exit 2) vs 경고(exit 0) 결정 기준 명확.
 - [ ] settings.json 의 `hooks` 섹션에 등록.

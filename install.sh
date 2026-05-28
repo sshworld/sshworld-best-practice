@@ -45,6 +45,7 @@ FILES=(
   "hooks/token-stats.sh"
   "hooks/track-cmux-edit-burst.sh"
   "hooks/cmux-dispatch-hint.sh"
+  "hooks/enforce-plan-dev-goal.sh"
 )
 
 # scripts/ 는 .claude/ 밖이라 별도 카테고리 (실행 권한 부여 대상)

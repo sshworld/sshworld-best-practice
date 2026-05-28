@@ -49,6 +49,8 @@ scripts/
 # 글로벌 (~/.claude/) — 모든 프로젝트에서 사용
 ./install.sh user
 
+> **hook 추가/변경 후 다른 프로젝트에서도 사용하려면 본 repo root 에서 `./install.sh` 재실행** — 글로벌 `~/.claude/hooks/` sync. 누락 시 다른 프로젝트의 cmux dispatch 자식이 옛 hook 받아 같은 차단 재발.
+
 # 프로젝트 로컬 (현재 디렉토리/.claude/)
 ./install.sh project
 
