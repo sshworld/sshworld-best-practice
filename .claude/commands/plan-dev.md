@@ -73,7 +73,13 @@ Slice 정의 시 **type 도 같이 결정**: `feat|fix|refactor|test|docs|chore`
 
 #### Goal Statement — plan-dev 자체 loop 의 gate
 
-**목적**: plan-dev workflow 가 native `/goal` 처럼 자체 loop 하는 mechanism. Stop hook (`enforce-plan-dev-goal.sh`) 가 매 model turn 종료 시점에 plan 파일의 `<!-- machine-checks -->` bash block 실행. 전부 PASS → Stop 허용. 하나라도 fail → exit 2 + stderr reason → 모델 자동 다음 turn (보완 작업). 사용자 `/goal` 입력 0.
+**목적**: plan-dev workflow 가 native `/goal` 처럼 자체 loop 하는 mechanism. Stop hook (`enforce-plan-dev-goal.sh`) 가 매 model turn 종료 시점에 **dual gate** 평가:
+1. **bash layer (mechanical)** — plan 파일의 `<!-- machine-checks -->` bash block 실행. exit 0 = PASS.
+2. **agent layer (semantic)** — bash layer 전부 PASS 후 `goal-checker` agent (Haiku) 호출. plan 의 Semantic goal + `start_ref..HEAD` diff 보고 JSON `{pass, missing}` 응답.
+
+두 layer 다 PASS → Stop 허용. 하나라도 fail → exit 2 + stderr reason → 모델 자동 다음 turn. 사용자 `/goal` 입력 0.
+
+agent layer 는 bash 의 false-positive (단어 매치만으로 PASS) / false-negative (네이밍 mismatch) 를 보완. `claude -p` headless 호출, timeout 30s. claude binary 부재 / JSON 파싱 실패 시 bash 만 PASS 으로 conservative fallback.
 
 **출처**: Phase 1-1 의 Acceptance criteria 를 측정 가능 form 으로 transform.
 
@@ -97,7 +103,9 @@ test -x scripts/foo.sh
 - 추상 표현 금지 (e.g. "품질 향상" ✗, `grep -c "X" file` ≥ 3 ✓)
 - 전체 길이 ≤4000 chars (native /goal condition 한도 호환)
 
-**우회** (예외): `SKIP_PLAN_DEV_GOAL=1` (1회) / `DISABLE_PLAN_DEV_GOAL_HOOK=1` (영구)
+**우회** (예외):
+- Hook 전체: `SKIP_PLAN_DEV_GOAL=1` (1회) / `DISABLE_PLAN_DEV_GOAL_HOOK=1` (영구)
+- agent layer 만: `SKIP_GOAL_AGENT=1` (1회, bash 만 평가) / `DISABLE_GOAL_AGENT=1` (영구, bash 만 평가)
 
 ### 1-3. Plan Review (강력 권장, 단 1회)
 `Agent(subagent_type="Plan")` 으로 staff engineer 비평 수령. 5분 이내.
@@ -109,7 +117,7 @@ test -x scripts/foo.sh
 > - 사용자가 화면에서 자식 진행을 볼 가치 없는 mechanical 변경 → direct-edit 허용
 > - 그 외 — Mode 컬럼에 `dispatch (cmux)` 명시 후 `scripts/dispatch-slice-pane.sh --mode=cmux` 호출.
 >
-> 본 repo 의 settings.json 은 cmux 환경에서 Edit/Write 누적 2회 시 hook 으로 차단 (`CMUX_EDIT_BURST_STRICT=1` inline). 우회는 SKIP env 명시.
+> 본 repo 의 settings.json 의 cmux Edit/Write 누적 hook 은 **advisory only** (디폴트 임계치 5). 6번째부터 stderr 메시지만 — 차단 없음. `CMUX_EDIT_BURST_STRICT=1` env 명시 시만 차단 (회귀 가드 보존).
 
 ### 1-4. ExitPlanMode → 사용자 승인 (MANDATORY)
 승인 전 Phase 2 진입 금지.

@@ -87,7 +87,8 @@ scripts/
 9. **Commit**: commit-advisor 다중 커밋 분석 → 한글 메시지 + `<type>/<slug>` 브랜치명 추천
 10. **Branch & Push** (Phase 5): `finish-plan-dev.sh` 로 develop/main 분기 push 자동화
 11. **Context 정리** (Phase 6): 다음 추천 명령 노출 + unlocked worktree-agent-* 자동 cleanup
-12. **Goal Loop** (자동, 백그라운드): plan 의 `## Goal Statement` 의 `<!-- machine-checks -->` bash block 을 Stop hook 가 매 model turn 종료 시 평가. 미충족 시 자동 다음 turn 재진입 (native /goal flow 자체 재현). 사용자 입력 0.
+12. **Goal Loop** (자동, 백그라운드): plan 의 `## Goal Statement` 를 Stop hook 가 매 model turn 종료 시 **dual gate** 평가 — (a) `<!-- machine-checks -->` bash block (mechanical) + (b) `goal-checker` agent (Haiku, semantic). 둘 다 PASS 시만 종료. 하나라도 미충족 시 자동 다음 turn 재진입 (native /goal flow 자체 재현). 사용자 입력 0.
+13. **자식 surface 자동 cleanup** (Phase 5 끝): `finish-plan-dev.sh` 가 push 성공 직후 cmux 자식 surface (`cbp-*` 등 state file 등록 surface) 일괄 close. 사용자 수동 정리 0.
 
 ### 보조 — `/fork`
 
@@ -327,13 +328,13 @@ export DISABLE_CMUX_CONTEXT_HOOK=1
 cmux 환경에서 Edit/Write 누적 횟수를 카운트해 임계치(기본 2회) 도달 시 `dispatch-slice-pane.sh --mode=cmux` 사용을 안내하는 advisory 출력. 5분 idle 시 자동 리셋. `dispatch-slice-pane.sh` launch 시 명시 리셋.
 
 ```bash
-CMUX_EDIT_BURST_STRICT=1       # 차단 모드 (exit 2)
-CMUX_EDIT_BURST_THRESHOLD=N    # 임계치 조정
+CMUX_EDIT_BURST_STRICT=1       # 차단 모드 (exit 2, 디폴트 unset)
+CMUX_EDIT_BURST_THRESHOLD=N    # 임계치 조정 (디폴트 5)
 SKIP_CMUX_EDIT_BURST=1         # 1회 우회
 DISABLE_CMUX_EDIT_BURST_HOOK=1 # 영구 비활성화
 ```
 
-- **본 repo 의 settings.json**: `CMUX_EDIT_BURST_STRICT=1` 을 hook command 에 inline 으로 강제 → 본 repo 환경에서 임계치 도달 시 차단(exit 2). 우회는 `SKIP_CMUX_EDIT_BURST=1` / `DISABLE_CMUX_EDIT_BURST_HOOK=1`.
+- **본 repo 의 settings.json**: inline `CMUX_EDIT_BURST_STRICT=1` 은 제거됨 → 디폴트 **advisory only** (임계치 5). 6번째부터 stderr 메시지만, 차단 X. 강제 차단 원하면 사용자 환경에 `export CMUX_EDIT_BURST_STRICT=1` 명시.
 
 ### 7) cmux-dispatch-hint.sh (SessionStart)
 
@@ -371,6 +372,10 @@ cmux 환경 세션 시작 시 dispatch-first 패턴 안내를 stdout 으로 출�
 | `DISPATCH_PERMISSION_MODE=<mode>` | `bypassPermissions` | dispatch-slice-pane.sh 가 자식 claude 에 `--permission-mode <mode>` flag 전달. `default` 시 flag 생략. `DISPATCH_CHILD_CMD` set 시 무시. |
 | `SKIP_PLAN_DEV_FINISH=1` | off | Phase 5 (finish-plan-dev.sh) 1회 우회 |
 | `SKIP_PLAN_DEV_GOAL=1` | off | Stop hook (enforce-plan-dev-goal.sh) 1회 우회 — Goal Statement loop bypass. 자식 dispatch worktree 진행 중에는 hook 자체가 자동 skip 하므로 보통 불필요. |
+| `SKIP_GOAL_AGENT=1` | off | enforce-plan-dev-goal.sh agent layer 1회 우회 (bash 만 평가). semantic 판단 생략. |
+| `DISABLE_GOAL_AGENT=1` | off | agent layer 영구 비활성. claude binary 부재 시 자동 fallback 과 같음. |
+| `SKIP_PLAN_DEV_CMUX_CLEANUP=1` | off | finish-plan-dev.sh push 후 cmux 자식 surface cleanup 1회 우회. |
+| `DISABLE_PLAN_DEV_CMUX_CLEANUP=1` | off | cmux cleanup 영구 비활성. |
 | `DISABLE_PLAN_DEV_GOAL_HOOK=1` | off | Stop hook 영구 비활성화 |
 | `PLAN_DEV_GOAL_PLAN_PATH=<path>` | auto | hook 가 평가할 plan 파일 경로 override (테스트 mock) |
 | `PLAN_DEV_GOAL_SESSION_FILE=<path>` | `.git/plan-dev-session.json` | marker 파일 경로 override (테스트 mock) |
