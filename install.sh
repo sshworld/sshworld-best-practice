@@ -58,6 +58,7 @@ SCRIPTS=(
   "scripts/plan-dev-session.sh"
   "scripts/plan-dev-progress.sh"
   "scripts/finish-plan-dev.sh"
+  "scripts/cmux-title-chpwd.sh"
 )
 
 usage() {
@@ -248,6 +249,12 @@ do_install() {
     [ -n "$tmp_created" ] && rm -f "$tmp_created"
   fi
 
+  # user scope: ~/.zshrc 에 cmux-title-chpwd source 라인 idempotent 추가
+  # (cd 마다 cmux surface title 을 cwd basename 으로 자동 rename)
+  if [ "$scope" = "user" ]; then
+    integrate_zshrc "$proj_root"
+  fi
+
   echo ""
   echo "✅ 설치 완료."
   if [ "${example_created:-0}" = "1" ]; then
@@ -256,6 +263,57 @@ do_install() {
     echo "    - permissions.allow / permissions.deny"
     echo "    - hooks.PreToolUse / hooks.Stop / hooks.SessionStart"
   fi
+}
+
+# ~/.zshrc 에 cmux-title-chpwd source 라인 idempotent 통합.
+# guard marker block 으로 중복 추가 방지. 인자: scripts 가 설치된 proj_root ($HOME).
+ZSHRC_MARK_BEGIN="# >>> cmux-title-chpwd >>>"
+ZSHRC_MARK_END="# <<< cmux-title-chpwd <<<"
+
+integrate_zshrc() {
+  local proj_root="$1"
+  local zshrc="$HOME/.zshrc"
+  local src_line="source \"$proj_root/scripts/cmux-title-chpwd.sh\""
+
+  if [ ! -f "$zshrc" ]; then
+    echo "  ℹ️  ~/.zshrc 없음 — cmux-title-chpwd source 생략 (수동 추가: $src_line)"
+    return 0
+  fi
+
+  if grep -qF "$ZSHRC_MARK_BEGIN" "$zshrc" 2>/dev/null; then
+    # 기존 block 있으면 source 경로만 갱신 (marker 사이 교체)
+    local tmp; tmp="$(mktemp)"
+    awk -v b="$ZSHRC_MARK_BEGIN" -v e="$ZSHRC_MARK_END" -v line="$src_line" '
+      $0 == b {print; print line; skip=1; next}
+      $0 == e {skip=0; print; next}
+      skip {next}
+      {print}
+    ' "$zshrc" > "$tmp" && cat "$tmp" > "$zshrc" && rm -f "$tmp"
+    echo "  🔄 ~/.zshrc cmux-title-chpwd block 갱신"
+  else
+    {
+      echo ""
+      echo "$ZSHRC_MARK_BEGIN"
+      echo "$src_line"
+      echo "$ZSHRC_MARK_END"
+    } >> "$zshrc"
+    echo "  ✓ ~/.zshrc 에 cmux-title-chpwd source 추가 (새 셸부터 적용)"
+  fi
+}
+
+# ~/.zshrc 에서 cmux-title-chpwd block 제거 (marker 사이 삭제).
+remove_zshrc_integration() {
+  local zshrc="$HOME/.zshrc"
+  [ -f "$zshrc" ] || return 0
+  grep -qF "$ZSHRC_MARK_BEGIN" "$zshrc" 2>/dev/null || return 0
+  local tmp; tmp="$(mktemp)"
+  awk -v b="$ZSHRC_MARK_BEGIN" -v e="$ZSHRC_MARK_END" '
+    $0 == b {skip=1; next}
+    $0 == e {skip=0; next}
+    skip {next}
+    {print}
+  ' "$zshrc" > "$tmp" && cat "$tmp" > "$zshrc" && rm -f "$tmp"
+  echo "  ✓ ~/.zshrc cmux-title-chpwd block 제거"
 }
 
 do_uninstall() {
@@ -279,6 +337,11 @@ do_uninstall() {
       echo "  ✓ 삭제: $rel"
     fi
   done
+
+  # user scope: ~/.zshrc cmux-title-chpwd block 제거
+  if [ "$dest" = "$HOME/.claude" ]; then
+    remove_zshrc_integration
+  fi
 
   # 빈 디렉토리 정리 (실패해도 무시)
   for d in skills/fork skills/tmux-orchestrate hooks commands agents skills; do

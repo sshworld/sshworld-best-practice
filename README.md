@@ -64,6 +64,8 @@ scripts/
 
 기존 파일이 있으면 `.bak.<ts>` 백업 후 덮어씁니다. `settings.json` 은 `jq` 가 있으면 **자동 병합** — `permissions.allow` / `permissions.deny` 는 union, `hooks.<event>` 는 **matcher / hook 파일명 단위 union** — 같은 hook 파일명 (`hooks/<name>.sh`) 이면 repo 가 winner (STRICT/ENV prepend 등 source of truth). 비-겹침 customize 는 보존. `INSTALL_NO_MERGE=1` 또는 `jq` 미설치 시 `settings.example.json` 로 폴백 (수동 병합 안내).
 
+**cmux workspace title 자동** (user scope): `install.sh user` 가 `~/.zshrc` 에 `scripts/cmux-title-chpwd.sh` source block 을 idempotent 추가 (marker `# >>> cmux-title-chpwd >>>`). 적용 후 새 zsh 셸에서 `cd` 마다 cmux 사이드바의 해당 surface title 이 현재 디렉토리 (`basename $PWD`) 로 자동 변경 — 여러 workspace 가 어느 디렉토리에서 작업 중인지 한눈에 식별. 비-cmux 셸(tmux/일반 터미널)에선 no-op. `uninstall user` 시 block 자동 제거.
+
 ---
 
 ## 사용
