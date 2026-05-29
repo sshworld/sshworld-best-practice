@@ -60,6 +60,7 @@ SCRIPTS=(
   "scripts/plan-dev-progress.sh"
   "scripts/finish-plan-dev.sh"
   "scripts/cmux-title-chpwd.sh"
+  "scripts/merge-settings.sh"
 )
 
 usage() {
@@ -195,41 +196,12 @@ do_install() {
         local merged_tmp settings_bak
         merged_tmp="$(mktemp)"
         settings_bak="$settings_dest.bak.$TS"
-        # 병합 정책:
+        # 병합 정책 (scripts/merge-settings.sh):
         #   allow / deny: union (unique)
-        #   hooks.<event>: matcher/command 단위 union (기존 matcher 보존, 새 command 만 추가, dedup)
+        #   hooks.<event>: matcher 단위 union (order-preserving) + command 키 dedup
+        #     (cur 내부 + cur-vs-new 모두 dedup → SessionStart doubling 버그 방지, idempotent)
         #   그 외 top-level 키: 기존 우선
-        if jq -s '
-          .[0] as $cur | .[1] as $new |
-          $cur
-          | .permissions.allow = (((.permissions.allow // []) + ($new.permissions.allow // [])) | unique)
-          | .permissions.deny  = (((.permissions.deny  // []) + ($new.permissions.deny  // [])) | unique)
-          | .hooks = (
-              ($cur.hooks // {}) as $ch
-              | ($new.hooks // {}) as $nh
-              | (($ch | keys_unsorted) + (($nh | keys_unsorted) - ($ch | keys_unsorted))) as $events
-              | reduce $events[] as $e ({}; .[$e] = (
-                  ($ch[$e] // []) as $cur_arr
-                  | ($nh[$e] // []) as $new_arr
-                  | (
-                      ($cur_arr | map(.matcher // ""))
-                      + (($new_arr | map(.matcher // "")) - ($cur_arr | map(.matcher // "")))
-                    ) as $matchers
-                  | reduce $matchers[] as $m ([]; . + [{
-                      matcher: $m,
-                      hooks: (
-                        (($cur_arr | map(select((.matcher // "") == $m)) | map(.hooks // []) | add) // []) as $cur_hooks
-                        | (($new_arr | map(select((.matcher // "") == $m)) | map(.hooks // []) | add) // []) as $new_hooks
-                        | ($new_hooks | map((try (.command | capture("hooks/(?<n>[a-zA-Z0-9_.-]+\\.sh)").n)) // .command)) as $new_keys
-                        | ($cur_hooks | map(select(
-                            ((try (.command | capture("hooks/(?<n>[a-zA-Z0-9_.-]+\\.sh)").n)) // .command) as $k
-                            | $new_keys | index($k) | not
-                          ))) + $new_hooks
-                      )
-                    }])
-                ))
-            )
-        ' "$settings_dest" "$settings_processed" > "$merged_tmp"; then
+        if bash "$SCRIPT_DIR/scripts/merge-settings.sh" "$settings_dest" "$settings_processed" > "$merged_tmp"; then
           cp "$settings_dest" "$settings_bak"
           mv "$merged_tmp" "$settings_dest"
           echo "  🔀 settings.json 자동 병합 (백업: ${settings_bak##*/})"

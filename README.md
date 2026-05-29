@@ -63,7 +63,9 @@ scripts/
 ./install.sh uninstall project [TARGET_DIR]
 ```
 
-기존 파일이 있으면 `.bak.<ts>` 백업 후 덮어씁니다. `settings.json` 은 `jq` 가 있으면 **자동 병합** — `permissions.allow` / `permissions.deny` 는 union, `hooks.<event>` 는 **matcher / hook 파일명 단위 union** — 같은 hook 파일명 (`hooks/<name>.sh`) 이면 repo 가 winner (STRICT/ENV prepend 등 source of truth). 비-겹침 customize 는 보존. `INSTALL_NO_MERGE=1` 또는 `jq` 미설치 시 `settings.example.json` 로 폴백 (수동 병합 안내).
+기존 파일이 있으면 `.bak.<ts>` 백업 후 덮어씁니다. `settings.json` 은 `jq` 가 있으면 **자동 병합** (`scripts/merge-settings.sh`) — `permissions.allow` / `permissions.deny` 는 union, `hooks.<event>` 는 **matcher 단위 union (order-preserving) + command 키 dedup** — 같은 hook 파일명 (`hooks/<name>.(sh|js)`) 이면 repo 가 winner (STRICT/ENV prepend 등 source of truth). 비-겹침 customize 는 보존. dedup 은 **cur 내부 + cur-vs-new 모두** 적용하고 matcher 목록을 unique 처리 → install 재실행해도 hook 이 누적·복제되지 않음 (idempotent). `INSTALL_NO_MERGE=1` 또는 `jq` 미설치 시 `settings.example.json` 로 폴백 (수동 병합 안내).
+
+> 🐛 과거 버그: matcher 목록 미-unique + cur 내부 dedup 누락 → install 재실행마다 `hooks.<event>` 가 곱셈 누적(SessionStart hook 1024× 더블링). `scripts/merge-settings.sh` 추출 + dedup 으로 수정, `tests/unit/merge-settings.test.sh` 가 회귀 가드.
 
 **cmux workspace title 자동** (user scope): `install.sh user` 가 `~/.zshrc` 에 `scripts/cmux-title-chpwd.sh` source block 을 idempotent 추가 (marker `# >>> cmux-title-chpwd >>>`). 적용 후 새 zsh 셸에서 `cd` 마다 (1) cmux tab/surface title 을 현재 디렉토리 (`basename $PWD`) 로 갱신하고, (2) **single-surface workspace** 면 추가로 왼쪽 사이드바의 **workspace 이름** 도 같은 basename 으로 갱신 — 여러 workspace 가 어느 디렉토리에서 작업 중인지 사이드바만 보고 식별. surface 가 여러 개인 workspace (cmux dispatch grid 등) 는 자식 cd 끼리 title 을 덮어쓰는 clobber 를 피하려 workspace 는 안 건드리고 tab 만 갱신. 비-cmux 셸(tmux/일반 터미널)에선 no-op. `uninstall user` 시 block 자동 제거.
 
