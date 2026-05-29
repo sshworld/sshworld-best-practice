@@ -122,56 +122,79 @@ cbp_state_path() {
   printf '%s' "${cache_dir}/children-${sanitized}.json"
 }
 
-# flock wrapper — flock 미설치(macOS 기본 X) 시 mkdir 기반 mutex 폴백.
-# 사용법: _cbp_lock <lockpath> <cmd> [args...]
-# lockpath = state file path + ".lock"
-_cbp_lock() {
-  local lockpath="$1"; shift
-  if command -v flock >/dev/null 2>&1; then
-    # flock -x <fd> 방식
-    (
-      exec 9>"$lockpath"
-      flock -x 9
-      "$@"
-    )
-  else
-    # mkdir atomic lock (macOS 기본 환경)
-    local lockdir="${lockpath}.d"
-    local waited=0
-    while ! mkdir "$lockdir" 2>/dev/null; do
-      sleep 0.05
-      waited=$(( waited + 1 ))
-      if [ "$waited" -ge 100 ]; then
-        # 5초 초과 → stale lock 제거 후 재시도
-        rmdir "$lockdir" 2>/dev/null || true
-        waited=0
-      fi
-    done
-    # lock 획득
-    "$@"
-    local rc=$?
-    rmdir "$lockdir" 2>/dev/null || true
-    return $rc
+# Lock primitive — mkdir atomic mutex 단일 경로 (flock 유무 무관, macOS 실경로 일치).
+# acquire/release 분리 → 호출부가 자기 셸 컨텍스트에서 critical section 실행
+# (surface_ref 등 지역변수 회수 가능). lockdir 안 pid 파일로 stale holder 생존 확인.
+_CBP_LOCKDIR=""
+
+# 죽은 holder 의 stale lockdir 만 reap. 살아있는 holder 는 보호.
+_cbp_lock_reap_stale() {
+  local lockdir="$1"
+  local holder
+  holder=$(cat "${lockdir}/pid" 2>/dev/null || echo "")
+  if [ -n "$holder" ] && kill -0 "$holder" 2>/dev/null; then
+    return 1   # holder 살아있음 → reap 금지
   fi
+  rm -rf "$lockdir" 2>/dev/null || true
+  return 0
 }
 
-# state file 에 한 줄 추가. 인자: surface_ref, name.
+# lock 획득 (mkdir atomic). timeout 10초 → stale 판정 후 pid 기반 reap.
+_cbp_lock_acquire() {
+  local lockpath="$1"
+  local lockdir="${lockpath}.d"
+  local waited=0
+  while ! mkdir "$lockdir" 2>/dev/null; do
+    sleep 0.05
+    waited=$(( waited + 1 ))
+    if [ "$waited" -ge 200 ]; then
+      _cbp_lock_reap_stale "$lockdir" || true
+      waited=0
+    fi
+  done
+  printf '%s' "$$" > "${lockdir}/pid" 2>/dev/null || true
+  _CBP_LOCKDIR="$lockdir"
+}
+
+# lock 해제.
+_cbp_lock_release() {
+  local lockdir="$1"
+  rm -rf "$lockdir" 2>/dev/null || true
+  [ "$_CBP_LOCKDIR" = "$lockdir" ] && _CBP_LOCKDIR=""
+}
+
+# 호환 래퍼 (cmd 실행형) — cbp_state_remove 등에서 사용.
+# 사용법: _cbp_lock <lockpath> <cmd> [args...]
+_cbp_lock() {
+  local lockpath="$1"; shift
+  _cbp_lock_acquire "$lockpath"
+  "$@"
+  local rc=$?
+  _cbp_lock_release "${lockpath}.d"
+  return $rc
+}
+
+# state file 에 한 줄 추가 (lock 없음 — 이미 lock 보유한 호출부 전용).
 # 각 라인: surface=<ref>|name=<name>|ts=<unix>|ws=<workspace_id>
+_cbp_state_append_unlocked() {
+  local sf="$1" surface_ref="$2" name="$3"
+  local ts ws
+  ts=$(date +%s)
+  ws="${CMUX_WORKSPACE_ID:-default}"
+  mkdir -p "$(dirname "$sf")"
+  printf 'surface=%s|name=%s|ts=%s|ws=%s\n' "$surface_ref" "$name" "$ts" "$ws" >> "$sf"
+}
+
+# state file 에 한 줄 추가 (lock 보호). 인자: surface_ref, name.
 cbp_state_append() {
   local surface_ref="$1"
   local name="$2"
   local sf
   sf=$(cbp_state_path)
   local lockpath="${sf}.lock"
-  local ts
-  ts=$(date +%s)
-  local ws="${CMUX_WORKSPACE_ID:-default}"
-  # shellcheck disable=SC2016
-  _cbp_lock "$lockpath" bash -c '
-    sf="$1" surface_ref="$2" name="$3" ts="$4" ws="$5"
-    mkdir -p "$(dirname "$sf")"
-    printf "surface=%s|name=%s|ts=%s|ws=%s\n" "$surface_ref" "$name" "$ts" "$ws" >> "$sf"
-  ' -- "$sf" "$surface_ref" "$name" "$ts" "$ws"
+  _cbp_lock_acquire "$lockpath"
+  _cbp_state_append_unlocked "$sf" "$surface_ref" "$name"
+  _cbp_lock_release "${lockpath}.d"
 }
 
 # state file 의 surface ref 목록을 한 줄당 하나 stdout.
@@ -231,16 +254,28 @@ _do_launch_grid() {
   local _cmd="$1"  # cmd 는 new-pane/new-split 미지원 — Slice A3 에서 send 로 전달 예정
   local name="$2"
 
-  # 기존 자식 목록으로 count 결정
-  local children
+  local sf lockpath
+  sf=$(cbp_state_path)
+  lockpath="${sf}.lock"
+
+  local surface_ref raw_out
+
+  # ── CRITICAL SECTION: count read → cmux 생성 → state 기록 원자화 ──────────
+  # 병렬 dispatch race 방지. 이 구간이 비원자적이면 동시 호출이 같은 count/prev_surface
+  # 를 읽어 다중 new-pane 또는 같은 prev split → cmux 동시 생성 실패로 surface detached.
+  # 우회 (테스트 red baseline): CBP_DISABLE_LAUNCH_LOCK=1.
+  local _locked=0
+  if [ "${CBP_DISABLE_LAUNCH_LOCK:-0}" != "1" ]; then
+    _cbp_lock_acquire "$lockpath"
+    _locked=1
+  fi
+
+  # 기존 자식 목록으로 count 결정 (lock 보유 중이라 lock-free read OK)
+  local children count=0
   children=$(cbp_state_list 2>/dev/null || true)
-  local count=0
   if [ -n "$children" ]; then
     count=$(printf '%s\n' "$children" | grep -c '[^[:space:]]' 2>/dev/null) || count=0
   fi
-
-  local surface_ref
-  local raw_out
 
   if [ "$count" -eq 0 ]; then
     # 첫 자식: 부모 workspace 우측에 new-pane
@@ -248,13 +283,9 @@ _do_launch_grid() {
       --type terminal \
       --direction right \
       --workspace "$CMUX_WORKSPACE_ID" 2>/dev/null || true)
-    # stdout 파싱: "OK surface:N pane:N workspace:N" → OK 로 시작하는 줄의 두 번째 토큰 = surface ref
     surface_ref=$(printf '%s' "$raw_out" | awk '/^OK / {print $2; exit}')
   else
     # 후속 자식: 직전 자식 surface 를 기준으로 split
-    # state file 마지막 줄에서 surface ref 추출
-    local sf
-    sf=$(cbp_state_path)
     local prev_surface
     prev_surface=$(tail -1 "$sf" | grep -o 'surface=[^|]*' | sed 's/surface=//')
 
@@ -273,16 +304,18 @@ _do_launch_grid() {
     surface_ref=$(printf '%s' "$raw_out" | awk '/^OK / {print $2; exit}')
   fi
 
-  # surface ref 공백 trim
+  # surface ref 공백 trim + fallback
   surface_ref=$(printf '%s' "$surface_ref" | tr -d '[:space:]')
+  [ -z "$surface_ref" ] && surface_ref="surface:unknown"
 
-  # surface ref 가 비었으면 fallback (cmux 오류 등)
-  if [ -z "$surface_ref" ]; then
-    surface_ref="surface:unknown"
+  # state file 기록 (lock 보유 중 — unlocked 직접 호출로 재진입 회피)
+  _cbp_state_append_unlocked "$sf" "$surface_ref" "$name"
+
+  # ── CRITICAL SECTION 끝 — release 후 후처리는 lock 밖 ──────────────────────
+  if [ "$_locked" = "1" ]; then
+    _cbp_lock_release "${lockpath}.d"
+    _locked=0
   fi
-
-  # state file 에 기록
-  cbp_state_append "$surface_ref" "$name"
 
   # rename-tab (stdout/stderr 모두 redirect — rename-tab 이 OK 한 줄 stdout 출력하므로)
   "$CMUX_BIN" rename-tab --surface "$surface_ref" "$name" >/dev/null 2>&1 || true
