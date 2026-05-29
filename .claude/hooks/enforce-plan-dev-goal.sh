@@ -149,7 +149,14 @@ run_agent_layer() {
 
   local sem_goal start_ref diff_stat log prompt agent_out agent_pass
 
-  sem_goal=$(awk '/[Ss]emantic goal/{flag=1; next} flag && /^##/{flag=0} flag' "$plan_path" | head -10)
+  # 인라인 `**Semantic goal**: <텍스트>` 형식 캡처 (템플릿 계약). `next` 없이 매치 줄 포함, prefix strip.
+  sem_goal=$(awk '/\*\*[Ss]emantic goal\*\*/{flag=1} flag && /^## /{flag=0} flag' "$plan_path" \
+    | sed 's/^\*\*[Ss]emantic goal\*\*:[[:space:]]*//' | head -10)
+
+  if [[ -z "${sem_goal//[[:space:]]/}" ]]; then
+    echo "$TAG semantic goal 추출 실패 — agent layer skipped" >&2
+    return 0
+  fi
 
   start_ref=""
   if command -v jq &>/dev/null; then
