@@ -39,10 +39,23 @@ else
   if command -v jq &>/dev/null; then
     PLAN_PATH=$(jq -r '.plan_path // empty' "$SESSION_FILE" 2>/dev/null || true)
   fi
-  # Fallback: mtime newest .md in ~/.claude/plans/
+  # Fallback: marker(SESSION_FILE)보다 새로 수정된 plan 만 (stale plan 다음 세션 이월 차단).
+  # start 는 plan 작성 前 → marker mtime < 이 세션 plan mtime. 직전 세션 stale plan 은 marker 보다 오래됨 → 제외.
   if [[ -z "$PLAN_PATH" ]]; then
-    if ls ~/.claude/plans/*.md &>/dev/null 2>&1; then
-      PLAN_PATH=$(ls -t ~/.claude/plans/*.md 2>/dev/null | head -1)
+    PLAN_PATH=$(find ~/.claude/plans -maxdepth 1 -name '*.md' -newer "$SESSION_FILE" 2>/dev/null \
+                | xargs -r ls -t 2>/dev/null | head -1)
+    # 해결한 경로를 marker 에 best-effort persist (다음 turn 안정 + 빠름)
+    if [[ -n "$PLAN_PATH" ]] && command -v python3 &>/dev/null; then
+      PLAN_PATH="$PLAN_PATH" SESSION_FILE="$SESSION_FILE" python3 -c "
+import json, os
+f = os.environ['SESSION_FILE']
+try:
+    d = json.load(open(f))
+    d['plan_path'] = os.environ['PLAN_PATH']
+    json.dump(d, open(f, 'w'), indent=2); open(f, 'a').write('\n')
+except Exception:
+    pass
+" 2>/dev/null || true
     fi
   fi
 fi
