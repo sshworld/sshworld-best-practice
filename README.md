@@ -360,14 +360,14 @@ DISABLE_CMUX_EDIT_BURST_HOOK=1 # 영구 비활성화
 `/plan-dev` 는 plan mode 진입(EnterPlanMode → plan 파일 작성 → ExitPlanMode 승인)이 필수다. 콘텐츠 가이드만으로는 모델이 `plan-dev-session.sh start` 만 돌리고 plan mode 를 건너뛴 채 바로 Edit/Write 로 직행할 수 있어, 이를 하네스로 차단한다.
 
 - plan-dev 세션 마커(`<git-common-dir>/plan-dev-session.json`)가 **없으면 no-op** — 비-plan-dev 세션은 전혀 영향 없음.
-- 판정은 PreToolUse stdin 의 `permission_mode` 필드:
-  - `permission_mode==plan` → plan mode 진입 신호(= plan 파일 Write 가 이 경로로 들어옴). `plan-dev-plan-mode-seen` flag 기록 후 통과.
-  - flag 존재(이 세션에 plan mode 거침) → 통과.
-  - `permission_mode==bypassPermissions`(dispatch 자식/명시 우회) → 통과.
+- "plan mode 거침" 판정 = **marker 의 `start_ts` 이후 작성된 plan 파일(`~/.claude/plans/*.md`)이 존재** (plan mode 진입 = plan 파일 작성, enforce-plan-dev-goal 의 세션-plan 탐지와 동류). 존재 → 통과.
+  - `permission_mode==plan`(plan mode 중) / `==bypassPermissions`(dispatch 자식·명시 우회) → 통과.
   - 자식 worktree(git-dir≠git-common-dir) → skip.
+  - start_ts 파싱 불가 → conservative 통과.
   - 그 외(마커 활성 + plan mode 미진입) → **exit 2 차단**.
-- flag 는 `plan-dev-session.sh start`/`clear` 가 제거 → 매 세션 plan mode 재진입 강제.
-- **한계**: plan 을 reject 해도 flag 가 이미 set 이면 이후 Edit 통과. 목적은 "plan mode 아예 미진입" catch 이지 "plan reject 후 강행" 방지가 아님.
+- ⚠️ marker **파일 mtime** 이 아니라 **`start_ts` JSON 필드** 기준 — `plan-dev-progress.sh` 가 marker 를 재기록하며 mtime 을 bump 해서, mtime 기준이면 progress start 직후 매번 false-positive 차단됨. start_ts 는 progress 가 보존하므로 안정.
+- **한계**: plan 을 reject 해도 plan 파일은 남아 통과. 목적은 "plan mode 아예 미진입" catch 이지 "plan reject 후 강행" 방지가 아님.
+- (구 버그: `permission_mode==plan` 시 flag 를 찍는 방식이었으나 plan 파일 write 가 PreToolUse Write 경로를 안 타 flag 미기록 → 승인 후 모든 Edit 를 false-positive 차단. start_ts 신호로 교체 수정.)
 
 ```bash
 SKIP_PLAN_MODE_ENFORCE=1        # 1회 우회
@@ -404,7 +404,7 @@ DISABLE_PLAN_MODE_ENFORCE_HOOK=1 # 영구 비활성화
 | `SKIP_PLAN_MODE_ENFORCE=1` | off | enforce-plan-mode.sh (PreToolUse) 1회 우회 — plan mode 미진입 차단 bypass |
 | `DISABLE_PLAN_MODE_ENFORCE_HOOK=1` | off | enforce-plan-mode.sh 영구 비활성화 |
 | `PLAN_MODE_SESSION_FILE=<path>` | auto | enforce-plan-mode.sh 마커 경로 override (테스트 mock) |
-| `PLAN_MODE_SEEN_FILE=<path>` | auto | enforce-plan-mode.sh plan-mode-seen flag 경로 override (테스트 mock) |
+| `PLAN_MODE_PLANS_DIR=<path>` | `$HOME/.claude/plans` | enforce-plan-mode.sh 의 plan 파일 디렉토리 override (테스트 mock) |
 | `PLAN_DEV_GOAL_PLAN_PATH=<path>` | auto | hook 가 평가할 plan 파일 경로 override (테스트 mock) |
 | `PLAN_DEV_GOAL_SESSION_FILE=<path>` | `.git/plan-dev-session.json` | marker 파일 경로 override (테스트 mock) |
 | `PLAN_DEV_GOAL_VERBOSE=1` | off | PASS 도 stderr 에 요약 출력 |

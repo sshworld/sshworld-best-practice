@@ -55,12 +55,6 @@ marker_path() {
   echo "${common_dir}/plan-dev-session.json"
 }
 
-# enforce-plan-mode.sh hook 가 보는 plan-mode-seen flag 경로 (마커와 같은 디렉토리).
-# 새 세션 start / clear 시 rm 하여 매 세션 plan mode 재진입 강제.
-seen_flag_path() {
-  echo "$(dirname "$(marker_path)")/plan-dev-plan-mode-seen"
-}
-
 # ISO 8601 UTC 타임스탬프
 iso_ts() {
   date -u +"%Y-%m-%dT%H:%M:%SZ"
@@ -149,9 +143,6 @@ do_start() {
   # marker 경로
   local marker
   marker="$(marker_path)"
-
-  # 새 세션 → plan-mode-seen flag 제거 (이번 세션도 plan mode 재진입 필수)
-  rm -f "$(seen_flag_path)" 2>/dev/null || true
 
   # 기존 marker 검사
   if [ -f "$marker" ]; then
@@ -310,8 +301,6 @@ else:
 do_clear() {
   local marker
   marker="$(marker_path)"
-
-  rm -f "$(seen_flag_path)" 2>/dev/null || true
 
   if [ -f "$marker" ]; then
     rm "$marker"
