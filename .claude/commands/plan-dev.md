@@ -66,7 +66,7 @@ scripts/plan-dev-session.sh start
 | S1 | scripts/foo.sh, README.md | direct-edit | updated |
 | S2 | .claude/agents/bar.md | dispatch (cmux, 사용자 시각화 요청) | none |
 
-- `Mode` — **`Mode 컬럼 필수`**, 빈 셀 금지. **기본은 `direct-edit`** (부모가 직접 Edit). `dispatch` (cmux/tmux/subagent) 는 **opt-in** — 선택 시 1줄 justification 의무 (예: "사용자 시각화 명시 요청", "큰 병렬 작업 격리 가치"). 진행 명령받았다고 반사적 dispatch 금지.
+- `Mode` — **`Mode 컬럼 필수`**, 빈 셀 금지. **기본은 환경 의존**: **cmux 환경(`CMUX_WORKSPACE_ID` set)이면 `dispatch(cmux)` 기본**, 비-cmux 환경이면 `direct-edit` 기본. cmux 환경에서 `direct-edit` 는 **opt-in 예외** — 선택 시 1줄 justification 의무 (예: "정책/문서 파일 자체 편집", "단일 trivial 수정", "사용자가 direct-edit 명시"). 비-cmux 환경에선 그 반대(dispatch 가 opt-in). cmux 환경인데 반사적으로 direct-edit 로 떨어뜨리지 말 것.
 - `DOC_IMPACT` — `none` / `updated` 중 plan 단계에 미리 결정 (commit 시점에 발견하면 hook 차단 후 재시도 비용).
 
 Slice 정의 시 **type 도 같이 결정**: `feat|fix|refactor|test|docs|chore`.
@@ -112,13 +112,14 @@ test -x scripts/foo.sh
 
 **충돌 사전 점검**: Slice File Map 의 파일 교집합 존재 시 그 슬라이스들은 의존성 있음으로 분류 — 병렬 X, 순차로 강등하거나 단일 슬라이스로 병합.
 
-> 🚀 **direct-edit 기본, cmux opt-in 룰**: 기본은 부모가 직접 Edit (`direct-edit`). cmux 환경이고 사용자가 "진행" 만 했다고 **반사적으로 cmux dispatch 하지 말 것**. dispatch 는 **opt-in** — 다음 중 하나일 때만:
-> - 사용자가 `--mode=cmux` / 시각화를 **명시 요청**.
-> - 슬라이스가 큰 병렬 작업이라 시각화·격리 가치가 실재 (그 가치를 Mode 컬럼에 1줄 명시).
+> 🚀 **환경별 기본 Mode 룰**:
+> - **cmux 환경(`CMUX_WORKSPACE_ID` set)**: **dispatch(cmux) 가 기본**. 각 슬라이스는 `scripts/dispatch-slice-pane.sh --mode=cmux` 로 자식 surface 에 띄워 작업 (사용자가 cmux 사이드바에서 진행 시각화). cmux 인데 반사적으로 direct-edit 로 떨어뜨리지 말 것. SessionStart 의 `cmux-dispatch-hint` advisory 가 이를 상기시킴.
+>   - cmux 에서 `direct-edit` 는 **opt-in 예외** — Mode 컬럼에 1줄 justification (예: 정책/문서 파일 자체 편집, 단일 trivial 수정, 사용자 direct-edit 명시). 하드 차단은 아님(advisory) — 정당하면 direct-edit 가능.
+> - **비-cmux 환경**: `direct-edit` 가 기본, dispatch 가 opt-in (시각화/격리 가치 시).
 >
-> 그 외엔 direct-edit. cmux dispatch 경로(`scripts/dispatch-slice-pane.sh --mode=cmux`)는 보존 — 위 조건 충족 시 그대로 호출.
+> cmux dispatch 경로(`scripts/dispatch-slice-pane.sh --mode=cmux`)는 항상 보존.
 >
-> 본 repo 의 settings.json 의 cmux Edit/Write 누적 hook 은 **advisory only** (디폴트 임계치 50). 51번째부터 stderr 메시지만 — 차단 없음. `CMUX_EDIT_BURST_STRICT=1` env 명시 시만 차단 (회귀 가드 보존).
+> 본 repo 의 settings.json 의 cmux Edit/Write 누적 hook(`track-cmux-edit-burst`)은 **advisory only** (디폴트 임계치 50) — 차단 없음. `CMUX_EDIT_BURST_STRICT=1` env 명시 시만 차단.
 
 ### 1-4. ExitPlanMode → 사용자 승인 (MANDATORY)
 승인 전 Phase 2 진입 금지.
@@ -152,7 +153,7 @@ scripts/plan-dev-progress.sh start --total=<N>
 | `--mode=pane` / `--mode=tmux` | tmux pane dispatch |
 | `--mode=cmux` | cmux workspace dispatch (부모 workspace 안 grid split — 사용자가 attach/시각화) |
 
-**cmux dispatch (opt-in)**: 위 `direct-edit 기본, cmux opt-in 룰` 충족 시에만 사용. `--mode=cmux` 면 부모 workspace 안에 자식 surface 가 grid 분할되어 사용자가 화면에서 직접 진행 확인. 자식 토큰은 부모 token-stats 로 추적 안 됨 (trade-off). cmux 환경이어도 사용자 명시 요청/병렬 가치 없으면 dispatch 하지 말고 direct-edit.
+**cmux dispatch (cmux 환경 기본)**: cmux 환경에서는 슬라이스 기본 mode. `--mode=cmux` 면 부모 workspace 안에 자식 surface 가 grid 분할되어 사용자가 화면에서 직접 진행 확인. 자식 토큰은 부모 token-stats 로 추적 안 됨 (trade-off — 비-cmux 면 subagent mode 가 토큰 추적). cmux 환경에서 direct-edit 로 갈 거면 Mode 컬럼에 1줄 justification 명시.
 
 #### cmux dispatch 동작 모델 (진단 가이드)
 
@@ -304,7 +305,7 @@ git worktree list --porcelain
 - ❌ Auto Mode (system prompt) 를 "필수 명확화도 묻지 말고 가정으로 처리" 로 해석 — Auto Mode 는 "재량 명확화" 의 default 만. "정반대 가능" trigger 매치 결정은 Auto Mode 무관 반드시 AskUserQuestion.
 - ❌ 사용자가 메시지에 명시한 옵션 (A 또는 B) 을 Assumptions 에서 임의 선택 후 ExitPlanMode — 사용자 의도 있음 신호. 반드시 AskUserQuestion 으로 확인.
 - ❌ Slice File Map 의 Mode 컬럼 비워두거나 모호하게 ("적당히") 두기 — plan 단계 dispatch/direct-edit 분기 흐려져 Phase 2 진입 후 디폴트로 direct-edit 흐름. 빈 셀 = ExitPlanMode 차단 신호로 self-check.
-- ❌ cmux 환경이라고 / "진행" 명령받았다고 반사적으로 cmux dispatch — direct-edit 기본. dispatch 는 사용자 명시 요청 또는 큰 병렬 가치 있을 때만 opt-in.
+- ❌ cmux 환경인데 반사적으로 direct-edit 로 떨어뜨리기 — cmux 환경 기본은 dispatch(cmux). direct-edit 는 justification 동반 opt-in 예외. (비-cmux 환경은 그 반대: direct-edit 기본.)
 - ❌ 옵션 list (A/B/C) 를 plain text 로 응답 끝에 dump 하고 turn 종료 — selection chip UI 안 떠 사용자 입력 비용 증가, plan-dev 흐름 끊김. **AskUserQuestion 의무**.
 - ❌ Goal Statement 에 측정 불가 추상 표현 ("품질 향상", "안정성 강화") 만 박기 — Stop hook 가 평가 못 함. grep/test/명령 결과로 확인 가능한 항목만 허용.
 - ❌ Goal Statement 섹션에 `<!-- machine-checks -->` 블록 누락 — hook 가 평가할 입력 없음 → exit 0 통과로 loop 의미 상실. 형식 박스 그대로 따를 것.

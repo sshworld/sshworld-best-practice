@@ -28,7 +28,7 @@
 │   ├── enforce-cmux-context.sh # cmux 안에서 tmux 계열 명령 시도 시 advisory warning
 │   ├── track-cmux-edit-burst.sh # cmux env Edit/Write 누적 advisory (dispatch-first 유도). 자식 worktree 감지 시 skip
 │   ├── enforce-plan-mode.sh  # PreToolUse Write|Edit — /plan-dev plan mode 미진입 시 차단. 비-plan-dev 세션 no-op
-│   ├── cmux-dispatch-hint.sh # SessionStart — no-op (반사적 cmux dispatch 압박 제거)
+│   ├── cmux-dispatch-hint.sh # SessionStart — cmux env 면 "dispatch 기본" advisory inject (비-cmux 무출력)
 │   ├── statusline-tokens.sh  # (opt-in) 하단 status bar 모드 — 기본은 token-stats.sh 사용
 │   └── token-stats.sh        # Stop hook 으로 직전 응답 토큰 사용량 + 캐시 히트율 inline 노출
 └── settings.json             # permissions(allow/deny) + hooks
@@ -343,7 +343,9 @@ DISABLE_CMUX_EDIT_BURST_HOOK=1 # 영구 비활성화
 
 ### 7) cmux-dispatch-hint.sh (SessionStart)
 
-**no-op (비활성)**. (구) cmux 환경 세션 시작 시 dispatch-first 안내를 inject 했으나, "진행 명령받았다고 반사적 cmux dispatch" 압박을 제거하는 정책(**direct-edit 기본, cmux opt-in**)에 따라 비활성화. 파일/등록은 propagate 호환 위해 유지 — 되살리려면 git history 참조.
+cmux 환경(`CMUX_WORKSPACE_ID` set) 세션 시작 시 **dispatch-first advisory** 를 stdout(additionalContext)으로 inject — "cmux 환경에선 plan-dev Slice 가 **dispatch(cmux) 기본**, direct-edit 는 justification 동반 opt-in 예외". 비-cmux 환경은 무출력(exit 0). **하드 차단 아님** — advisory nudge (편집 자체는 자유, 정당한 direct-edit 가능).
+
+> cmux workspace 에서 plan-dev 가 자꾸 direct-edit 로 가던 문제(글로벌 정책이 direct-edit 기본이었음)를 바로잡기 위해, cmux 환경 한정으로 dispatch 를 기본으로 reframe. 비-cmux 환경은 영향 없음.
 
 ### 8) SessionStart inline
 
