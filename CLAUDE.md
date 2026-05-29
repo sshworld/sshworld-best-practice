@@ -59,7 +59,7 @@
 | `scripts/finish-plan-dev.sh` | develop/main 분기 push 자동화 + marker clear. `origin/develop` 있으면 feature branch push, 없으면 main 직접 push. branch 이름 충돌 시 suffix -2~-5 자동 부여. **push 성공 직후 cmux 자식 surface 자동 cleanup** (`do_cmux_cleanup` — CMUX_WORKSPACE_ID set 시만). `SKIP_PLAN_DEV_FINISH` / `DISABLE_PLAN_DEV_FINISH` / `SKIP_PLAN_DEV_CMUX_CLEANUP` / `DISABLE_PLAN_DEV_CMUX_CLEANUP` 우회 지원. |
 | `.claude/hooks/track-cmux-edit-burst.sh` | PreToolUse Write\|Edit. cmux env Edit/Write 누적 N회 advisory (디폴트 임계치 **50**). 디폴트 **advisory only** — settings.json 의 inline `CMUX_EDIT_BURST_STRICT=1` 제거됨. `CMUX_EDIT_BURST_STRICT=1` env 명시 시만 차단(exit 2, 회귀 가드). count file 은 cmux workspace 별 독립 — 다른 workspace 끼리 누적 공유 안 됨. mtime idle 기반 자동 리셋. dispatch-slice-pane.sh launch 시 명시 리셋. **자식 worktree 감지 (git-dir != git-common-dir) 시 자동 skip** — dispatch 자식 환경 false-positive 회피. |
 | `.claude/hooks/enforce-plan-dev-goal.sh` | Stop hook. plan-dev-session marker 활성 + plan 파일 Goal Statement 의 `<!-- machine-checks -->` bash block 매 turn 종료 시 실행 = **bash layer**. 전부 PASS 후 `claude -p` headless 로 `goal-checker` agent 호출 = **agent layer** (semantic 판단). 두 layer PASS → exit 0 / 하나라도 fail → exit 2 + stderr reason → 모델 자동 다음 turn. native /goal 의 self-built 대체. **Active dispatch worktree (`.worktrees/<slug>`) 진행 중 자동 skip** — 자식 wait 단계 false-positive 회피. agent layer 우회: `SKIP_GOAL_AGENT` / `DISABLE_GOAL_AGENT`. **Semantic goal 추출은 템플릿의 인라인 `**Semantic goal**: <텍스트>` 형식을 캡처 (awk `next` 없이 매치 줄 포함 + prefix strip); 추출 빈값이면 agent layer 자동 skip (빈 goal false-negative 무한 block 방지).** |
-| `.claude/hooks/cmux-dispatch-hint.sh` | SessionStart. cmux env 감지 시 dispatch-first 안내 stdout 출력 (additionalContext inject). 비-cmux 환경엔 출력 없음. |
+| `.claude/hooks/cmux-dispatch-hint.sh` | SessionStart **no-op** (exit 0). (구) cmux env 에서 dispatch-first 안내를 inject 했으나 "반사적 cmux dispatch" 압박 제거 정책(direct-edit 기본, cmux opt-in)에 따라 비활성화. 파일/등록은 propagate 호환 위해 유지. |
 
 ## 추가 / 수정 체크리스트
 
@@ -103,7 +103,7 @@
 - ❌ Slice File Map 없이 슬라이스 분해 — rebase fast-forward 시 같은 파일 영역 충돌로 부모 수동 복구 비용 발생.
 - ❌ Dead code 판정 시 사용처 grep + 테스트 prop 직접 주입 확인 누락 — 부모가 prop 으로 set 하는 분기를 "도달 불가" 로 오판해 삭제하면 기존 테스트가 회귀로 catch.
 - ❌ 검증용 단순 curl / sleep 단독 호출 — Bash 자동 background 진입으로 동기 결과 못 받음. `timeout 5 curl ...` 또는 cmux browser eval 사용.
-- ❌ cmux 환경에서 슬라이스/멀티-파일 작업을 dispatch 없이 직접 Edit 으로 일관 — `track-cmux-edit-burst` advisory (디폴트 임계치 50, advisory only) 무시 누적은 사용자 인프라 무력화 신호. (단 **자식 worktree 안 자동 skip** 적용됨 — 자식 implementor 는 hook 영향 없음.)
+- ❌ cmux 환경이라고 / "진행" 명령받았다고 반사적으로 cmux dispatch — **direct-edit 기본, cmux opt-in**. dispatch 는 사용자 명시 요청(`--mode=cmux`/시각화) 또는 큰 병렬 작업 격리 가치 있을 때만. `track-cmux-edit-burst` 는 advisory only (디폴트 50, 차단 없음) — direct-edit 누적 자체는 정상. cmux dispatch 경로는 opt-in 으로 보존.
 - ❌ enforce-plan-dev-goal hook 의 active dispatch worktree skip 룰을 잊고 자식 wait 단계에서 SKIP env 우회 시도 — `git worktree list --porcelain` 결과 안 `.worktrees/<slug>` 존재 시 hook 가 이미 자동 skip. SKIP env 불필요.
 - ❌ dispatch spec-file 을 `/tmp/<slug>-spec.md` 등 repo 밖에 두기 — classifier transcript-blind 시 dispatch 거부 위험. `.claude/specs/<slug>.spec.md` 컨벤션 사용.
 - ❌ Goal Statement 에 `<!-- machine-checks -->` bash block 누락 — Stop hook 가 평가할 입력 없음 → exit 0 으로 통과해 loop 의미 상실. 형식 박스 그대로 따를 것.

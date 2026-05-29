@@ -27,7 +27,7 @@
 │   ├── limit-child-panes.sh  # 자식 tmux pane spawn 상한 (CLAUDE_MAX_CHILD_PANES)
 │   ├── enforce-cmux-context.sh # cmux 안에서 tmux 계열 명령 시도 시 advisory warning
 │   ├── track-cmux-edit-burst.sh # cmux env Edit/Write 누적 advisory (dispatch-first 유도). 자식 worktree 감지 시 skip
-│   ├── cmux-dispatch-hint.sh # SessionStart — cmux env 안내 메시지 inject
+│   ├── cmux-dispatch-hint.sh # SessionStart — no-op (반사적 cmux dispatch 압박 제거)
 │   ├── statusline-tokens.sh  # (opt-in) 하단 status bar 모드 — 기본은 token-stats.sh 사용
 │   └── token-stats.sh        # Stop hook 으로 직전 응답 토큰 사용량 + 캐시 히트율 inline 노출
 └── settings.json             # permissions(allow/deny) + hooks
@@ -340,7 +340,7 @@ DISABLE_CMUX_EDIT_BURST_HOOK=1 # 영구 비활성화
 
 ### 7) cmux-dispatch-hint.sh (SessionStart)
 
-cmux 환경 세션 시작 시 dispatch-first 패턴 안내를 stdout 으로 출력(additionalContext inject). 비-cmux 환경엔 출력 없음.
+**no-op (비활성)**. (구) cmux 환경 세션 시작 시 dispatch-first 안내를 inject 했으나, "진행 명령받았다고 반사적 cmux dispatch" 압박을 제거하는 정책(**direct-edit 기본, cmux opt-in**)에 따라 비활성화. 파일/등록은 propagate 호환 위해 유지 — 되살리려면 git history 참조.
 
 ### 8) SessionStart inline
 
