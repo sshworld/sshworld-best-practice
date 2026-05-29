@@ -35,6 +35,8 @@
       "Bash(cmux new-pane*)",
       "Bash(cmux new-split*)",
       "Bash(cmux rename-tab*)",
+      "Bash(cmux workspace-action*)",
+      "Bash(cmux list-pane-surfaces*)",
       "Bash(cmux send *)",
       "Bash(cmux send-key*)",
       "Bash(cmux read-screen*)",

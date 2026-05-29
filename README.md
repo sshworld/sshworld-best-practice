@@ -64,7 +64,7 @@ scripts/
 
 기존 파일이 있으면 `.bak.<ts>` 백업 후 덮어씁니다. `settings.json` 은 `jq` 가 있으면 **자동 병합** — `permissions.allow` / `permissions.deny` 는 union, `hooks.<event>` 는 **matcher / hook 파일명 단위 union** — 같은 hook 파일명 (`hooks/<name>.sh`) 이면 repo 가 winner (STRICT/ENV prepend 등 source of truth). 비-겹침 customize 는 보존. `INSTALL_NO_MERGE=1` 또는 `jq` 미설치 시 `settings.example.json` 로 폴백 (수동 병합 안내).
 
-**cmux workspace title 자동** (user scope): `install.sh user` 가 `~/.zshrc` 에 `scripts/cmux-title-chpwd.sh` source block 을 idempotent 추가 (marker `# >>> cmux-title-chpwd >>>`). 적용 후 새 zsh 셸에서 `cd` 마다 cmux 사이드바의 해당 surface title 이 현재 디렉토리 (`basename $PWD`) 로 자동 변경 — 여러 workspace 가 어느 디렉토리에서 작업 중인지 한눈에 식별. 비-cmux 셸(tmux/일반 터미널)에선 no-op. `uninstall user` 시 block 자동 제거.
+**cmux workspace title 자동** (user scope): `install.sh user` 가 `~/.zshrc` 에 `scripts/cmux-title-chpwd.sh` source block 을 idempotent 추가 (marker `# >>> cmux-title-chpwd >>>`). 적용 후 새 zsh 셸에서 `cd` 마다 (1) cmux tab/surface title 을 현재 디렉토리 (`basename $PWD`) 로 갱신하고, (2) **single-surface workspace** 면 추가로 왼쪽 사이드바의 **workspace 이름** 도 같은 basename 으로 갱신 — 여러 workspace 가 어느 디렉토리에서 작업 중인지 사이드바만 보고 식별. surface 가 여러 개인 workspace (cmux dispatch grid 등) 는 자식 cd 끼리 title 을 덮어쓰는 clobber 를 피하려 workspace 는 안 건드리고 tab 만 갱신. 비-cmux 셸(tmux/일반 터미널)에선 no-op. `uninstall user` 시 block 자동 제거.
 
 ---
 
@@ -406,7 +406,7 @@ DISABLE_CMUX_EDIT_BURST_HOOK=1 # 영구 비활성화
 - `git status`, `diff`, `log`, `branch`, `checkout`, `switch`, `fetch`, `pull`, `add`, `commit`, `stash`, `merge`, `rebase`, `remote`, `tag`, `worktree`, `restore`
 - `BUILD_CMD` / `TEST_CMD` / `RUN_CMD` TODO 자리 (사용자가 프로젝트 빌드 명령으로 치환)
 - tmux 좁힌 패턴: `tmux new-window*`, `tmux send-keys*`, `tmux capture-pane*`, `tmux display-message*`, `tmux list-panes*`, `tmux kill-pane*`, `tmux-cli*`
-- cmux 관리: `cmux new-workspace*`, `cmux new-pane*`, `cmux new-split*`, `cmux rename-tab*`, `cmux send *`, `cmux send-key*`, `cmux read-screen*`, `cmux capture-pane*`, `cmux list-workspaces*`, `cmux list-panes*`, `cmux close-surface*`, `cmux close-workspace*`, `cmux tree*`, `cmux ping*`, `cmux identify*`
+- cmux 관리: `cmux new-workspace*`, `cmux new-pane*`, `cmux new-split*`, `cmux rename-tab*`, `cmux workspace-action*`, `cmux send *`, `cmux send-key*`, `cmux read-screen*`, `cmux capture-pane*`, `cmux list-workspaces*`, `cmux list-panes*`, `cmux list-pane-surfaces*`, `cmux close-surface*`, `cmux close-workspace*`, `cmux tree*`, `cmux ping*`, `cmux identify*`
 - cmux 사이드바 UX: `cmux notify*`, `cmux set-status*`, `cmux set-progress*`, `cmux clear-status*`, `cmux clear-progress*` (plan-dev 진행률 push 용)
 - scripts: `*/scripts/tmux-pane.sh*`, `*/scripts/cmux-pane.sh*`, `*/scripts/detect-pane-env.sh*`, `*/scripts/dispatch-slice-pane.sh*`, `*/scripts/finish-plan-dev.sh*`, `*/scripts/plan-dev-progress.sh*`
 
