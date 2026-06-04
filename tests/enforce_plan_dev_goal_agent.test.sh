@@ -31,8 +31,7 @@ true
 ```
 <!-- /machine-checks -->
 
-## Semantic goal
-Agent layer added to hook.
+**Semantic goal**: Agent layer added to hook.
 PLANEOF
 
 # ── Helper to build PATH without any real claude ─────────────────────
