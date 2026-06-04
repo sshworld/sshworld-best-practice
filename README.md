@@ -105,6 +105,32 @@ scripts/
 
 ---
 
+## Workflow 통합 (dynamic workflows)
+
+Claude Code 의 **dynamic workflows**(`Workflow` 툴 — JS 스크립트로 subagent fan-out / pipeline / loop 를 결정론 오케스트레이션)를 `/plan-dev` 특정 Phase 에 **opt-in** 으로 결합한다. plan-dev 는 슬래시 커맨드이므로 그 가이드가 Workflow 호출을 지시하는 것 자체가 적법한 opt-in 트리거.
+
+### 어디에 쓰나 (A / B / C)
+
+| 구분 | plan-dev 위치 | Workflow 패턴 |
+|---|---|---|
+| **A** Plan/Review 보강 | Phase 1-3 / 3.5 | judge panel(독립 비평 N→합성) · multi-dimension 적대 verify(refute 다수결) |
+| **B** workflow 실행 모드 | Phase 2 (opt-in) | `pipeline(slices, implement, verify)` + `isolation:'worktree'` |
+| **C** 대규모 escape hatch | audit / migration | loop-until-dry · multi-modal sweep · `resume` |
+
+reference 스크립트: `.claude/workflows/{plan-review-panel,slice-pipeline,codebase-audit}.mjs` — `Workflow({scriptPath})` 로 실행하거나 inline `script:` 로 paste.
+
+### ⚠️ cmux ⇄ workflow 상호배타 (트레이드오프)
+
+| | cmux dispatch | Workflow 툴 |
+|---|---|---|
+| 자식 표현 | cmux 사이드바 surface (attach/시각화) | `/workflows` 진행 트리 (내부 Task 러너) |
+| 적합 | 시각적 슬라이스 실행 | 비시각·추론집약·대규모 |
+| 토큰 추적 | 부모 token-stats ✗ | budget 공유 풀 |
+
+Workflow agent 는 **cmux surface 가 아니다** — 다른 런타임이라 한 작업에서 둘을 섞지 말고 슬라이스 단위로 분리한다. opt-in 발동: 사용자가 "workflow"/"multi-agent" 명시, 또는 명시 지시(예: "모든 수로 검증"), ultracode on.
+
+---
+
 ## 병렬 Claude 협업 (tmux pane)
 
 부모 Claude 세션에서 **다른 tmux pane** 의 CLI 에이전트(또 다른 Claude / 디버거 / 장시간 스크립트)와 통신.

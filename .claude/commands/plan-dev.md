@@ -66,7 +66,7 @@ scripts/plan-dev-session.sh start
 | S1 | scripts/foo.sh, README.md | direct-edit | updated |
 | S2 | .claude/agents/bar.md | dispatch (cmux, 사용자 시각화 요청) | none |
 
-- `Mode` — **`Mode 컬럼 필수`**, 빈 셀 금지. **기본은 환경 의존**: **cmux 환경(`CMUX_WORKSPACE_ID` set)이면 `dispatch(cmux)` 기본**, 비-cmux 환경이면 `direct-edit` 기본. cmux 환경에서 `direct-edit` 는 **opt-in 예외** — 선택 시 1줄 justification 의무 (예: "정책/문서 파일 자체 편집", "단일 trivial 수정", "사용자가 direct-edit 명시"). 비-cmux 환경에선 그 반대(dispatch 가 opt-in). cmux 환경인데 반사적으로 direct-edit 로 떨어뜨리지 말 것.
+- `Mode` — **`Mode 컬럼 필수`**, 빈 셀 금지. 값: `direct-edit` / `dispatch(cmux)` / `dispatch(tmux)` / `workflow`. **기본은 환경 의존**: **cmux 환경(`CMUX_WORKSPACE_ID` set)이면 `dispatch(cmux)` 기본**, 비-cmux 환경이면 `direct-edit` 기본. cmux 환경에서 `direct-edit` 는 **opt-in 예외** — 선택 시 1줄 justification 의무 (예: "정책/문서 파일 자체 편집", "단일 trivial 수정", "사용자가 direct-edit 명시"). 비-cmux 환경에선 그 반대(dispatch 가 opt-in). `workflow` 는 opt-in (대규모/비시각, ➜ "Workflow 통합" 섹션). cmux 환경인데 반사적으로 direct-edit 로 떨어뜨리지 말 것.
 - `DOC_IMPACT` — `none` / `updated` 중 plan 단계에 미리 결정 (commit 시점에 발견하면 hook 차단 후 재시도 비용).
 
 Slice 정의 시 **type 도 같이 결정**: `feat|fix|refactor|test|docs|chore`.
@@ -109,6 +109,7 @@ test -x scripts/foo.sh
 
 ### 1-3. Plan Review (강력 권장, 단 1회)
 `Agent(subagent_type="Plan")` 으로 staff engineer 비평 수령. 5분 이내.
+- **opt-in 시 judge panel 격상**: 사용자가 workflow 명시 / 대규모 plan 이면 단일 Plan 대신 `Workflow` 툴로 N개 독립 비평 → 합성 (➜ "Workflow 통합" A).
 
 **충돌 사전 점검**: Slice File Map 의 파일 교집합 존재 시 그 슬라이스들은 의존성 있음으로 분류 — 병렬 X, 순차로 강등하거나 단일 슬라이스로 병합.
 
@@ -152,6 +153,7 @@ scripts/plan-dev-progress.sh start --total=<N>
 | `--mode=subagent` | Agent(implementor) — 부모 token-stats 추적 ✓, cmux 화면 분할 ✗ |
 | `--mode=pane` / `--mode=tmux` | tmux pane dispatch |
 | `--mode=cmux` | cmux workspace dispatch (부모 workspace 안 grid split — 사용자가 attach/시각화) |
+| `Workflow` 툴 (mode=workflow) | dispatch-slice-pane **미경유** — 부모가 `Workflow` 툴로 `pipeline(slices,...)` fan-out. 비시각·대규모·자동 verify. opt-in. `/workflows` 트리로 관찰. ➜ "Workflow 통합" 섹션 참조 |
 
 **cmux dispatch (cmux 환경 기본)**: cmux 환경에서는 슬라이스 기본 mode. `--mode=cmux` 면 부모 workspace 안에 자식 surface 가 grid 분할되어 사용자가 화면에서 직접 진행 확인. 자식 토큰은 부모 token-stats 로 추적 안 됨 (trade-off — 비-cmux 면 subagent mode 가 토큰 추적). cmux 환경에서 direct-edit 로 갈 거면 Mode 컬럼에 1줄 justification 명시.
 
@@ -234,6 +236,7 @@ verifier PASS 후 commit 전 코드 리뷰를 원하면 `reviewer` 에이전트 
 
 - 치명적 이슈 → Phase 2 회귀.
 - 제안(논블로킹)은 사용자 판단.
+- **opt-in 시 multi-dimension 적대 verify 격상**: 단일 reviewer 대신 `Workflow` 툴로 dimension 별 finder + finding 별 적대 다수결 (➜ "Workflow 통합" A).
 
 ## Phase 4 — Git 추천
 
@@ -276,6 +279,67 @@ git worktree list --porcelain
 ```
 
 응답 마지막 줄: `다음 추천: <명령>`
+
+## Workflow 통합 (dynamic workflows)
+
+> **핵심**: `Workflow` 툴 = JS 스크립트로 subagent fan-out / pipeline / loop 를 **결정론 오케스트레이션**. plan-dev 의 단일 `Agent` 호출 자리를 **판단 다양성·적대 검증·대규모 처리**로 격상. `/plan-dev` 는 슬래시 커맨드 → 그 자체가 Workflow 툴 **opt-in 트리거로 적법** (툴 스펙: "user invoked a skill/command whose instructions tell you to call Workflow").
+
+### ⚠️ cmux ⇄ workflow 상호배타 (먼저 읽을 것)
+
+Workflow agent 는 **cmux surface 가 아니다** — 하네스 내부 Task 러너로 돌고 `/workflows` 진행 트리에 뜬다. cmux 사이드바 grid split 시각화와 **다른 런타임 → 상호배타**.
+- **시각적 슬라이스 실행** (사용자가 화면에서 보고 싶음) → **cmux dispatch 유지** (`--mode=cmux`).
+- **비시각·추론 집약** (Plan 비평, 코드 리뷰, verify 수렴, 대규모 audit/migration) → **Workflow**.
+- 한 작업에서 둘 다 쓰려 하지 말 것. Slice 단위로 "이 슬라이스는 cmux 실행 / 이 검증 Phase 는 workflow" 로 분리.
+
+### opt-in 발동 조건 (이 중 하나)
+
+- 사용자가 메시지에 "workflow" / "워크플로우" / "multi-agent" / "fan out" 명시.
+- 사용자가 이 Phase 에서 Workflow 사용을 명시 지시 (예: "모든 수로 검증").
+- ultracode on (system-reminder 확인 시).
+
+opt-in 없으면 호출 금지 — 기존 단일 `Agent` 흐름 유지. 비용 큼(수십 agent) → 사용자 동의 필수.
+
+### A. Plan/Review Phase 보강 (가장 안전·고가치, cmux 실행 경로 보존)
+
+- **Phase 1-3 Plan review → judge panel**: 단일 `Agent(Plan)` 대신 N개 독립 비평(서로 다른 각도: MVP-first / risk-first / 의존성-first)을 병렬 생성 → 점수화 → 최고안 합성 + 차선안 좋은 아이디어 graft.
+- **Phase 3.5 Review → multi-dimension 적대 verify**: dimension(correctness/security/perf/repro)별 finder → 각 finding 을 **독립 skeptic 다수결**로 적대 검증(refute 시도, 과반 refute 시 kill). plausible-but-wrong 제거.
+
+inline 템플릿 (paste as `script:`; named 파일은 `.claude/workflows/*.mjs` 에 동봉):
+```js
+// Phase 3.5 — review-changes.js (요약). 전체: .claude/workflows/codebase-audit.mjs
+const results = await pipeline(DIMENSIONS,
+  d => agent(d.prompt, {phase:'Review', schema: FINDINGS}),
+  review => parallel(review.findings.map(f => () =>
+    agent(`Adversarially verify: ${f.title}. Default refuted=true if uncertain.`,
+      {phase:'Verify', schema: VERDICT}).then(v => ({...f, verdict:v})))))
+const confirmed = results.flat().filter(Boolean).filter(f => f.verdict?.isReal)
+```
+
+### B. Phase 2 workflow 실행 모드 (opt-in, 기본 아님)
+
+비-cmux 환경에서 의존성 없는 슬라이스 fan-out 을 수동 `Agent` 다발 대신 `pipeline(slices, implement, verify)` 로. **기본값 아님** — 환경별 기본(cmux=dispatch, 비-cmux=direct-edit/subagent)은 그대로. 시각화 불필요 + 슬라이스 多 + 자동 verify gate 원할 때 opt-in.
+- worktree 충돌 회피: `agent(..., {isolation:'worktree'})` (네이티브, dispatch-slice-pane 불필요).
+- Slice File Map 의 `Mode` 컬럼 값으로 `workflow` 표기 가능 (cmux/direct-edit/workflow).
+- 한계: cmux 사이드바 시각화 없음(`/workflows` 트리로 관찰). 토큰은 budget 공유 풀.
+
+```js
+// .claude/workflows/slice-pipeline.mjs (요약)
+const done = await pipeline(SLICES,
+  s => agent(s.specPrompt, {label:`impl:${s.slug}`, phase:'Implement',
+                            isolation:'worktree', schema: IMPL_RESULT}),
+  r => agent(`Verify build+test for ${r.slug}`, {phase:'Verify', schema: VERDICT}))
+```
+
+### C. 대규모 작업 escape hatch
+
+audit / migration / framework swap 등 **수십~수백 슬라이스** 는 workflow 가 압도적 (loop-until-dry, multi-modal sweep, resume journal). 일반 feature(슬라이스 ≤ ~8)는 기존 흐름 유지. `budget.remaining()` 로 깊이 동적 조절, `resumeFromRunId` 로 중단 재개.
+
+### 안티패턴 (Workflow)
+
+- ❌ opt-in 없이 Workflow 호출 — 수십 agent 비용. 사용자 동의 없으면 단일 Agent.
+- ❌ cmux 시각화 슬라이스를 workflow 로 돌려 사이드바에서 안 보이게 만들기 — 런타임 상호배타. 시각 실행은 `--mode=cmux`.
+- ❌ B 의 workflow 실행 모드를 비-cmux **기본값**으로 격상 — opt-in 유지 (기본 뒤집지 말 것).
+- ❌ `name:`(`.claude/workflows/*.mjs`) 해석이 harness 빌드에 의존 — 미확인 시 inline `script:` 로 paste (항상 동작).
 
 ## 안전 규칙
 

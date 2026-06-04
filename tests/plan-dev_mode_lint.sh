@@ -11,10 +11,12 @@ step() { echo "[$1] $2"; }
 fail() { echo "❌ FAIL: $1" >&2; exit 1; }
 
 step 1 "plan-dev.md 의 모드 분기 키워드"
-for kw in "--mode=pane" "dispatch-slice-pane.sh" "tmux attach"; do
+for kw in "--mode=pane" "dispatch-slice-pane.sh" "tmux attach" "Workflow 통합"; do
   grep -F -- "$kw" "$PLAN" > /dev/null || fail "plan-dev.md missing: $kw"
 done
 grep -E "회수 전 머지|회수 전에 머지" "$PLAN" > /dev/null || fail "plan-dev.md missing 회수-전-머지 안티패턴"
+# workflow 모드가 모드표에 등재되어 있어야 함
+grep -E "mode=workflow|workflow 실행 모드|Workflow 툴 \(mode=workflow\)" "$PLAN" > /dev/null || fail "plan-dev.md missing workflow 모드 in 모드표"
 
 step 2 "implementor.md 의 pane 모드 안내"
 grep -F "pane 모드" "$IMPL" > /dev/null || fail "implementor.md missing 'pane 모드'"

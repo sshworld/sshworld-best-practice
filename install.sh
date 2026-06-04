@@ -38,6 +38,9 @@ FILES=(
   "agents/goal-checker.md"
   "skills/fork/SKILL.md"
   "skills/tmux-orchestrate/SKILL.md"
+  "workflows/plan-review-panel.mjs"
+  "workflows/slice-pipeline.mjs"
+  "workflows/codebase-audit.mjs"
   "hooks/enforce-test-first.sh"
   "hooks/enforce-doc-sync.sh"
   "hooks/enforce-cmux-context.sh"
@@ -317,7 +320,7 @@ do_uninstall() {
   fi
 
   # 빈 디렉토리 정리 (실패해도 무시)
-  for d in skills/fork skills/tmux-orchestrate hooks commands agents skills; do
+  for d in skills/fork skills/tmux-orchestrate workflows hooks commands agents skills; do
     rmdir "$dest/$d" 2>/dev/null || true
   done
   rmdir "$proj_root/scripts" 2>/dev/null || true

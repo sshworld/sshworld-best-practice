@@ -42,6 +42,7 @@
 | `.claude/agents/reviewer.md` | 치명적 vs 제안 분류. 직접 수정 안 함. |
 | `.claude/agents/commit-advisor.md` | 한글 Conventional Commit + DOC 영향 평가. 실제 commit 안 함. |
 | `.claude/agents/goal-checker.md` | plan-dev Stop hook 의 agent layer (Haiku). plan Semantic goal + start_ref..HEAD diff 보고 JSON `{pass, missing}` 응답. enforce-plan-dev-goal.sh 가 `claude -p` 로 호출. |
+| `.claude/workflows/*.mjs` | dynamic **Workflow** 툴용 reference 스크립트 (plan-review-panel / slice-pipeline / codebase-audit). plan-dev 의 A(Plan/Review judge·적대 panel) / B(opt-in workflow 실행모드) / C(대규모 audit) 통합 템플릿. `Workflow({scriptPath})` 또는 inline `script:` paste. `export const meta` + top-level await/return → 런타임이 async fn wrap (raw `node --check` 불가, `tests/workflow_integration_lint.sh` 가 export-strip+wrap 후 syntax 검증). cmux surface 아님 — `/workflows` 트리 표현, cmux 시각화와 상호배타. |
 | `.claude/skills/fork/SKILL.md` | 자식 컨텍스트로 작업 위임, 요약만 반환. |
 | `.claude/skills/tmux-orchestrate/SKILL.md` | 부모-자식 Claude tmux pane 협업 패턴 가이드. |
 | `.claude/hooks/*.sh` | 런타임 강제. stderr 메시지에 우회 방법 항상 명시. |
@@ -111,6 +112,10 @@
 - ❌ Goal Statement 에 `<!-- machine-checks -->` bash block 누락 — Stop hook 가 평가할 입력 없음 → exit 0 으로 통과해 loop 의미 상실. 형식 박스 그대로 따를 것.
 - ❌ Goal Statement 에 측정 불가 추상 표현 ("품질 향상", "안정성 강화") 만 박기 — Stop hook 가 평가 못 함 / false-positive. `grep` / `test` / `jq` / shell command 결과 기반 bash one-liner 만.
 - ❌ 옵션 list (A/B/C) 를 plain text 로 응답 끝에 dump 하고 turn 종료 — selection chip UI 가 안 떠 사용자 입력 비용 증가, plan-dev 흐름 끊김. AskUserQuestion 의무 (Phase 1-1 `정반대 가능` trigger 매치 시).
+- ❌ opt-in 없이 `Workflow` 툴 호출 — 수십 agent 비용. 사용자가 "workflow"/"multi-agent" 명시 또는 명시 지시(예: "모든 수로 검증")/ultracode on 일 때만. 그 외엔 단일 `Agent`.
+- ❌ cmux 시각화 의도 슬라이스를 `Workflow` 로 돌려 사이드바에서 안 보이게 — Workflow agent 는 cmux surface 아님(상호배타 런타임). 시각 실행은 `--mode=cmux`, 비시각·대규모만 workflow.
+- ❌ B(workflow 실행모드)를 비-cmux **기본값**으로 격상 — opt-in 유지. 환경별 기본(cmux=dispatch, 비-cmux=direct-edit)은 안 뒤집음.
+- ❌ `.claude/workflows/*.mjs` 를 `node --check` 로 직접 검증 — top-level return/await 로 SyntaxError. export-strip + async fn wrap 후 검사 (`tests/workflow_integration_lint.sh` 참조).
 
 ## 환경변수 (tmux / cmux 통합)
 
