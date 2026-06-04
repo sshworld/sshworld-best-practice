@@ -72,7 +72,7 @@ Branch: <type>/<slug>
 본 implementor 는 세 호출 경로에서 동일 동작 (출력 형식 `✅ <slice>:` / `❌ <slice>:` 양쪽 동일):
 
 - **subagent 모드** (`--mode=subagent`) — Agent 도구로 spawn, worktree 자동 격리. 부모 token-stats 로 토큰 추적 ✓, 화면 분할 ✗.
-- **tmux pane 모드** (`--mode=tmux`) — `scripts/dispatch-slice-pane.sh` 가 worktree + tmux pane 생성, 자식 Claude 가 spec-file 받아 인터랙티브 진행.
+- **tmux pane 모드** (`--mode=tmux`) — `@@SCRIPTS_DIR@@/dispatch-slice-pane.sh` 가 worktree + tmux pane 생성, 자식 Claude 가 spec-file 받아 인터랙티브 진행.
 - **cmux workspace 모드** (`--mode=cmux`) — 부모 cmux workspace 안에 surface 가 grid split. 사용자가 직접 attach/시각화. 자식 토큰 추적 ✗.
 - **auto 모드** (기본) — `detect-pane-env.sh` 결과로 자동 분기.
 

@@ -12,10 +12,10 @@ set -uo pipefail
 cat <<'EOF'
 === cmux dispatch 기본 (이 세션 cmux 환경) ===
 - 이 워크스페이스는 cmux. plan-dev Slice 는 **dispatch(cmux) 기본** — 직접 Edit 가 아니라
-  scripts/dispatch-slice-pane.sh --mode=cmux 로 자식 surface 띄워 작업.
+  @@SCRIPTS_DIR@@/dispatch-slice-pane.sh --mode=cmux 로 자식 surface 띄워 작업.
 - Slice File Map 의 Mode 는 cmux 환경에선 dispatch 가 기본값. direct-edit 는 **opt-in 예외**로,
   선택 시 1줄 justification 필수 (예: "정책/문서 파일 자체 편집", "단일 trivial 수정").
-- 자식 surface 는 cmux 사이드바에서 사용자가 직접 진행 시각화. 회수: scripts/cmux-pane.sh
+- 자식 surface 는 cmux 사이드바에서 사용자가 직접 진행 시각화. 회수: @@SCRIPTS_DIR@@/cmux-pane.sh
   wait-idle → read-screen | grep ✅/❌.
 - 비-cmux 환경이면 이 안내는 안 뜸 (direct-edit 기본 유지).
 EOF

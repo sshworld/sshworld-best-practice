@@ -55,7 +55,7 @@ fi
 
 MSG=$(cat <<EOF
 ⚠️  cmux 환경 Edit/Write 누적 ${CUR}회 (임계치 ${THRESHOLD}) — dispatch 미사용 의심.
-   가시화/병렬 가치가 있으면: scripts/dispatch-slice-pane.sh --mode=cmux --type=<type> --spec-file=<spec.md>
+   가시화/병렬 가치가 있으면: @@SCRIPTS_DIR@@/dispatch-slice-pane.sh --mode=cmux --type=<type> --spec-file=<spec.md>
    소규모/직접 편집이 맞으면: 무시 (이 메시지는 advisory).
    ↳ 우회하기 전: dispatch 선택지 (cmux-pane.sh launch) 를 의식적으로 검토했는지 확인.
 

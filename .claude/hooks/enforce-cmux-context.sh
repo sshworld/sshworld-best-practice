@@ -75,7 +75,7 @@ fi
 if [ "${CMUX_CONTEXT_HOOK_STRICT:-0}" = "1" ]; then
   cat >&2 <<'EOF'
 enforce-cmux-context: [STRICT] cmux 안에서 tmux 계열 명령 차단.
-  cmux 환경에선 scripts/cmux-pane.sh 를 사용하세요.
+  cmux 환경에선 @@SCRIPTS_DIR@@/cmux-pane.sh 를 사용하세요.
 
 우회:
   SKIP_CMUX_CONTEXT_HOOK=1    — 1회 우회
@@ -87,7 +87,7 @@ fi
 
 # Advisory 모드 (기본): 경고만 출력하고 통과
 cat >&2 <<'EOF'
-⚠️  cmux 안에서 tmux 계열 명령 시도 — cmux 환경에선 scripts/cmux-pane.sh 사용 권장.
+⚠️  cmux 안에서 tmux 계열 명령 시도 — cmux 환경에선 @@SCRIPTS_DIR@@/cmux-pane.sh 사용 권장.
    (이번엔 통과. 차단 모드: CMUX_CONTEXT_HOOK_STRICT=1, 영구 비활성화: DISABLE_CMUX_CONTEXT_HOOK=1)
 EOF
 

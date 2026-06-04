@@ -107,6 +107,9 @@ do_install() {
 
   check_tmux_prereq
 
+  # scripts 절대경로 — FILES 복사 후 @@SCRIPTS_DIR@@ token bake 에 사용
+  local proj_root="$(dirname "$dest")"
+
   for rel in "${FILES[@]}"; do
     local src_file="$SRC/$rel"
     local dest_file="$dest/$rel"
@@ -126,6 +129,11 @@ do_install() {
 
     cp "$src_file" "$dest_file"
 
+    # @@SCRIPTS_DIR@@ → 설치 scope 의 scripts 절대경로 (settings.json $CLAUDE_PROJECT_DIR→$HOME rewrite 와 동일 취지)
+    if grep -q '@@SCRIPTS_DIR@@' "$dest_file" 2>/dev/null; then
+      sed -i.bak2 "s|@@SCRIPTS_DIR@@|$proj_root/scripts|g" "$dest_file" && rm -f "$dest_file.bak2"
+    fi
+
     # hook 스크립트는 실행 권한 부여
     case "$rel" in
       hooks/*.sh) chmod +x "$dest_file" ;;
@@ -135,7 +143,6 @@ do_install() {
   done
 
   # scripts/ 는 .claude/ 밖에 배포 (project root 또는 $HOME)
-  local proj_root="$(dirname "$dest")"
   for rel in "${SCRIPTS[@]}"; do
     local src_file="$SCRIPT_DIR/$rel"
     local dest_file="$proj_root/$rel"
