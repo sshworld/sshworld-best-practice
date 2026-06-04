@@ -145,16 +145,23 @@ do_start() {
   marker="$(marker_path)"
 
   # 기존 marker 검사
+  local preserve_ts="" preserve_ref=""
   if [ -f "$marker" ]; then
-    local existing_pid existing_ts
+    local existing_pid existing_ts existing_ref
     existing_pid=$(json_get "$marker" "start_pid" 2>/dev/null) || existing_pid=""
     existing_ts=$(json_get "$marker" "start_ts" 2>/dev/null) || existing_ts=""
+    existing_ref=$(json_get "$marker" "start_ref" 2>/dev/null) || existing_ref=""
 
     if [ -n "$existing_pid" ] && [ -n "$existing_ts" ]; then
       if pid_alive "$existing_pid" && within_24h "$existing_ts"; then
         echo "plan-dev-session: 이미 진행 중 (PID=${existing_pid}, 시작=${existing_ts})" >&2
         exit 0
       fi
+    fi
+    # 재진입(dead pid + within_24h): start_ts/start_ref 보존 — progress start 재호출이 clobber 하던 버그 fix
+    if [ -n "$existing_ts" ] && within_24h "$existing_ts"; then
+      preserve_ts="$existing_ts"
+      preserve_ref="$existing_ref"
     fi
     # stale → .bak 으로 이동
     mv "$marker" "${marker}.bak"
@@ -169,9 +176,10 @@ do_start() {
     exit 0
   fi
 
-  # 현재 HEAD SHA
+  # 현재 HEAD SHA (within_24h 재진입이면 원본 보존)
   local start_ref
   start_ref=$(git rev-parse HEAD)
+  [ -n "$preserve_ref" ] && start_ref="$preserve_ref"
 
   # auto_branch: 현재 branch == base 이면 true
   local auto_branch="false"
@@ -183,6 +191,7 @@ do_start() {
 
   local start_ts
   start_ts="$(iso_ts)"
+  [ -n "$preserve_ts" ] && start_ts="$preserve_ts"
 
   # JSON 작성 (python3 사용 — sh 에서 JSON 직접 쓰면 escape 문제)
   python3 -c "
