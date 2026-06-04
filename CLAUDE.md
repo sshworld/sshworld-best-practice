@@ -150,6 +150,9 @@
 | `CBP_SPLIT_POLICY` | unset (라운드로빈) | `cmux-pane.sh` grid split 방향 고정 (`down` 또는 `right`). unset 시 라운드로빈 (count 홀수→down, 짝수→right). Slice A3 에서 확장 예정. |
 | `CBP_DISABLE_WARMUP` | unset | `cmux-pane.sh launch` 의 PTY warmup (surface 생성 후 send-key Enter + sleep) 끄기. 신규 surface 가 PTY detached 상태로 첫 send 를 swallow 하는 케이스 우회용 (디폴트 on). |
 | `CBP_WARMUP_SLEEP` | 0.5 | `cmux-pane.sh launch` PTY warmup 의 sleep 초. |
+| `CBP_SEND_CONFIRM` | unset (ON) | `cmux-pane.sh send` 의 제출 확인 재시도 ON/OFF. `0` 이면 OFF (기존 동작). unset = ON (기본). |
+| `CBP_SEND_CONFIRM_TRIES` | 3 | `cmux-pane.sh send` confirm 루프 최대 재시도 횟수. |
+| `CBP_SEND_CONFIRM_SLEEP` | 0.6 | `cmux-pane.sh send` confirm 루프 각 슬립 초. |
 | `CMUX_EDIT_BURST_THRESHOLD` | 50 | `track-cmux-edit-burst` hook 의 advisory 임계치. 디폴트 50 — 부모 50 Edit 까지 silently pass, 51번째부터 stderr advisory (차단 X, strict env 미지정 시). count file 은 **cmux workspace 별 독립** (`~/.cache/cbp/edit-burst-<workspace_id>.count`) — 다른 workspace 끼리 count 공유 안 됨. |
 | `CMUX_EDIT_BURST_IDLE_SEC` | 300 | `track-cmux-edit-burst` hook 의 자동 리셋 idle 초 |
 | `CMUX_EDIT_BURST_STRICT` | unset | `track-cmux-edit-burst` hook strict 모드 (exit 2 차단). settings.json 의 inline 설정은 제거됨 — 디폴트 advisory only. 명시 set 시만 차단 (회귀 가드 보존). |

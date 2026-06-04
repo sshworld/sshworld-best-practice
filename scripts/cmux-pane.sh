@@ -330,6 +330,18 @@ _do_launch_grid() {
   printf '%s\n' "$surface_ref"
 }
 
+_send_is_submitted() {
+  local screen="$1"
+  [ -z "$screen" ] && return 2
+  local last_prompt
+  last_prompt=$(printf '%s\n' "$screen" | grep -E '^[[:space:]]*[❯>]' | tail -1)
+  [ -z "$last_prompt" ] && return 2
+  if printf '%s\n' "$last_prompt" | grep -qE '^[[:space:]]*[❯>][[:space:]]*$'; then
+    return 0
+  fi
+  return 1
+}
+
 do_send() {
   local text="$1"; shift
   local PANE="" ENTER="true" DELAY="1.5" ENTER_COUNT="1"
@@ -350,6 +362,27 @@ do_send() {
       i=$((i + 1))
       [ "$i" -lt "$ENTER_COUNT" ] && sleep 0.3
     done
+    # confirm loop: 제출 확인 재시도. CBP_SEND_CONFIRM=0 으로 끄기(기존 동작).
+    if [ "${CBP_SEND_CONFIRM:-1}" != "0" ]; then
+      local confirm_tries="${CBP_SEND_CONFIRM_TRIES:-3}"
+      local confirm_sleep="${CBP_SEND_CONFIRM_SLEEP:-0.6}"
+      local ct=0
+      while [ "$ct" -lt "$confirm_tries" ]; do
+        sleep "$confirm_sleep"
+        local screen
+        screen=$("$CMUX_BIN" read-screen "$pane_flag" "$PANE" 2>/dev/null || echo "")
+        local check_rc
+        _send_is_submitted "$screen"; check_rc=$?
+        if [ "$check_rc" -eq 0 ]; then
+          break
+        elif [ "$check_rc" -eq 1 ]; then
+          "$CMUX_BIN" send-key "$pane_flag" "$PANE" Enter || true
+        else
+          break
+        fi
+        ct=$((ct + 1))
+      done
+    fi
   fi
   return 0
 }
