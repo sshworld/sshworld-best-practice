@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Workflow 통합 lint — dynamic Workflow 의 plan-dev 통합(A+B+C) 산출물 검증.
 #  - plan-dev.md 에 Workflow 통합 섹션(opt-in / A judge·적대 / B 실행모드 / C 대규모) 존재.
-#  - .claude/workflows/*.js reference 스크립트가 node --check 통과 + meta 보유.
+#  - .claude/workflows/*.mjs reference 스크립트가 node --check 통과 + meta 보유.
 #  - README/CLAUDE.md 동기화 + install.sh 전파.
 
 set -uo pipefail
@@ -36,6 +36,7 @@ wf_files=("$WF_DIR"/*.mjs)
 for f in "${wf_files[@]}"; do
   grep -q "export const meta" "$f" || fail "meta 누락: $f"
 done
+for f in "${wf_files[@]}"; do grep -q "model: *'sonnet'" "$f" || fail "model sonnet 누락: $f"; done
 if command -v node >/dev/null 2>&1; then
   for f in "${wf_files[@]}"; do
     wrapped=$({ echo '(async function(agent,parallel,pipeline,phase,log,args,budget,workflow){'; \

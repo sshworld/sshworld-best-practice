@@ -318,6 +318,8 @@ const confirmed = results.flat().filter(Boolean).filter(f => f.verdict?.isReal)
 ### B. Phase 2 workflow 실행 모드 (opt-in, 기본 아님)
 
 비-cmux 환경에서 의존성 없는 슬라이스 fan-out 을 수동 `Agent` 다발 대신 `pipeline(slices, implement, verify)` 로. **기본값 아님** — 환경별 기본(cmux=dispatch, 비-cmux=direct-edit/subagent)은 그대로. 시각화 불필요 + 슬라이스 多 + 자동 verify gate 원할 때 opt-in.
+
+워크플로 `agent()` 는 `model:'sonnet'` 명시 권장 — 미지정 시 main-loop(Opus 1M) 상속해 토큰 폭증(dogfood 24.9M 사례). reference `.mjs` 는 이미 sonnet 고정.
 - worktree 충돌 회피: `agent(..., {isolation:'worktree'})` (네이티브, dispatch-slice-pane 불필요).
 - Slice File Map 의 `Mode` 컬럼 값으로 `workflow` 표기 가능 (cmux/direct-edit/workflow).
 - 한계: cmux 사이드바 시각화 없음(`/workflows` 트리로 관찰). 토큰은 budget 공유 풀.

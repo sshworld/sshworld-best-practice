@@ -31,20 +31,22 @@ const critiques = await parallel(
   LENSES.map((l) => () =>
     agent(
       `다음 plan 을 "${l.angle}" 관점으로만 비평하라. 칭찬 금지, 문제+수정만.\n\n${PLAN}`,
-      { label: `critique:${l.key}`, phase: 'Critique', schema: VERDICT }
+      { label: `critique:${l.key}`, phase: 'Critique', schema: VERDICT, model: 'sonnet' }
     )
   )
 );
 
 phase('Synthesize');
-const valid = critiques.filter(Boolean);
+const valid = critiques
+  .map((v, i) => (v ? { ...v, key: LENSES[i].key } : null))
+  .filter(Boolean);
 const summary = valid
-  .map((v, i) => `[${LENSES[i]?.key}] score=${v.score} blocking=${JSON.stringify(v.blocking)}`)
+  .map((v) => `[${v.key}] score=${v.score} blocking=${JSON.stringify(v.blocking)}`)
   .join('\n');
 const synthesis = await agent(
   `심사위원 ${valid.length}명 비평을 종합하라. blocking 합집합 우선, 중복 제거, ` +
     `실행 가능한 plan 수정안 1개로 합성:\n${summary}`,
-  { label: 'synthesize', phase: 'Synthesize' }
+  { label: 'synthesize', phase: 'Synthesize', model: 'sonnet' }
 );
 
 return { critiques: valid, synthesis };

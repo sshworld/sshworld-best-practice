@@ -42,12 +42,12 @@ const done = await pipeline(
       `TDD Red→Green→Refactor 로 슬라이스 "${s.slug}" 를 구현하라. ` +
         `spec: ${s.specPath || '(인라인)'}. 브랜치 ${s.type || 'feat'}/${s.slug}. ` +
         `완료 시 결과를 schema 로 반환.`,
-      { label: `impl:${s.slug}`, phase: 'Implement', isolation: 'worktree', schema: IMPL }
+      { label: `impl:${s.slug}`, phase: 'Implement', isolation: 'worktree', schema: IMPL, model: 'sonnet' }
     ),
   (r, s) =>
     agent(
       `슬라이스 "${(r && r.slug) || s.slug}" 의 build + test 를 실행해 PASS 여부 판정하라.`,
-      { label: `verify:${s.slug}`, phase: 'Verify', schema: VERDICT }
+      { label: `verify:${s.slug}`, phase: 'Verify', schema: VERDICT, model: 'sonnet' }
     )
 );
 

@@ -44,10 +44,13 @@ const key = (f) => `${f.file || ''}::${f.title}`;
 const seen = new Set();
 const confirmed = [];
 let dry = 0;
-const cap = budget && budget.total ? () => budget.remaining() > 40000 : () => true;
+const cap = (budget && typeof budget.remaining === 'function')
+  ? () => budget.remaining() > 40000
+  : () => true;
 
 while (dry < 2 && cap()) {
   phase('Find');
+  // NOTE: args/1차 agent 출력은 신뢰경계 밖 — self-paste reference 템플릿이라 sanitize 생략(의도). 운영 투입 시 입력 검증 추가.
   const found = (
     await parallel(
       DIMENSIONS.map((d) => () =>
@@ -55,6 +58,7 @@ while (dry < 2 && cap()) {
           label: `find:${d.key}`,
           phase: 'Find',
           schema: FINDINGS,
+          model: 'sonnet',
         })
       )
     )
@@ -78,11 +82,12 @@ while (dry < 2 && cap()) {
           agent(
             `다음 finding 을 "${lens}" 관점에서 반박 시도하라. 불확실하면 real=false.\n` +
               `${f.title} — ${f.detail || ''} (${f.file || ''})`,
-            { label: `verify:${lens}`, phase: 'Verify', schema: VERDICT }
+            { label: `verify:${lens}`, phase: 'Verify', schema: VERDICT, model: 'sonnet' }
           )
         )
       ).then((votes) => {
-        const real = votes.filter(Boolean).filter((v) => v.real).length >= 2;
+        const live = votes.filter(Boolean);
+        const real = live.length > 0 && live.filter((v) => v.real).length > live.length / 2;
         return { ...f, real };
       })
     )
