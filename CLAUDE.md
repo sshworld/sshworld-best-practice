@@ -61,7 +61,8 @@
 | `scripts/finish-plan-dev.sh` | develop/main 분기 push 자동화 + marker clear. `origin/develop` 있으면 feature branch push, 없으면 main 직접 push. branch 이름 충돌 시 suffix -2~-5 자동 부여. **push 성공 직후 cmux 자식 surface 자동 cleanup** (`do_cmux_cleanup` — CMUX_WORKSPACE_ID set 시만). `SKIP_PLAN_DEV_FINISH` / `DISABLE_PLAN_DEV_FINISH` / `SKIP_PLAN_DEV_CMUX_CLEANUP` / `DISABLE_PLAN_DEV_CMUX_CLEANUP` 우회 지원. |
 | `.claude/hooks/track-cmux-edit-burst.sh` | PreToolUse Write\|Edit. cmux env Edit/Write 누적 N회 advisory (디폴트 임계치 **50**). 디폴트 **advisory only** — settings.json 의 inline `CMUX_EDIT_BURST_STRICT=1` 제거됨. `CMUX_EDIT_BURST_STRICT=1` env 명시 시만 차단(exit 2, 회귀 가드). count file 은 cmux workspace 별 독립 — 다른 workspace 끼리 누적 공유 안 됨. mtime idle 기반 자동 리셋. dispatch-slice-pane.sh launch 시 명시 리셋. **자식 worktree 감지 (git-dir != git-common-dir) 시 자동 skip** — dispatch 자식 환경 false-positive 회피. |
 | `.claude/hooks/enforce-plan-dev-goal.sh` | Stop hook. plan-dev-session marker 활성 + plan 파일 Goal Statement 의 `<!-- machine-checks -->` bash block 매 turn 종료 시 실행 = **bash layer**. 전부 PASS 후 `claude -p` headless 로 `goal-checker` agent 호출 = **agent layer** (semantic 판단). 두 layer PASS → exit 0 / 하나라도 fail → exit 2 + stderr reason → 모델 자동 다음 turn. native /goal 의 self-built 대체. **Active dispatch worktree (`.worktrees/<slug>`) 진행 중 자동 skip** — 자식 wait 단계 false-positive 회피. agent layer 우회: `SKIP_GOAL_AGENT` / `DISABLE_GOAL_AGENT`. **Semantic goal 추출은 템플릿의 인라인 `**Semantic goal**: <텍스트>` 형식을 캡처 (awk `next` 없이 매치 줄 포함 + prefix strip); 추출 빈값이면 agent layer 자동 skip (빈 goal false-negative 무한 block 방지).** |
-| `.claude/hooks/cmux-dispatch-hint.sh` | SessionStart. cmux env(`CMUX_WORKSPACE_ID` set) 시 **dispatch-first advisory** 를 stdout(additionalContext)으로 inject — "cmux 환경에선 plan-dev Slice 가 dispatch(cmux) 기본, direct-edit 는 justification 동반 opt-in 예외". 비-cmux 환경은 무출력(exit 0). 하드 차단 아님(advisory nudge). cmux 환경 dispatch-기본 정책의 런타임 reminder. |
+| `.claude/hooks/enforce-cmux-dispatch.sh` | PreToolUse ExitPlanMode. cmux env(`CMUX_WORKSPACE_ID` set)에서 plan Slice File Map 의 `direct-edit` 표셀 탐지 시 **exit 2 차단**. `CMUX_DIRECT_EDIT_OK=1` 의식적 escape (1회 통과). `SKIP_CMUX_DISPATCH_GATE=1` / `DISABLE_CMUX_DISPATCH_GATE_HOOK=1` 우회. 비-cmux 환경 no-op. |
+| `.claude/hooks/cmux-dispatch-hint.sh` | SessionStart. cmux env(`CMUX_WORKSPACE_ID` set) 시 **dispatch-first advisory** 를 stdout(additionalContext)으로 inject — "cmux 환경에선 plan-dev Slice 가 dispatch(cmux) 기본, direct-edit 는 `CMUX_DIRECT_EDIT_OK=1` escape". 비-cmux 환경은 무출력(exit 0). advisory nudge + ExitPlanMode 게이트 reminder. |
 | `.claude/hooks/enforce-plan-mode.sh` | PreToolUse Write\|Edit. **/plan-dev plan mode 진입 강제** — plan-dev-session marker 활성 + plan mode 미진입 상태에서 Write/Edit 시도 시 exit 2 차단. 판정: **marker 의 `start_ts` 이후 작성된 plan 파일(`~/.claude/plans/*.md`)이 존재하면 allow** (plan mode 진입 = plan 파일 작성). `permission_mode==plan`(plan mode 중) / `==bypassPermissions`(dispatch 자식·명시 우회) → allow. 자식 worktree(git-dir≠git-common-dir) → skip. **마커 없음(비-plan-dev 세션) → no-op**. start_ts 파싱 불가 → conservative allow. ⚠️ marker **파일 mtime** 이 아니라 **start_ts JSON** 사용 — `plan-dev-progress.sh` 가 marker 를 재기록해 mtime 을 bump 하므로(mtime 기준이면 progress 후 false-positive). override: `PLAN_MODE_SESSION_FILE` / `PLAN_MODE_PLANS_DIR`. 우회: `SKIP_PLAN_MODE_ENFORCE` / `DISABLE_PLAN_MODE_ENFORCE_HOOK`. 한계: plan reject 후에도 plan 파일 존재 시 통과 — 목적은 "plan mode 아예 미진입" catch. (구 flag 방식은 plan 파일 write 가 PreToolUse Write 를 안 타 flag 미기록 → 승인 후 전부 차단하는 false-positive 였음, start_ts 신호로 교체 수정.) |
 
 ## 추가 / 수정 체크리스트
@@ -106,7 +107,7 @@
 - ❌ Slice File Map 없이 슬라이스 분해 — rebase fast-forward 시 같은 파일 영역 충돌로 부모 수동 복구 비용 발생.
 - ❌ Dead code 판정 시 사용처 grep + 테스트 prop 직접 주입 확인 누락 — 부모가 prop 으로 set 하는 분기를 "도달 불가" 로 오판해 삭제하면 기존 테스트가 회귀로 catch.
 - ❌ 검증용 단순 curl / sleep 단독 호출 — Bash 자동 background 진입으로 동기 결과 못 받음. `timeout 5 curl ...` 또는 cmux browser eval 사용.
-- ❌ cmux 환경인데 반사적으로 direct-edit — **cmux 환경 기본은 dispatch(cmux)**. cmux 에서 direct-edit 는 Mode 컬럼 1줄 justification 동반 opt-in 예외(정책/문서 편집·trivial 수정·사용자 명시 등). 비-cmux 환경은 그 반대(direct-edit 기본). `cmux-dispatch-hint` SessionStart advisory 가 cmux 세션마다 상기. `track-cmux-edit-burst` 는 advisory only(50, 차단 없음). 하드 차단은 없음.
+- ❌ cmux 환경 plan Mode 컬럼에 `direct-edit` — **`enforce-cmux-dispatch`** hook 이 ExitPlanMode 차단. cmux 기본은 dispatch(cmux). 예외는 plan 콘텐츠가 아니라 out-of-band env: `CMUX_DIRECT_EDIT_OK=1` escape. 비-cmux 환경은 그 반대(direct-edit 기본). `track-cmux-edit-burst` 는 advisory only(50, 차단 없음).
 - ❌ enforce-plan-dev-goal hook 의 active dispatch worktree skip 룰을 잊고 자식 wait 단계에서 SKIP env 우회 시도 — `git worktree list --porcelain` 결과 안 `.worktrees/<slug>` 존재 시 hook 가 이미 자동 skip. SKIP env 불필요.
 - ❌ dispatch spec-file 을 `/tmp/<slug>-spec.md` 등 repo 밖에 두기 — classifier transcript-blind 시 dispatch 거부 위험. `.claude/specs/<slug>.spec.md` 컨벤션 사용.
 - ❌ Goal Statement 에 `<!-- machine-checks -->` bash block 누락 — Stop hook 가 평가할 입력 없음 → exit 0 으로 통과해 loop 의미 상실. 형식 박스 그대로 따를 것.
@@ -172,6 +173,9 @@
 | `DISABLE_PLAN_MODE_ENFORCE_HOOK` | unset | `enforce-plan-mode.sh` 영구 비활성화 |
 | `PLAN_MODE_SESSION_FILE` | auto | `enforce-plan-mode.sh` 마커 경로 override (디폴트 `$CLAUDE_PROJECT_DIR/.git/plan-dev-session.json`, 테스트 mock) |
 | `PLAN_MODE_PLANS_DIR` | `$HOME/.claude/plans` | `enforce-plan-mode.sh` 가 plan 파일을 찾는 디렉토리 override (테스트 mock) |
+| `CMUX_DIRECT_EDIT_OK` | unset | `enforce-cmux-dispatch.sh` 의식적 escape — cmux 환경 plan direct-edit ExitPlanMode 게이트 1회 통과 |
+| `SKIP_CMUX_DISPATCH_GATE` | unset | `enforce-cmux-dispatch.sh` 1회 우회 |
+| `DISABLE_CMUX_DISPATCH_GATE_HOOK` | unset | `enforce-cmux-dispatch.sh` 영구 비활성화 |
 
 ## 향후 작업 (플러그인화)
 

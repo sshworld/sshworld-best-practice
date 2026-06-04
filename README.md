@@ -402,6 +402,20 @@ SKIP_PLAN_MODE_ENFORCE=1        # 1회 우회
 DISABLE_PLAN_MODE_ENFORCE_HOOK=1 # 영구 비활성화
 ```
 
+### 10) enforce-cmux-dispatch.sh (PreToolUse: ExitPlanMode) — **cmux plan direct-edit 차단**
+
+cmux 환경(`CMUX_WORKSPACE_ID` set)에서 plan 의 Slice File Map Mode 컬럼에 `direct-edit` 표셀이 있으면 **ExitPlanMode 차단**. cmux 기본은 `dispatch(cmux)` — 반사적 direct-edit 를 plan mode 게이트에서 잡음.
+
+- `CMUX_WORKSPACE_ID` 미set → no-op (비-cmux 환경, direct-edit 기본 유지).
+- plan 본문에서 파이프 표셀(`|..direct-edit..|`) 탐지 — 산문 오탐 없음.
+- cmux 에서 direct-edit 가 정말 필요하면(정책/문서/하네스 파일 자체 편집 등) out-of-band escape: `CMUX_DIRECT_EDIT_OK=1`.
+
+```bash
+CMUX_DIRECT_EDIT_OK=1              # 의식적 escape — ExitPlanMode 게이트 1회 통과
+SKIP_CMUX_DISPATCH_GATE=1          # 1회 우회
+DISABLE_CMUX_DISPATCH_GATE_HOOK=1  # 영구 비활성
+```
+
 ---
 
 ## 환경변수 정리
