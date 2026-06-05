@@ -41,6 +41,7 @@ FILES=(
   "workflows/plan-review-panel.mjs"
   "workflows/slice-pipeline.mjs"
   "workflows/codebase-audit.mjs"
+  "workflows/vuln-scan-pipeline.mjs"
   "hooks/enforce-test-first.sh"
   "hooks/enforce-doc-sync.sh"
   "hooks/enforce-cmux-context.sh"

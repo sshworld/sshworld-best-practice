@@ -119,6 +119,8 @@ Claude Code 의 **dynamic workflows**(`Workflow` 툴 — JS 스크립트로 suba
 
 reference 스크립트: `.claude/workflows/{plan-review-panel,slice-pipeline,codebase-audit}.mjs` — `Workflow({scriptPath})` 로 실행하거나 inline `script:` 로 paste.
 
+- `vuln-scan-pipeline.mjs` — 정적 vuln 스캔 파이프라인 프로토타입. defending-code-reference-harness 의 find→grade→judge→report 를 Workflow 골격으로 재현. vuln-class 별 FIND → JS dedup(JUDGE) → 적대 다수결(GRADE) → severity 랭킹(REPORT). 코드 실행/빌드 없는 정적 한정.
+
 ### ⚠️ cmux ⇄ workflow 상호배타 (트레이드오프)
 
 | | cmux dispatch | Workflow 툴 |

@@ -33,6 +33,10 @@ step 2 ".claude/workflows reference 스크립트"
 shopt -s nullglob
 wf_files=("$WF_DIR"/*.mjs)
 [ "${#wf_files[@]}" -ge 3 ] || fail ".claude/workflows 에 .mjs 3개 이상 필요 (현재 ${#wf_files[@]})"
+VS="$WF_DIR/vuln-scan-pipeline.mjs"
+[ -f "$VS" ] || fail "vuln-scan-pipeline.mjs 누락"
+grep -q "name: *'vuln-scan-pipeline'" "$VS" || fail "vuln-scan-pipeline meta.name 누락"
+grep -Eq "Find|Grade|Report" "$VS" || fail "vuln-scan-pipeline phases(Find/Grade/Report) 누락"
 for f in "${wf_files[@]}"; do
   grep -q "export const meta" "$f" || fail "meta 누락: $f"
 done
