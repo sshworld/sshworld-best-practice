@@ -51,6 +51,7 @@
 | `.claude/hooks/statusline-tokens.sh` | (opt-in 대안) statusLine 으로 토큰 사용량 상시 표시. 기본은 `token-stats.sh` 의 inline 메시지. |
 | `.claude/settings.json` | permissions(allow/deny) + hooks. 광역 `Bash(tmux*)` 금지 — 좁힌 패턴만. |
 | `scripts/merge-settings.sh` | `install.sh` 가 호출하는 settings.json 병합 헬퍼 (`<cur.json> <new.json>` → stdout). allow/deny union, `hooks.<event>` 는 matcher order-preserving unique + command 키(`hooks/<name>.(sh\|js)` 또는 full cmd) dedup — **cur 내부 + cur-vs-new 모두** dedup → install 재실행해도 hook 누적·복제 없음(idempotent). 과거 inline jq 의 matcher 미-unique 로 SessionStart 1024× 더블링 버그를 추출+수정. `tests/unit/merge-settings.test.sh` 회귀 가드. |
+| `scripts/trust-dir.sh` | 자식 worktree 경로를 `~/.claude.json` (`hasTrustDialogAccepted`) 에 자동 시딩. cross-machine bypass 자동화 — fresh 머신 trust 다이얼로그 회피. `dispatch-slice-pane.sh` 가 worktree launch 직전 호출. `CBP_CLAUDE_CONFIG` mock, `_TRUST_DIR_NO_JQ=1` jq 부재 흉내. 우회: `SKIP_DISPATCH_TRUST=1` (dispatch 쪽). jq 부재 시 conservative exit 0. |
 | `scripts/tmux-pane.sh` | tmux wrapper — launch/send/capture/wait-idle/kill/list/status. 외부 `tmux-cli` 와 명령 표면 정렬. |
 | `scripts/cmux-pane.sh` | cmux wrapper — launch/send/capture/wait-idle/kill/**reap**/list/cleanup/status/**notify/set-status**. `CMUX_BIN` env 로 mock 가능. `CBP_LIST_LINES` / `CLAUDE_FAKE_SELF_CMUX_WS` 로 테스트 mock 지원. **state file 헬퍼 (sanitize + mkdir-mutex + ts, pid 기반 stale reap)**. **`_do_launch_grid` 의 count-read→cmux생성→state기록 을 단일 mkdir-mutex critical section 으로 묶어 병렬 dispatch race-safe** (launch 직렬화, warmup/rename 은 lock 밖 → 자식 작업 병렬성 보존. 우회 토글 `CBP_DISABLE_LAUNCH_LOCK=1` 은 테스트 red baseline 전용). send/capture/wait-idle 이 `surface:N` ref 를 `--surface` flag 로, `workspace:N` 을 `--workspace` 로 자동 dispatch. **do_reap: wait-idle → capture → ✅/❌ 감지 → 완료 자식 자동 close-surface (do_kill 재사용, self-surface 거부 상속). `CBP_REAP_DRY_RUN=1` dry-run. send confirm rc2 분기: PTY detached 의심 시 Enter 재전송으로 attach 강제 (bounded: `CBP_SEND_CONFIRM_DETACHED_TRIES` 회).** do_list: state file 우선 (lazy reconcile, mock 환경 자동 감지), 폴백 cbp- workspace. do_cleanup: state file surface 일괄 close-surface + state 제거 후 cbp- workspace cleanup 도 실행 (호환). |
 | `scripts/detect-pane-env.sh` | 터미널 멀티플렉서 환경 감지. stdout: `tmux` \| `cmux` \| `default`. sourcing guard 포함. |
@@ -131,6 +132,8 @@
 | `DISPATCH_DEFAULT_TYPE` | feat | `dispatch-slice-pane.sh` 의 --type 미지정 시 기본 type (기본: feat) |
 | `DISPATCH_DEFAULT_MODE` | auto | `dispatch-slice-pane.sh` 의 --mode 미지정 시 기본 driver (auto/tmux/cmux/pane/subagent). auto = `detect-pane-env.sh` 결과 분기. 기존 동작 복원: `pane` |
 | `DISPATCH_SKIP_CLEANUP` | unset | `dispatch-slice-pane.sh` 의 시작 시 자식 pane 자동 정리 끄기 |
+| `SKIP_DISPATCH_TRUST` | unset | `dispatch-slice-pane.sh` worktree trust 시딩 1회 우회 (`trust-dir.sh` 호출 skip) |
+| `CBP_CLAUDE_CONFIG` | `~/.claude.json` | `trust-dir.sh` 가 읽고 쓸 Claude config 경로 override. 테스트 mock 에 사용. |
 | `DISPATCH_DRY_RUN` | unset | `dispatch-slice-pane.sh` 가 launch 직전 driver/wrapper/worktree JSON 출력 후 exit 0 (테스트용) |
 | `DISPATCH_PERMISSION_MODE` | `bypassPermissions` | `dispatch-slice-pane.sh` 가 자식 `claude` 명령에 `--permission-mode <mode>` flag 로 전달. `default` 시 flag 생략. `DISPATCH_CHILD_CMD` 가 set 되면 무시. |
 | `SKIP_PLAN_DEV_FINISH` | unset | `finish-plan-dev.sh` Phase 5 1회 우회 (exit 0 + "skipped") |

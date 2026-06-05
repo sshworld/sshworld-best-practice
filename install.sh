@@ -66,6 +66,7 @@ SCRIPTS=(
   "scripts/finish-plan-dev.sh"
   "scripts/cmux-title-chpwd.sh"
   "scripts/merge-settings.sh"
+  "scripts/trust-dir.sh"
 )
 
 usage() {

@@ -275,8 +275,10 @@ main() {
   # DRY_RUN: worktree 생성 없이 결정 JSON 만 출력
   if [ "${DISPATCH_DRY_RUN:-0}" = "1" ]; then
     local worktree_path="${WORKTREE:-.worktrees/$SLICE}"
-    printf '{"driver":"%s","wrapper":"%s","worktree":"%s","branch":"%s/%s"}\n' \
-      "$DRIVER" "$WRAPPER" "$worktree_path" "$TYPE" "$SLICE"
+    local trust_flag="true"
+    [ "${SKIP_DISPATCH_TRUST:-0}" = "1" ] && trust_flag="false"
+    printf '{"driver":"%s","wrapper":"%s","worktree":"%s","branch":"%s/%s","trust_seeded":%s}\n' \
+      "$DRIVER" "$WRAPPER" "$worktree_path" "$TYPE" "$SLICE" "$trust_flag"
     exit 0
   fi
 
@@ -303,6 +305,11 @@ main() {
 
   local WORKTREE_ABS
   WORKTREE_ABS="$(cd "$WORKTREE" && pwd)"
+
+  # worktree trust 자동 시딩 — cross-machine bypass 자동화 (trust 다이얼로그 회피)
+  if [ "${SKIP_DISPATCH_TRUST:-0}" != "1" ]; then
+    "$SCRIPT_DIR/trust-dir.sh" "$WORKTREE_ABS" >/dev/null 2>&1 || true
+  fi
 
   # 자식 명령 결정 (순수 함수 호출) — 내부 실행 모드는 항상 interactive
   local CHILD_CMD

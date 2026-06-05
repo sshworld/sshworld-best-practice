@@ -39,7 +39,8 @@ scripts/
 ├── dispatch-slice-pane.sh    # implementor 슬라이스를 tmux/cmux pane 으로 dispatch (plan-dev --mode=pane)
 ├── plan-dev-session.sh       # plan-dev 세션 marker 관리 (start/query/clear)
 ├── plan-dev-progress.sh      # plan-dev 진행률 cmux push 헬퍼 (start/tick/show)
-└── finish-plan-dev.sh        # develop/main 분기 push 자동화 + marker clear
+├── finish-plan-dev.sh        # develop/main 분기 push 자동화 + marker clear
+└── trust-dir.sh              # 자식 worktree trust 자동 시딩 — cross-machine bypass (hasTrustDialogAccepted)
 ```
 
 ---

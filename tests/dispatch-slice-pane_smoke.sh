@@ -11,6 +11,21 @@ WRAPPER="$REPO/scripts/tmux-pane.sh"
 step() { echo ""; echo "[$1] $2"; }
 fail() { echo "❌ FAIL: $1" >&2; exit 1; }
 
+step 0 "DRY_RUN trust_seeded 필드 검증 (tmux 불필요)"
+DRY_JSON=$(DISPATCH_DRY_RUN=1 DISPATCH_SKIP_CLEANUP=1 CMUX_BIN=echo \
+  bash "$DISPATCH" \
+    --slice=trust-dry-test \
+    --spec-file="/dev/null" \
+    --mode=cmux 2>/dev/null) || fail "DRY_RUN 실패"
+echo "  dry_json=$DRY_JSON"
+echo "$DRY_JSON" | python3 -c "
+import json,sys
+d=json.loads(sys.stdin.read())
+assert 'trust_seeded' in d, 'trust_seeded 필드 없음'
+assert d['trust_seeded'] == True, 'trust_seeded 가 true 아님: ' + str(d['trust_seeded'])
+print('  trust_seeded=true OK')
+" || fail "trust_seeded 체크 실패"
+
 if ! command -v tmux > /dev/null 2>&1; then
   echo "SKIP: tmux not installed"
   exit 0
