@@ -165,7 +165,7 @@ test -x scripts/foo.sh
   1. `cmux tree | grep surface:<N>` — surface 살아 있는지.
   2. `cmux read-screen --surface surface:<N>` — `Terminal surface not found` 이면 detached. `cmux send-key --surface surface:<N> Enter` 1~2회로 활성화.
   3. 활성화 후 자식이 spec prompt 받은 상태 (`✳ Forming…` / `Undulating…` 등 thinking) 이면 정상.
-- 부모가 회수: `@@SCRIPTS_DIR@@/cmux-pane.sh wait-idle --pane=surface:<N> --idle=15 --timeout=900` → `cmux read-screen --surface surface:<N> --lines 30 | grep -E '^(✅|❌)'`.
+- 부모가 회수: `@@SCRIPTS_DIR@@/cmux-pane.sh reap --pane=surface:<N>` — 완료 감지 시 자동 탭 종료, 미완료면 보존. (내부적으로 wait-idle → capture → grep ✅/❌ → close-surface 흐름. finish-plan-dev 의 bulk cleanup 은 backstop 으로 남음.)
 - 사용자가 직접 자식 화면 보기: cmux 사이드바의 surface 탭 클릭.
 
 #### Dispatch wrapper 가용성 검증 (회복력 룰)
@@ -203,6 +203,9 @@ tmux attach -t tmux-pane-mgr
 
 pane 모드 완료 회수:
 ```bash
+# cmux 모드: reap 이 wait-idle → capture → done 감지 → 자동 탭 종료 (미완료면 보존)
+$wrapper reap --pane=$pane --idle=10 --timeout=1800
+# tmux/기타 모드: 수동 회수
 $wrapper wait-idle --pane=$pane --idle=10 --timeout=1800
 $wrapper capture   --pane=$pane | tail -50 | grep -E '^(✅|❌)'
 ```

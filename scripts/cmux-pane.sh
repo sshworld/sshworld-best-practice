@@ -83,6 +83,8 @@ parse_long_opts() {
       --idle)      IDLE="$2"; shift 2 ;;
       --timeout=*) TIMEOUT="${1#*=}"; shift ;;
       --timeout)   TIMEOUT="$2"; shift 2 ;;
+      --done-pattern=*) DONE_PATTERN="${1#*=}"; shift ;;
+      --done-pattern)   DONE_PATTERN="$2"; shift 2 ;;
       --)          shift; break ;;
       *)           shift ;;
     esac
@@ -366,6 +368,9 @@ do_send() {
     if [ "${CBP_SEND_CONFIRM:-1}" != "0" ]; then
       local confirm_tries="${CBP_SEND_CONFIRM_TRIES:-3}"
       local confirm_sleep="${CBP_SEND_CONFIRM_SLEEP:-0.6}"
+      # rc2=화면 못읽음=PTY detached 의심 → Enter 재전송으로 attach 강제 (bounded)
+      local detached_tries="${CBP_SEND_CONFIRM_DETACHED_TRIES:-$confirm_tries}"
+      local detached_ct=0
       local ct=0
       while [ "$ct" -lt "$confirm_tries" ]; do
         sleep "$confirm_sleep"
@@ -378,7 +383,13 @@ do_send() {
         elif [ "$check_rc" -eq 1 ]; then
           "$CMUX_BIN" send-key "$pane_flag" "$PANE" Enter || true
         else
-          break
+          # rc2=화면 못읽음=PTY detached 의심 → Enter 재전송으로 attach 강제
+          if [ "$detached_ct" -lt "$detached_tries" ]; then
+            "$CMUX_BIN" send-key "$pane_flag" "$PANE" Enter || true
+            detached_ct=$((detached_ct + 1))
+          else
+            break
+          fi
         fi
         ct=$((ct + 1))
       done
@@ -511,6 +522,30 @@ EOF
       "$CMUX_BIN" close-workspace --workspace "$PANE" || die "kill: workspace '$PANE' 없음 또는 close 실패" 3
       ;;
   esac
+}
+
+do_reap() {
+  local PANE="" IDLE="15" TIMEOUT="900" DONE_PATTERN='^(✅|❌)'
+  parse_long_opts "$@"
+  [ -z "$PANE" ] && die "reap: --pane=<ref> 필요" 2
+
+  do_wait_idle --pane="$PANE" --idle="$IDLE" --timeout="$TIMEOUT"
+
+  local screen
+  screen=$(do_capture --pane="$PANE" 2>/dev/null || echo "")
+
+  printf '%s\n' "$screen" | tail -20
+
+  if printf '%s\n' "$screen" | grep -qE "$DONE_PATTERN"; then
+    if [ "${CBP_REAP_DRY_RUN:-0}" = "1" ]; then
+      echo "would reap $PANE"
+      return 0
+    fi
+    do_kill --pane="$PANE"
+    echo "reaped $PANE"
+  else
+    echo "not done — kept $PANE"
+  fi
 }
 
 do_list() {
@@ -778,6 +813,7 @@ main() {
     capture)   do_capture "$@" ;;
     wait-idle) do_wait_idle "$@" ;;
     kill)      do_kill "$@" ;;
+    reap)      do_reap "$@" ;;
     list)      do_list "$@" ;;
     cleanup)   do_cleanup "$@" ;;
     status)    do_status "$@" ;;

@@ -202,6 +202,7 @@ cmux 앱 안에서 실행 중일 때 (`CMUX_WORKSPACE_ID` set) `scripts/cmux-pan
 - 이후 자식: 직전 자식 surface 기준으로 라운드로빈 방향 split (count 홀수 → `down`, 짝수 → `right`).
 - 각 자식의 surface ref 는 `CBP_STATE_FILE` (기본 `~/.cache/cbp/children-<ws>.json`) 에 누적 기록.
 - `cmux-pane.sh kill --pane=surface:N` 으로 개별 surface close + state 제거.
+- `cmux-pane.sh reap --pane=surface:N` 으로 완료(✅/❌) 자식 자동 회수 — wait-idle → capture → done 감지 시 자동 close, 미완료면 보존. `CBP_REAP_DRY_RUN=1` dry-run 지원.
 - `cmux-pane.sh send/capture/wait-idle --pane=surface:N` → `--surface` flag 자동 dispatch. `workspace:N` ref 는 기존 `--workspace` (회귀 zero).
 - `cmux-pane.sh list` → state file 의 자식 surface 우선, 폴백으로 cbp- workspace 목록. cmux tree 와 lazy reconcile (mock 환경 자동 감지).
 - `cmux-pane.sh cleanup` → state file 의 surface 일괄 `close-surface` + state 제거 후, 기존 cbp- workspace cleanup 도 실행 (호환).
@@ -233,6 +234,9 @@ cmux read-screen --surface surface:<N> --lines 30
 
 부모 회수 패턴:
 ```bash
+# 완료 자동 감지 + 탭 종료 (reap — 권장)
+scripts/cmux-pane.sh reap --pane=surface:<N> --idle=15 --timeout=900
+# 수동 회수 (tmux/기타 모드)
 scripts/cmux-pane.sh wait-idle --pane=surface:<N> --idle=15 --timeout=900
 cmux read-screen --surface surface:<N> --lines 30 | grep -E '^(✅|❌)'
 ```

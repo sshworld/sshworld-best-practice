@@ -36,7 +36,7 @@ fi
 EOF
 chmod +x "$TMP/cmux"
 
-total=4
+total=5
 
 # ----------------------------------------------------------------
 # TC1: 미제출(❯ pending text) → TRIES=3 회 추가 Enter → base+TRIES=4
@@ -78,7 +78,23 @@ CMUX_BIN="$TMP/cmux" \
   bash "$SCRIPT" send "hello" --pane=surface:1 --enter-count=1 --delay=0 2>/dev/null || true
 
 sendkey_count=$(grep -c "^send-key" "$TMP/calls.log" 2>/dev/null || echo 0)
-check "TC3: read-screen 빈값 → send-key 1회 (0 추가, 보수적)" "1" "$sendkey_count"
+# PTY detached 의심(rc2) → Enter 재전송으로 attach 강제: base 1 + TRIES 3 = 4
+check "TC3: read-screen 빈값(detached 의심) → send-key 4회 (base 1 + detached 3)" "4" "$sendkey_count"
+
+# ----------------------------------------------------------------
+# TC5: read-screen "Terminal surface not found" → PTY detached 의심 → Enter 재전송 ≥2
+printf 'Terminal surface not found\n' > "$TMP/screen.txt"
+> "$TMP/calls.log"
+CMUX_BIN="$TMP/cmux" \
+  CMUX_SCREEN_FILE="$TMP/screen.txt" \
+  CMUX_CALLS_LOG="$TMP/calls.log" \
+  CBP_SEND_CONFIRM_TRIES=3 \
+  CBP_SEND_CONFIRM_SLEEP=0 \
+  bash "$SCRIPT" send "hello" --pane=surface:1 --enter-count=1 --delay=0 2>/dev/null || true
+
+sendkey_count=$(grep -c "^send-key" "$TMP/calls.log" 2>/dev/null || echo 0)
+# "Terminal surface not found" → no prompt → rc2 → detached 재시도: base 1 + TRIES 3 = 4
+check "TC5: 'Terminal surface not found' → send-key 4회 (detached 재시도)" "4" "$sendkey_count"
 
 # ----------------------------------------------------------------
 # 회귀: CBP_SEND_CONFIRM=0 → confirm 루프 스킵, 기존 동작 유지
