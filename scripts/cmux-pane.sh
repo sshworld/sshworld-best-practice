@@ -525,7 +525,8 @@ EOF
 }
 
 do_reap() {
-  local PANE="" IDLE="15" TIMEOUT="900" DONE_PATTERN='^(✅|❌)'
+  # (⏺ prefix 허용) Claude TUI 가 완료 마커를 "⏺ ✅" 또는 들여쓰기로 렌더하는 경우 대응
+  local PANE="" IDLE="15" TIMEOUT="900" DONE_PATTERN='^[[:space:]]*(⏺[[:space:]]*)?(✅|❌)'
   parse_long_opts "$@"
   [ -z "$PANE" ] && die "reap: --pane=<ref> 필요" 2
 

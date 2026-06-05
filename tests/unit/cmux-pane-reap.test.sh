@@ -46,7 +46,7 @@ check_not_contains() {
 
 [ -f "$SCRIPT" ] || { echo "FAIL: $SCRIPT 없음" >&2; exit 1; }
 
-total=10
+total=16
 
 # fake cmux: read-screen → CMUX_SCREEN_FILE 출력, 그 외 → CMUX_CALLS_LOG 에 append
 cat > "$TMP/cmux" << 'EOF'
@@ -120,6 +120,36 @@ check "TC-d: dry-run → exit 0" "0" "$exit_code"
 close_called=$(grep -c "close-surface" "$TMP/calls.log" 2>/dev/null || true)
 check "TC-d: dry-run → close-surface 미호출" "0" "$close_called"
 check_contains "TC-d: dry-run → 'would reap' 출력" "would reap" "$stdout_out"
+
+# ----------------------------------------------------------------
+# TC (a2): ⏺ ✅ prefix (Claude TUI 렌더 형식) → reaped
+printf '⏺ ✅ reap-done-pattern\n' > "$TMP/screen.txt"
+> "$TMP/calls.log"
+exit_code=99
+stdout_out=$(CMUX_BIN="$TMP/cmux" \
+  CMUX_SCREEN_FILE="$TMP/screen.txt" \
+  CMUX_CALLS_LOG="$TMP/calls.log" \
+  CBP_STATE_FILE="$STATE_FILE" \
+  bash "$SCRIPT" reap --pane=surface:5 --idle=0 --timeout=5 2>/dev/null) && exit_code=0 || exit_code=$?
+check "TC-a2: ⏺ ✅ prefix → exit 0" "0" "$exit_code"
+close_called=$(grep -c "close-surface --surface surface:5" "$TMP/calls.log" 2>/dev/null || echo 0)
+check "TC-a2: ⏺ ✅ prefix → close-surface 호출" "1" "$close_called"
+check_contains "TC-a2: ⏺ ✅ prefix → 'reaped' 출력" "reaped" "$stdout_out"
+
+# ----------------------------------------------------------------
+# TC (a3): 선두 공백 2칸 ✅ (들여쓰기) → reaped
+printf '  ✅ reap-done-pattern\n' > "$TMP/screen.txt"
+> "$TMP/calls.log"
+exit_code=99
+stdout_out=$(CMUX_BIN="$TMP/cmux" \
+  CMUX_SCREEN_FILE="$TMP/screen.txt" \
+  CMUX_CALLS_LOG="$TMP/calls.log" \
+  CBP_STATE_FILE="$STATE_FILE" \
+  bash "$SCRIPT" reap --pane=surface:5 --idle=0 --timeout=5 2>/dev/null) && exit_code=0 || exit_code=$?
+check "TC-a3: 들여쓰기 ✅ → exit 0" "0" "$exit_code"
+close_called=$(grep -c "close-surface --surface surface:5" "$TMP/calls.log" 2>/dev/null || echo 0)
+check "TC-a3: 들여쓰기 ✅ → close-surface 호출" "1" "$close_called"
+check_contains "TC-a3: 들여쓰기 ✅ → 'reaped' 출력" "reaped" "$stdout_out"
 
 echo ""
 echo "ok: $pass/$total passed"

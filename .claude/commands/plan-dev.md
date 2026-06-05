@@ -208,7 +208,7 @@ pane 모드 완료 회수:
 $wrapper reap --pane=$pane --idle=10 --timeout=1800
 # tmux/기타 모드: 수동 회수
 $wrapper wait-idle --pane=$pane --idle=10 --timeout=1800
-$wrapper capture   --pane=$pane | tail -50 | grep -E '^(✅|❌)'
+$wrapper capture   --pane=$pane | tail -50 | grep -E '^[[:space:]]*(⏺[[:space:]]*)?(✅|❌)'
 ```
 
 슬라이스 ✅ 확인 후:
