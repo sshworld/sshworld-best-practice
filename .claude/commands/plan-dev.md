@@ -379,3 +379,4 @@ audit / migration / framework swap 등 **수십~수백 슬라이스** 는 workfl
 - ❌ 옵션 list (A/B/C) 를 plain text 로 응답 끝에 dump 하고 turn 종료 — selection chip UI 안 떠 사용자 입력 비용 증가, plan-dev 흐름 끊김. **AskUserQuestion 의무**.
 - ❌ Goal Statement 에 측정 불가 추상 표현 ("품질 향상", "안정성 강화") 만 박기 — Stop hook 가 평가 못 함. grep/test/명령 결과로 확인 가능한 항목만 허용.
 - ❌ Goal Statement 섹션에 `<!-- machine-checks -->` 블록 누락 — hook 가 평가할 입력 없음 → exit 0 통과로 loop 의미 상실. 형식 박스 그대로 따를 것.
+- ❌ 세션을 plan full goal 미만으로 의도적 종료(plan 문서화만 / 범위 축소 / 중단)했는데 Stop hook(`enforce-plan-dev-goal`)가 machine-checks fail 로 막자 **machine-checks 를 부분 deliverable 에 맞춰 rewrite** — plan goal 오염, 다음 구현 세션이 실제 구현을 미검증. machine-checks 는 plan 의 종료 상태로 보존. loop 종료는 marker 제거로: `plan-dev-session.sh clear` (env 우회 `SKIP_PLAN_DEV_GOAL` 류는 세션 시작 前 export 만 먹고 Stop hook 도중 모델 주입 불가).

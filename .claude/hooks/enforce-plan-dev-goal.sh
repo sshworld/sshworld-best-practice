@@ -15,6 +15,17 @@ if [[ -n "${SKIP_PLAN_DEV_GOAL:-}" ]]; then
   exit 0
 fi
 
+# Stop hook stdin payload → 현재 session_id (stale-marker carryover 가드용).
+# payload/jq 부재 시 CUR_SID 빈값 → 가드 inert (기존 동작 유지, conservative).
+PAYLOAD=""
+[[ -t 0 ]] || PAYLOAD=$(cat 2>/dev/null || true)
+CUR_SID=""
+if [[ -n "$PAYLOAD" ]] && command -v python3 &>/dev/null; then
+  CUR_SID=$(printf '%s' "$PAYLOAD" | python3 -c "import json,sys
+try: print(json.load(sys.stdin).get('session_id','') or '')
+except Exception: pass" 2>/dev/null || true)
+fi
+
 PROJECT_DIR="${CLAUDE_PROJECT_DIR:-$(pwd)}"
 SESSION_FILE="${PLAN_DEV_GOAL_SESSION_FILE:-$PROJECT_DIR/.git/plan-dev-session.json}"
 
@@ -28,6 +39,40 @@ fi
 ACTIVE_WT=$(git -C "$PROJECT_DIR" worktree list --porcelain 2>/dev/null | grep -c "^worktree.*\.worktrees/" || true)
 if [[ "${ACTIVE_WT:-0}" -gt 0 ]]; then
   exit 0
+fi
+
+# Stale-marker carryover 가드 (session 정체성 기반):
+#   marker 를 처음 본 session 이 소유(gate_session_id 기록). 다른 session 이 상속하면 orphan.
+#   원인: plan-dev 세션이 marker clear 없이 종료 → within_24h 내 무관한 다음 session 이 stale plan 으로 gate.
+#   (start_pid 는 $$=스크립트 subshell 이라 항상 dead → liveness 신호 불가. session_id 가 유일한 신뢰 신호.)
+#   CUR_SID 부재(payload/python3 없음)면 inert → 기존 동작.
+if [[ -n "$CUR_SID" ]] && command -v python3 &>/dev/null; then
+  GATE_SID=$(CUR_SID="$CUR_SID" SESSION_FILE="$SESSION_FILE" python3 -c "
+import json, os, sys
+f = os.environ['SESSION_FILE']; cur = os.environ['CUR_SID']
+try:
+    d = json.load(open(f))
+except Exception:
+    print('skip'); sys.exit(0)          # 파싱 불가 → 가드 보류, 기존 흐름
+owner = d.get('gate_session_id')
+if not owner:                            # 미소유 → 현재 session 이 claim
+    d['gate_session_id'] = cur
+    try:
+        json.dump(d, open(f, 'w'), indent=2); open(f, 'a').write('\n')
+    except Exception:
+        pass
+    print('claim')
+elif owner == cur:
+    print('match')
+else:
+    print('orphan')
+" 2>/dev/null || echo "skip")
+  if [[ "$GATE_SID" == "orphan" ]]; then
+    echo "$TAG orphaned marker — 다른 session 소유(stale carryover). skip + marker 정리." >&2
+    echo "$TAG (plan 파일은 보존 — 삭제 금지. 다음 /plan-dev 가 자체 marker 생성.)" >&2
+    mv "$SESSION_FILE" "${SESSION_FILE}.bak" 2>/dev/null || rm -f "$SESSION_FILE" 2>/dev/null || true
+    exit 0
+  fi
 fi
 
 # Determine plan path
@@ -133,9 +178,14 @@ if [[ $FAIL -gt 0 ]]; then
   echo "$TAG ❌ $FAIL/$TOTAL failed (machine-checks)" >&2
   echo "$FAIL_DETAILS" >&2
   echo "$TAG 위 실패 항목 보완 후 다시 시도하세요." >&2
-  echo "우회:" >&2
+  echo "우회 (env — 세션 시작 前 export 해야 적용. Stop hook 도중 모델이 주입 불가):" >&2
   echo "  SKIP_PLAN_DEV_GOAL=1         — 1회 우회" >&2
   echo "  DISABLE_PLAN_DEV_GOAL_HOOK=1 — 영구 비활성" >&2
+  echo "세션을 plan full goal 미만으로 의도적 종료(plan 문서화만 / 범위 축소 / 중단)한 경우:" >&2
+  echo "  ⚠ machine-checks 를 부분 deliverable 에 맞춰 rewrite 하지 말 것 — plan goal 오염(다음 구현 세션이 미검증)." >&2
+  echo "  대신 marker 를 비워 loop 종료 (plan 파일은 보존 — 삭제 금지):" >&2
+  echo "    plan-dev-session.sh clear   (scripts/ 또는 ~/scripts/)" >&2
+  echo "  (다른 session 이 만든 stale marker 는 이제 자동 skip — 이 메시지는 현재 session 소유 marker.)" >&2
   exit 2
 fi
 
