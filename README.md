@@ -62,6 +62,31 @@ scripts/
 
 기존 `~/.claude` 설치본은 수동 정리(또는 `/plugin` 설치 후 중복 hook 제거) 필요.
 
+### 동반설치 + 가역
+
+`/plugin install plan-dev` 시 `taste-skill`·`andrej-karpathy-skills` 가 자동으로 함께 설치됩니다.
+
+```bash
+/plugin marketplace add sshworld/sshworld-best-practice
+/plugin install plan-dev
+# → taste-skill, andrej-karpathy-skills 자동 동반설치
+```
+
+**caveman (opt-in):** 출력 스타일을 압축 모드로 바꾸므로 기본 비활성. 원하면 별도 설치:
+
+```bash
+/plugin install caveman@sshworld-best-practice
+# 또는
+/plugin enable caveman
+```
+
+**제거:**
+
+```bash
+claude plugin uninstall <plugin> --prune   # 특정 플러그인 + 고아 의존성 제거
+claude plugin prune                        # 고아 플러그인 일괄 정리
+```
+
 ### 권장 permissions (사용자 settings.json 에 추가)
 
 `hooks/hooks.json` 이 hook 정의를 담지만, permissions 는 플러그인이 번들할 수 없어 사용자가 수동 추가:
