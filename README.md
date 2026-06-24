@@ -22,7 +22,9 @@ agents/
 │   └── commit-advisor.md     # 한글 Conventional Commit + DOC 영향 평가 + 다중 커밋 분석
 skills/
 │   ├── fork/SKILL.md         # 자식 컨텍스트에서 처리하고 요약만 반환
-│   └── tmux-orchestrate/SKILL.md # 부모-자식 Claude tmux pane 협업 패턴
+│   ├── tmux-orchestrate/SKILL.md # 부모-자식 Claude tmux pane 협업 패턴
+│   ├── yagni/SKILL.md        # 코드 추가 前 필요성 검사 — 추측성 추상화·미사용 코드 방지
+│   └── terse-output/SKILL.md # 응답 군더더기 제거 — 기술 substance 유지, 토큰 절감
 hooks/
 │   ├── hooks.json            # 플러그인 hooks 정의 (${CLAUDE_PLUGIN_ROOT} 기반 경로)
 │   ├── enforce-test-first.sh # production 파일 작성 전 테스트 존재 검사
