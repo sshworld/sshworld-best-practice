@@ -72,6 +72,17 @@ scripts/
 # → taste-skill, andrej-karpathy-skills 자동 동반설치
 ```
 
+### 토큰 절약 레이어
+
+| 레이어 | 수단 | 비고 |
+|---|---|---|
+| 출력 | caveman (opt-in) | 응답 스타일 압축 |
+| 스코프 | yagni skill | 추측성 코드 방지 |
+| 검색 | codegraph | npx auto-fetch, per-project `init` 필요 |
+| 압축 | headroom | 별도 서버 opt-in |
+
+인프라 상세: [docs/infra-setup.md](docs/infra-setup.md)
+
 **caveman (opt-in):** 출력 스타일을 압축 모드로 바꾸므로 기본 비활성. 원하면 별도 설치:
 
 ```bash
