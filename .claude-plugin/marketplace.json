@@ -1,11 +1,46 @@
 {
   "name": "sshworld-best-practice",
-  "owner": { "name": "sshworld", "url": "https://github.com/sshworld" },
-  "allowCrossMarketplaceDependenciesOn": ["caveman"],
+  "owner": {
+    "name": "sshworld",
+    "url": "https://github.com/sshworld"
+  },
+  "allowCrossMarketplaceDependenciesOn": [
+    "caveman"
+  ],
   "plugins": [
-    { "name": "plan-dev", "source": ".", "description": "Plan-driven TDD dev workflow (Phase 0~6, dispatch, goal-gate)." },
-    { "name": "taste-skill", "source": { "source": "url", "url": "https://github.com/Leonxlnx/taste-skill.git", "ref": "main" }, "description": "Anti-slop frontend UI skills (큐레이트)." },
-    { "name": "andrej-karpathy-skills", "source": { "source": "url", "url": "https://github.com/multica-ai/andrej-karpathy-skills.git", "ref": "main" }, "description": "Karpathy LLM 코딩 가이드라인 (큐레이트)." },
-    { "name": "caveman", "source": { "source": "url", "url": "https://github.com/JuliusBrussee/caveman.git", "ref": "main" }, "description": "출력 압축 모드 (opt-in).", "defaultEnabled": false }
+    {
+      "name": "plan-dev",
+      "source": ".",
+      "description": "Plan-driven TDD dev workflow (Phase 0~6, dispatch, goal-gate).",
+      "version": "0.1.1"
+    },
+    {
+      "name": "taste-skill",
+      "source": {
+        "source": "url",
+        "url": "https://github.com/Leonxlnx/taste-skill.git",
+        "ref": "main"
+      },
+      "description": "Anti-slop frontend UI skills (큐레이트)."
+    },
+    {
+      "name": "andrej-karpathy-skills",
+      "source": {
+        "source": "url",
+        "url": "https://github.com/multica-ai/andrej-karpathy-skills.git",
+        "ref": "main"
+      },
+      "description": "Karpathy LLM 코딩 가이드라인 (큐레이트)."
+    },
+    {
+      "name": "caveman",
+      "source": {
+        "source": "url",
+        "url": "https://github.com/JuliusBrussee/caveman.git",
+        "ref": "main"
+      },
+      "description": "출력 압축 모드 (opt-in).",
+      "defaultEnabled": false
+    }
   ]
 }
