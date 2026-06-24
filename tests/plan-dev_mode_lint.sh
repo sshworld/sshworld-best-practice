@@ -4,8 +4,8 @@
 set -uo pipefail
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-PLAN="$REPO/.claude/commands/plan-dev.md"
-IMPL="$REPO/.claude/agents/implementor.md"
+PLAN="$REPO/commands/plan-dev.md"
+IMPL="$REPO/agents/implementor.md"
 
 step() { echo "[$1] $2"; }
 fail() { echo "❌ FAIL: $1" >&2; exit 1; }

@@ -39,7 +39,7 @@ got=$(resolve "$PLANS" "$MARKER")
 [[ "$(basename "$got")" == "fresher.md" ]] && pass "최신 plan 우선" || fail "최신 우선 실패: '$got'"
 
 # grep 가드: hook 이 -newer 기반 해결 포함 + 옛 무조건 ls -t fallback 제거
-HOOK="$(cd "$(dirname "$0")/../.." && pwd)/.claude/hooks/enforce-plan-dev-goal.sh"
+HOOK="$(cd "$(dirname "$0")/../.." && pwd)/hooks/enforce-plan-dev-goal.sh"
 grep -qF '-newer' "$HOOK" && pass "hook -newer 필터 존재" || fail "hook -newer 필터 부재"
 
 [[ $FAIL -eq 0 ]] && echo "=== ALL PASS ===" || { echo "=== FAILED ==="; exit 1; }

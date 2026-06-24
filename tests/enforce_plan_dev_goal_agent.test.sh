@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -e
 
-HOOK="$(cd "$(dirname "$0")/.." && pwd)/.claude/hooks/enforce-plan-dev-goal.sh"
+HOOK="$(cd "$(dirname "$0")/.." && pwd)/hooks/enforce-plan-dev-goal.sh"
 TMP=$(mktemp -d)
 trap "rm -rf $TMP" EXIT
 

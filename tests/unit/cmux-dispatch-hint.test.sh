@@ -3,7 +3,7 @@
 # cmux env 면 dispatch-first advisory stdout, 비-cmux 면 무출력. 둘 다 exit 0.
 set -uo pipefail
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-HOOK="$REPO/.claude/hooks/cmux-dispatch-hint.sh"
+HOOK="$REPO/hooks/cmux-dispatch-hint.sh"
 PASS=0; FAIL=0; FAILED=()
 run() { local name="$1"; shift; if "$@" >/dev/null 2>&1; then echo "✔ $name"; PASS=$((PASS+1)); else echo "✘ $name"; FAIL=$((FAIL+1)); FAILED+=("$name"); fi; }
 

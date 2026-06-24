@@ -9,19 +9,22 @@
 ## 구성
 
 ```
-.claude/
-├── commands/
+.claude-plugin/
+├── plugin.json               # 플러그인 manifest (name: plan-dev)
+└── marketplace.json          # marketplace 배포 메타데이터
+commands/
 │   ├── plan-dev.md           # Phase 0~6 워크플로 (Session Start → Plan → TDD → Verify → Commit → Branch & Push → Context 정리)
 │   └── parallel-consult.md   # 자식 Claude pane 띄워 한 번 질문하고 답 회수
-├── agents/
+agents/
 │   ├── implementor.md        # TDD Red→Green→Refactor, <type>/<slug> worktree 격리 (+ tmux pane 모드 지원)
 │   ├── verifier.md           # Read-only 빌드/테스트 실행 + diff 제안
 │   ├── reviewer.md           # 치명적 이슈만 블로킹, 나머지 제안
 │   └── commit-advisor.md     # 한글 Conventional Commit + DOC 영향 평가 + 다중 커밋 분석
-├── skills/
+skills/
 │   ├── fork/SKILL.md         # 자식 컨텍스트에서 처리하고 요약만 반환
 │   └── tmux-orchestrate/SKILL.md # 부모-자식 Claude tmux pane 협업 패턴
-├── hooks/
+hooks/
+│   ├── hooks.json            # 플러그인 hooks 정의 (${CLAUDE_PLUGIN_ROOT} 기반 경로)
 │   ├── enforce-test-first.sh # production 파일 작성 전 테스트 존재 검사
 │   ├── enforce-doc-sync.sh   # commit 시점 DOC 영향 평가 강제
 │   ├── limit-child-panes.sh  # 자식 tmux pane spawn 상한 (CLAUDE_MAX_CHILD_PANES)
@@ -31,7 +34,8 @@
 │   ├── cmux-dispatch-hint.sh # SessionStart — cmux env 면 "dispatch 기본" advisory inject (비-cmux 무출력)
 │   ├── statusline-tokens.sh  # (opt-in) 하단 status bar 모드 — 기본은 token-stats.sh 사용
 │   └── token-stats.sh        # Stop hook 으로 직전 응답 토큰 사용량 + 캐시 히트율 inline 노출
-└── settings.json             # permissions(allow/deny) + hooks
+.claude/
+└── settings.json             # permissions(allow/deny) + hooks (project-scope dogfooding)
 scripts/
 ├── tmux-pane.sh              # 얇은 tmux wrapper — launch/send/capture/wait-idle/kill/list/status
 ├── cmux-pane.sh              # 얇은 cmux wrapper — launch/send/capture/kill/list/cleanup/status + state file 헬퍼
@@ -47,28 +51,52 @@ scripts/
 
 ## 설치
 
+> ⚠️ `install.sh` 는 **deprecated**. Claude Code 플러그인으로 설치하세요.
+
 ```bash
-# 글로벌 (~/.claude/) — 모든 프로젝트에서 사용
-./install.sh user
-
-> **hook 추가/변경 후 다른 프로젝트에서도 사용하려면 본 repo root 에서 `./install.sh` 재실행** — 글로벌 `~/.claude/hooks/` sync. 누락 시 다른 프로젝트의 cmux dispatch 자식이 옛 hook 받아 같은 차단 재발.
-
-# 프로젝트 로컬 (현재 디렉토리/.claude/)
-./install.sh project
-
-# 특정 디렉토리에 설치
-./install.sh project /path/to/your/project
-
-# 제거
-./install.sh uninstall user
-./install.sh uninstall project [TARGET_DIR]
+/plugin marketplace add sshworld/<repo>
+/plugin install plan-dev
 ```
 
-기존 파일이 있으면 `.bak.<ts>` 백업 후 덮어씁니다. `settings.json` 은 `jq` 가 있으면 **자동 병합** (`scripts/merge-settings.sh`) — `permissions.allow` / `permissions.deny` 는 union, `hooks.<event>` 는 **matcher 단위 union (order-preserving) + command 키 dedup** — 같은 hook 파일명 (`hooks/<name>.(sh|js)`) 이면 repo 가 winner (STRICT/ENV prepend 등 source of truth). 비-겹침 customize 는 보존. dedup 은 **cur 내부 + cur-vs-new 모두** 적용하고 matcher 목록을 unique 처리 → install 재실행해도 hook 이 누적·복제되지 않음 (idempotent). `INSTALL_NO_MERGE=1` 또는 `jq` 미설치 시 `settings.example.json` 로 폴백 (수동 병합 안내).
+기존 `~/.claude` 설치본은 수동 정리(또는 `/plugin` 설치 후 중복 hook 제거) 필요.
 
-> 🐛 과거 버그: matcher 목록 미-unique + cur 내부 dedup 누락 → install 재실행마다 `hooks.<event>` 가 곱셈 누적(SessionStart hook 1024× 더블링). `scripts/merge-settings.sh` 추출 + dedup 으로 수정, `tests/unit/merge-settings.test.sh` 가 회귀 가드.
+### 권장 permissions (사용자 settings.json 에 추가)
 
-**cmux workspace title 자동** (user scope): `install.sh user` 가 `~/.zshrc` 에 `scripts/cmux-title-chpwd.sh` source block 을 idempotent 추가 (marker `# >>> cmux-title-chpwd >>>`). 적용 후 새 zsh 셸에서 `cd` 마다 (1) cmux tab/surface title 을 현재 디렉토리 (`basename $PWD`) 로 갱신하고, (2) **single-surface workspace** 면 추가로 왼쪽 사이드바의 **workspace 이름** 도 같은 basename 으로 갱신 — 여러 workspace 가 어느 디렉토리에서 작업 중인지 사이드바만 보고 식별. surface 가 여러 개인 workspace (cmux dispatch grid 등) 는 자식 cd 끼리 title 을 덮어쓰는 clobber 를 피하려 workspace 는 안 건드리고 tab 만 갱신. 비-cmux 셸(tmux/일반 터미널)에선 no-op. `uninstall user` 시 block 자동 제거.
+`hooks/hooks.json` 이 hook 정의를 담지만, permissions 는 플러그인이 번들할 수 없어 사용자가 수동 추가:
+
+```json
+{
+  "permissions": {
+    "allow": [
+      "Bash(git status*)", "Bash(git diff*)", "Bash(git log*)",
+      "Bash(git branch*)", "Bash(git checkout*)", "Bash(git switch*)",
+      "Bash(git fetch*)", "Bash(git pull*)", "Bash(git add*)",
+      "Bash(git commit*)", "Bash(git stash*)", "Bash(git merge*)",
+      "Bash(git rebase*)", "Bash(git remote*)", "Bash(git tag*)",
+      "Bash(git worktree*)", "Bash(git restore*)",
+      "Bash(tmux new-window*)", "Bash(tmux send-keys*)",
+      "Bash(tmux capture-pane*)", "Bash(tmux display-message*)",
+      "Bash(tmux list-panes*)", "Bash(tmux kill-pane*)", "Bash(tmux-cli*)",
+      "Bash(cmux new-workspace*)", "Bash(cmux new-pane*)", "Bash(cmux new-split*)",
+      "Bash(cmux send *)", "Bash(cmux send-key*)", "Bash(cmux read-screen*)",
+      "Bash(cmux list-workspaces*)", "Bash(cmux list-panes*)",
+      "Bash(cmux list-pane-surfaces*)", "Bash(cmux close-surface*)",
+      "Bash(cmux close-workspace*)", "Bash(cmux tree*)", "Bash(cmux ping*)",
+      "Bash(cmux identify*)", "Bash(cmux notify*)", "Bash(cmux set-status*)",
+      "Bash(cmux set-progress*)", "Bash(cmux clear-status*)", "Bash(cmux clear-progress*)",
+      "Bash(cmux rename-tab*)", "Bash(cmux workspace-action*)",
+      "Bash(*/scripts/tmux-pane.sh*)", "Bash(*/scripts/cmux-pane.sh*)",
+      "Bash(*/scripts/detect-pane-env.sh*)", "Bash(*/scripts/dispatch-slice-pane.sh*)",
+      "Bash(*/scripts/finish-plan-dev.sh*)", "Bash(*/scripts/plan-dev-progress.sh*)"
+    ],
+    "deny": [
+      "Bash(rm -rf*)", "Bash(git push --force*)", "Bash(git push -f*)",
+      "Bash(git commit --no-verify*)", "Bash(git reset --hard*)",
+      "Bash(tmux kill-server*)"
+    ]
+  }
+}
+```
 
 ---
 
@@ -118,7 +146,7 @@ Claude Code 의 **dynamic workflows**(`Workflow` 툴 — JS 스크립트로 suba
 | **B** workflow 실행 모드 | Phase 2 (opt-in) | `pipeline(slices, implement, verify)` + `isolation:'worktree'` |
 | **C** 대규모 escape hatch | audit / migration | loop-until-dry · multi-modal sweep · `resume` |
 
-reference 스크립트: `.claude/workflows/{plan-review-panel,slice-pipeline,codebase-audit}.mjs` — `Workflow({scriptPath})` 로 실행하거나 inline `script:` 로 paste.
+reference 스크립트: `.claude/workflows/{plan-review-panel,slice-pipeline,codebase-audit}.mjs` — `Workflow({scriptPath})` 로 실행하거나 inline `script:` 로 paste. (`.claude/workflows/` 는 Workflow 툴 reference — 이동하지 않음.)
 
 - `vuln-scan-pipeline.mjs` — 정적 vuln 스캔 파이프라인 프로토타입. defending-code-reference-harness 의 find→grade→judge→report 를 Workflow 골격으로 재현. vuln-class 별 FIND → JS dedup(JUDGE) → 적대 다수결(GRADE) → severity 랭킹(REPORT). 코드 실행/빌드 없는 정적 한정.
 
@@ -149,7 +177,7 @@ Workflow agent 는 **cmux surface 가 아니다** — 다른 런타임이라 한
 /parallel-consult "이 함수의 시간복잡도는?"
 ```
 
-부모가 자식 Claude pane 을 띄워 질문 → 응답 회수 → 부모 세션에 요약 + "자식 pane 유지/kill" 묻기. 자세한 흐름은 `.claude/commands/parallel-consult.md`.
+부모가 자식 Claude pane 을 띄워 질문 → 응답 회수 → 부모 세션에 요약 + "자식 pane 유지/kill" 묻기. 자세한 흐름은 `commands/parallel-consult.md`.
 
 ### Branch Convention
 
@@ -185,7 +213,7 @@ scripts/tmux-pane.sh capture --pane=$pane
 scripts/tmux-pane.sh kill --pane=$pane
 ```
 
-`tmux-orchestrate` skill 가이드 (`.claude/skills/tmux-orchestrate/SKILL.md`) 에 안티패턴 + 호출 시퀀스 정리.
+`tmux-orchestrate` skill 가이드 (`skills/tmux-orchestrate/SKILL.md`) 에 안티패턴 + 호출 시퀀스 정리.
 
 ### 자식 pane 라이프사이클
 

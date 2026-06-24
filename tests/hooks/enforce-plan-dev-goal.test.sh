@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -e
 
-HOOK="$(cd "$(dirname "$0")/../.." && pwd)/.claude/hooks/enforce-plan-dev-goal.sh"
+HOOK="$(cd "$(dirname "$0")/../.." && pwd)/hooks/enforce-plan-dev-goal.sh"
 TMP=$(mktemp -d)
 trap "rm -rf $TMP" EXIT
 
@@ -11,7 +11,8 @@ echo "1: marker 없음 → exit 0 ✓"
 
 # Scenario 2: marker 있고 plan 없음 → exit 0
 echo '{}' > "$TMP/session.json"
-PLAN_DEV_GOAL_SESSION_FILE="$TMP/session.json" PLAN_DEV_GOAL_PLAN_PATH="$TMP/no-such.md" "$HOOK" < /dev/null
+# CLAUDE_PROJECT_DIR=$TMP: non-worktree dir so active-dispatch-worktree check won't skip
+CLAUDE_PROJECT_DIR="$TMP" PLAN_DEV_GOAL_SESSION_FILE="$TMP/session.json" PLAN_DEV_GOAL_PLAN_PATH="$TMP/no-such.md" "$HOOK" < /dev/null
 echo "2: plan 없음 → exit 0 ✓"
 
 # Scenario 3: machine-checks 전부 PASS → exit 0
@@ -24,7 +25,7 @@ true
 \`\`\`
 <!-- /machine-checks -->
 EOF
-PLAN_DEV_GOAL_SESSION_FILE="$TMP/session.json" PLAN_DEV_GOAL_PLAN_PATH="$TMP/plan.md" "$HOOK" < /dev/null
+CLAUDE_PROJECT_DIR="$TMP" PLAN_DEV_GOAL_SESSION_FILE="$TMP/session.json" PLAN_DEV_GOAL_PLAN_PATH="$TMP/plan.md" SKIP_GOAL_AGENT=1 "$HOOK" < /dev/null
 echo "3: 전부 PASS → exit 0 ✓"
 
 # Scenario 4: 하나 fail → exit 2 + stderr 매치
@@ -37,7 +38,7 @@ false
 \`\`\`
 <!-- /machine-checks -->
 EOF
-out=$(PLAN_DEV_GOAL_SESSION_FILE="$TMP/session.json" PLAN_DEV_GOAL_PLAN_PATH="$TMP/plan.md" "$HOOK" < /dev/null 2>&1 || echo "EXIT=$?")
+out=$(CLAUDE_PROJECT_DIR="$TMP" PLAN_DEV_GOAL_SESSION_FILE="$TMP/session.json" PLAN_DEV_GOAL_PLAN_PATH="$TMP/plan.md" SKIP_GOAL_AGENT=1 "$HOOK" < /dev/null 2>&1 || echo "EXIT=$?")
 echo "$out" | grep -q "EXIT=2"
 echo "$out" | grep -q "FAIL"
 echo "4: 한 줄 fail → exit 2 + stderr FAIL ✓"

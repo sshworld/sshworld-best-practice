@@ -4,8 +4,8 @@
 set -uo pipefail
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-PC="$REPO/.claude/commands/parallel-consult.md"
-PD="$REPO/.claude/commands/plan-dev.md"
+PC="$REPO/commands/parallel-consult.md"
+PD="$REPO/commands/plan-dev.md"
 README="$REPO/README.md"
 CLAUDE="$REPO/CLAUDE.md"
 

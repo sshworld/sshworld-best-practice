@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# Slice B lint — .claude/skills/tmux-orchestrate/SKILL.md 의 frontmatter + 필수 섹션 검사.
+# Slice B lint — skills/tmux-orchestrate/SKILL.md 의 frontmatter + 필수 섹션 검사.
 
 set -uo pipefail
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-SKILL="$REPO/.claude/skills/tmux-orchestrate/SKILL.md"
+SKILL="$REPO/skills/tmux-orchestrate/SKILL.md"
 
 step() { echo "[$1] $2"; }
 fail() { echo "❌ FAIL: $1" >&2; exit 1; }

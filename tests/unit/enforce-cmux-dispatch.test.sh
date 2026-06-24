@@ -3,7 +3,7 @@
 # PreToolUse ExitPlanMode — cmux 환경에서 plan Slice File Map 에 direct-edit 표셀 있으면 차단.
 set -uo pipefail
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-HOOK="$REPO/.claude/hooks/enforce-cmux-dispatch.sh"
+HOOK="$REPO/hooks/enforce-cmux-dispatch.sh"
 PASS=0; FAIL=0; FAILED=()
 run() { local name="$1"; shift; if "$@" >/dev/null 2>&1; then echo "✔ $name"; PASS=$((PASS+1)); else echo "✘ $name"; FAIL=$((FAIL+1)); FAILED+=("$name"); fi; }
 

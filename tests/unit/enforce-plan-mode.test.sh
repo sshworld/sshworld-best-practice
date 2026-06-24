@@ -4,9 +4,20 @@
 # "plan mode 거침" 판정 = marker 보다 newer 한 plan 파일이 PLANS_DIR 에 존재.
 set -uo pipefail
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-HOOK="$REPO/.claude/hooks/enforce-plan-mode.sh"
+HOOK="$REPO/hooks/enforce-plan-mode.sh"
 PASS=0; FAIL=0; FAILED=()
 run() { local name="$1"; shift; if "$@" >/dev/null 2>&1; then echo "✔ $name"; PASS=$((PASS+1)); else echo "✘ $name"; FAIL=$((FAIL+1)); FAILED+=("$name"); fi; }
+
+# hook 을 plain git repo (non-worktree) 에서 실행 — worktree 감지 skip 우회
+_plain_repo_hook() {
+  local tmpbase; tmpbase=$(mktemp -d)
+  local repo="$tmpbase/repo"; mkdir -p "$repo"
+  git -C "$repo" init -q
+  git -C "$repo" commit --allow-empty -q -m init 2>/dev/null
+  local ec=0; ( cd "$repo" && "$@" ) || ec=$?
+  rm -rf "$tmpbase"
+  return $ec
+}
 
 # tmp 에 marker(start_ts 포함) + plans dir 구성. $2=plan_state(none|newer|older). echo "marker|plans".
 # 판정은 marker 파일 mtime 이 아니라 start_ts JSON 필드 기준.
@@ -39,16 +50,18 @@ t_newer_plan_allows() {
 
 t_no_plan_blocks() {
   local tmp; tmp=$(mktemp -d); local e; e=$(mk_env "$tmp" none)
+  local ec=0
   echo '{"tool_name":"Edit","permission_mode":"default"}' | \
-    PLAN_MODE_SESSION_FILE="${e%|*}" PLAN_MODE_PLANS_DIR="${e#*|}" bash "$HOOK"
-  local ec=$?; rm -rf "$tmp"; [ "$ec" = "2" ]
+    PLAN_MODE_SESSION_FILE="${e%|*}" PLAN_MODE_PLANS_DIR="${e#*|}" _plain_repo_hook bash "$HOOK" || ec=$?
+  rm -rf "$tmp"; [ "$ec" = "2" ]
 }
 
 t_older_plan_blocks() {
   local tmp; tmp=$(mktemp -d); local e; e=$(mk_env "$tmp" older)
+  local ec=0
   echo '{"tool_name":"Edit","permission_mode":"default"}' | \
-    PLAN_MODE_SESSION_FILE="${e%|*}" PLAN_MODE_PLANS_DIR="${e#*|}" bash "$HOOK"
-  local ec=$?; rm -rf "$tmp"; [ "$ec" = "2" ]
+    PLAN_MODE_SESSION_FILE="${e%|*}" PLAN_MODE_PLANS_DIR="${e#*|}" _plain_repo_hook bash "$HOOK" || ec=$?
+  rm -rf "$tmp"; [ "$ec" = "2" ]
 }
 
 t_plan_mode_allows_even_no_plan() {

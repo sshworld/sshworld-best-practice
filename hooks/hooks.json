@@ -1,0 +1,79 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}\"/hooks/enforce-test-first.sh"
+          },
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}\"/hooks/track-cmux-edit-burst.sh"
+          },
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}\"/hooks/enforce-plan-mode.sh"
+          }
+        ]
+      },
+      {
+        "matcher": "ExitPlanMode",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}\"/hooks/enforce-cmux-dispatch.sh"
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}\"/hooks/enforce-doc-sync.sh"
+          },
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}\"/hooks/limit-child-panes.sh"
+          },
+          {
+            "type": "command",
+            "command": "CMUX_CONTEXT_HOOK_STRICT=1 \"${CLAUDE_PLUGIN_ROOT}\"/hooks/enforce-cmux-context.sh"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}\"/hooks/token-stats.sh"
+          },
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}\"/hooks/enforce-plan-dev-goal.sh"
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "if git rev-parse --git-dir > /dev/null 2>&1; then echo '=== 진행 중 worktree ==='; git worktree list; echo ''; echo '=== 미커밋 변경 ==='; git status -s; fi; _env=$(bash \"${CLAUDE_PLUGIN_ROOT}/scripts/detect-pane-env.sh\" 2>/dev/null || echo unknown); if [ \"$_env\" = \"default\" ]; then echo \"=== 멀티플렉서: default (driver: subagent 모드 사용) ===\"; else echo \"=== 멀티플렉서: $_env (driver: ${CLAUDE_PLUGIN_ROOT}/scripts/${_env}-pane.sh) ===\"; fi"
+          },
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}\"/hooks/cmux-dispatch-hint.sh"
+          }
+        ]
+      }
+    ]
+  }
+}

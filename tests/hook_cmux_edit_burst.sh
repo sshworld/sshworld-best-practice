@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# Tests for .claude/hooks/track-cmux-edit-burst.sh
+# Tests for hooks/track-cmux-edit-burst.sh
 
 set -uo pipefail
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-HOOK="$REPO/.claude/hooks/track-cmux-edit-burst.sh"
+HOOK="$REPO/hooks/track-cmux-edit-burst.sh"
 
 PASS=0; FAIL=0; FAILED=()
 
@@ -27,6 +27,19 @@ make_payload() {
 
 [ -x "$HOOK" ] || { echo "hook not executable: $HOOK" >&2; exit 1; }
 
+# helper: run hook from a plain git repo (non-worktree) to avoid worktree-skip
+_run_in_plain_repo() {
+  local tmpbase; tmpbase=$(mktemp -d)
+  local repo="$tmpbase/repo"
+  mkdir -p "$repo"
+  git -C "$repo" init -q
+  git -C "$repo" commit --allow-empty -q -m init 2>/dev/null
+  (cd "$repo" && "$@")
+  local rc=$?
+  rm -rf "$tmpbase"
+  return $rc
+}
+
 # T1: CMUX_WORKSPACE_ID unset → exit 0
 t1_unset_workspace() {
   local f; f=$(mktemp)
@@ -40,7 +53,7 @@ t1_unset_workspace() {
 t2_edit_increments() {
   local f; f=$(mktemp)
   local rc=0
-  make_payload "Edit" | CMUX_WORKSPACE_ID="test-ws" CBP_BURST_FILE="$f" "$HOOK" >/dev/null 2>&1 || rc=$?
+  _run_in_plain_repo bash -c "make_payload() { printf '{\"tool_name\":\"%s\",\"tool_input\":{\"file_path\":\"x\"}}' \"\$1\"; }; make_payload Edit | CMUX_WORKSPACE_ID='test-ws' CBP_BURST_FILE='$f' '$HOOK' >/dev/null 2>&1" || rc=$?
   local cnt; cnt=$(cat "$f" 2>/dev/null || echo -1)
   rm -f "$f"
   [ "$rc" -eq 0 ] && [ "$cnt" -eq 1 ]
@@ -50,7 +63,7 @@ t2_edit_increments() {
 t3_below_threshold_no_advisory() {
   local f; f=$(mktemp); echo "1" > "$f"
   local rc=0 err
-  err=$(make_payload "Edit" | CMUX_WORKSPACE_ID="test-ws" CBP_BURST_FILE="$f" CMUX_EDIT_BURST_THRESHOLD=3 "$HOOK" 2>&1 >/dev/null) || rc=$?
+  err=$(_run_in_plain_repo bash -c "make_payload() { printf '{\"tool_name\":\"%s\",\"tool_input\":{\"file_path\":\"x\"}}' \"\$1\"; }; make_payload Edit | CMUX_WORKSPACE_ID='test-ws' CBP_BURST_FILE='$f' CMUX_EDIT_BURST_THRESHOLD=3 '$HOOK' 2>&1 >/dev/null") || rc=$?
   rm -f "$f"
   [ "$rc" -eq 0 ] && ! echo "$err" | grep -q "dispatch-slice-pane"
 }
@@ -59,7 +72,7 @@ t3_below_threshold_no_advisory() {
 t4_threshold_advisory() {
   local f; f=$(mktemp); echo "2" > "$f"
   local rc=0 err
-  err=$(make_payload "Edit" | CMUX_WORKSPACE_ID="test-ws" CBP_BURST_FILE="$f" CMUX_EDIT_BURST_THRESHOLD=3 "$HOOK" 2>&1 >/dev/null) || rc=$?
+  err=$(_run_in_plain_repo bash -c "make_payload() { printf '{\"tool_name\":\"%s\",\"tool_input\":{\"file_path\":\"x\"}}' \"\$1\"; }; make_payload Edit | CMUX_WORKSPACE_ID='test-ws' CBP_BURST_FILE='$f' CMUX_EDIT_BURST_THRESHOLD=3 '$HOOK' 2>&1 >/dev/null") || rc=$?
   rm -f "$f"
   [ "$rc" -eq 0 ] && echo "$err" | grep -q "dispatch-slice-pane"
 }
@@ -68,7 +81,7 @@ t4_threshold_advisory() {
 t5_strict_blocks() {
   local f; f=$(mktemp); echo "2" > "$f"
   local rc=0
-  make_payload "Edit" | CMUX_WORKSPACE_ID="test-ws" CBP_BURST_FILE="$f" CMUX_EDIT_BURST_THRESHOLD=3 CMUX_EDIT_BURST_STRICT=1 "$HOOK" >/dev/null 2>&1 || rc=$?
+  _run_in_plain_repo bash -c "make_payload() { printf '{\"tool_name\":\"%s\",\"tool_input\":{\"file_path\":\"x\"}}' \"\$1\"; }; make_payload Edit | CMUX_WORKSPACE_ID='test-ws' CBP_BURST_FILE='$f' CMUX_EDIT_BURST_THRESHOLD=3 CMUX_EDIT_BURST_STRICT=1 '$HOOK' >/dev/null 2>&1" || rc=$?
   rm -f "$f"
   [ "$rc" -eq 2 ]
 }
@@ -76,10 +89,9 @@ t5_strict_blocks() {
 # T6: mtime 6 minutes ago → auto reset → count=1
 t6_mtime_reset() {
   local f; f=$(mktemp); echo "5" > "$f"
-  # set mtime to 420 seconds ago (7 minutes)
   python3 -c "import os,time; os.utime('$f', (time.time()-420, time.time()-420))"
   local rc=0
-  make_payload "Edit" | CMUX_WORKSPACE_ID="test-ws" CBP_BURST_FILE="$f" CMUX_EDIT_BURST_IDLE_SEC=300 "$HOOK" >/dev/null 2>&1 || rc=$?
+  _run_in_plain_repo bash -c "make_payload() { printf '{\"tool_name\":\"%s\",\"tool_input\":{\"file_path\":\"x\"}}' \"\$1\"; }; make_payload Edit | CMUX_WORKSPACE_ID='test-ws' CBP_BURST_FILE='$f' CMUX_EDIT_BURST_IDLE_SEC=300 '$HOOK' >/dev/null 2>&1" || rc=$?
   local cnt; cnt=$(cat "$f" 2>/dev/null || echo -1)
   rm -f "$f"
   [ "$rc" -eq 0 ] && [ "$cnt" -eq 1 ]

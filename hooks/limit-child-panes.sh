@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # limit-child-panes.sh — PreToolUse: Bash hook.
-# 자식 tmux pane spawn 명령 (`tmux-cli launch`, `@@SCRIPTS_DIR@@/tmux-pane.sh launch`,
-# `@@SCRIPTS_DIR@@/cmux-pane.sh launch`, `@@SCRIPTS_DIR@@/dispatch-slice-pane.sh`) 가 호출될 때,
+# 자식 tmux pane spawn 명령 (`tmux-cli launch`, `${CLAUDE_PLUGIN_ROOT}/scripts/tmux-pane.sh launch`,
+# `${CLAUDE_PLUGIN_ROOT}/scripts/cmux-pane.sh launch`, `${CLAUDE_PLUGIN_ROOT}/scripts/dispatch-slice-pane.sh`) 가 호출될 때,
 # 현재 자식 (tmux pane + cmux workspace) 합산 수가
 # CLAUDE_MAX_CHILD_PANES (기본 5) 이상이면 차단.
 #
@@ -85,7 +85,7 @@ limit-child-panes: 한도 초과 — tmux pane: $TMUX_COUNT, cmux child: $CMUX_C
 차단된 명령: $CMD
 
 우회:
-  1. 기존 자식 pane 정리: @@SCRIPTS_DIR@@/tmux-pane.sh list 후 kill / @@SCRIPTS_DIR@@/cmux-pane.sh cleanup
+  1. 기존 자식 pane 정리: \${CLAUDE_PLUGIN_ROOT}/scripts/tmux-pane.sh list 후 kill / \${CLAUDE_PLUGIN_ROOT}/scripts/cmux-pane.sh cleanup
   2. 한도 상향: CLAUDE_MAX_CHILD_PANES=N 으로 재실행
   3. hook 영구 비활성: export DISABLE_PANE_LIMIT_HOOK=1
 EOF

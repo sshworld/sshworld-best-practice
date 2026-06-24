@@ -10,23 +10,23 @@ args: <자식에게 보낼 질문>
 
 ## Prerequisite
 
-> ⚠️ **먼저 `bash @@SCRIPTS_DIR@@/detect-pane-env.sh` 호출** — 결과로 tmux/cmux/default 분기. cmux 안인데 tmux 명령 reach 금지.
+> ⚠️ **먼저 `bash ${CLAUDE_PLUGIN_ROOT}/scripts/detect-pane-env.sh` 호출** — 결과로 tmux/cmux/default 분기. cmux 안인데 tmux 명령 reach 금지.
 
-1. **터미널 환경 감지**: `env=$(@@SCRIPTS_DIR@@/detect-pane-env.sh)`. 결과별 분기:
+1. **터미널 환경 감지**: `env=$(${CLAUDE_PLUGIN_ROOT}/scripts/detect-pane-env.sh)`. 결과별 분기:
    - `tmux` → 기존 tmux 흐름 (아래 단계 2 tmux 분기)
    - `cmux` → cmux-pane.sh 흐름 (아래 단계 2 cmux 분기)
    - `default` → 사용자에게 tmux 또는 cmux 설치 안내 후 중단.
-2. wrapper 결정 (tmux 분기): `command -v tmux-cli` 우선, 없으면 `@@SCRIPTS_DIR@@/tmux-pane.sh` 폴백. 둘 다 없으면 `uv tool install claude-code-tools` 안내 후 중단.
-3. **기존 자식 pane 정리** (tmux 분기): 새 작업 시작 전 `@@SCRIPTS_DIR@@/tmux-pane.sh cleanup` 호출. `tmux-pane-mgr` 세션 + 현재 window 의 main/self 외 split pane 일괄 kill. 우회: `DISPATCH_SKIP_CLEANUP=1` 또는 호출 생략.
+2. wrapper 결정 (tmux 분기): `command -v tmux-cli` 우선, 없으면 `${CLAUDE_PLUGIN_ROOT}/scripts/tmux-pane.sh` 폴백. 둘 다 없으면 `uv tool install claude-code-tools` 안내 후 중단.
+3. **기존 자식 pane 정리** (tmux 분기): 새 작업 시작 전 `${CLAUDE_PLUGIN_ROOT}/scripts/tmux-pane.sh cleanup` 호출. `tmux-pane-mgr` 세션 + 현재 window 의 main/self 외 split pane 일괄 kill. 우회: `DISPATCH_SKIP_CLEANUP=1` 또는 호출 생략.
 
 ## 흐름 단계
 
 다음 시퀀스를 그대로 실행 (안 거치고 단축 금지):
 
-1. **환경 감지** — `env=$(@@SCRIPTS_DIR@@/detect-pane-env.sh)`. `default` 면 중단.
+1. **환경 감지** — `env=$(${CLAUDE_PLUGIN_ROOT}/scripts/detect-pane-env.sh)`. `default` 면 중단.
 2. **wrapper 결정**:
-   - tmux: `W=$(command -v tmux-cli || echo "@@SCRIPTS_DIR@@/tmux-pane.sh")`
-   - cmux: `W="@@SCRIPTS_DIR@@/cmux-pane.sh"`
+   - tmux: `W=$(command -v tmux-cli || echo "${CLAUDE_PLUGIN_ROOT}/scripts/tmux-pane.sh")`
+   - cmux: `W="${CLAUDE_PLUGIN_ROOT}/scripts/cmux-pane.sh"`
 3. **`launch zsh`** — pane id 저장. `pane=$($W launch zsh)`.
 4. **`send "claude --model <alias>"` + `wait-idle`** — 자식 Claude 프롬프트가 뜰 때까지 대기. **model alias 규약**: 사용자 인자가 `sonnet:`/`opus:`/`haiku:` 으로 시작하면 그 토큰을 model 로 분리, 나머지를 prompt 로. 명시 안 하면 `sonnet` 디폴트.
    ```bash

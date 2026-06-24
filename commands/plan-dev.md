@@ -18,7 +18,7 @@ argument-hint: <짧은 요구사항 한 줄>
 
 세션 시작 직후 **즉시** 실행:
 ```bash
-@@SCRIPTS_DIR@@/plan-dev-session.sh start
+${CLAUDE_PLUGIN_ROOT}/scripts/plan-dev-session.sh start
 ```
 - start_ref(HEAD SHA), base_branch, work_branch, start_ts, start_pid, auto_branch 를 `.git/plan-dev-session.json` 에 기록.
 - base_branch 우선순위: `origin/develop` > `origin/main` > `origin/master` > 로컬 develop/main/master.
@@ -114,11 +114,11 @@ test -x scripts/foo.sh
 **충돌 사전 점검**: Slice File Map 의 파일 교집합 존재 시 그 슬라이스들은 의존성 있음으로 분류 — 병렬 X, 순차로 강등하거나 단일 슬라이스로 병합.
 
 > 🚀 **환경별 기본 Mode 룰**:
-> - **cmux 환경(`CMUX_WORKSPACE_ID` set)**: **dispatch(cmux) 만** — plan Slice File Map 에 `direct-edit` 표셀 넣으면 `enforce-cmux-dispatch` hook 이 **ExitPlanMode 차단**. 각 슬라이스는 `@@SCRIPTS_DIR@@/dispatch-slice-pane.sh --mode=cmux` 로 자식 surface 에 띄워 작업 (사용자가 cmux 사이드바에서 진행 시각화). SessionStart 의 `cmux-dispatch-hint` advisory 가 이를 상기시킴.
+> - **cmux 환경(`CMUX_WORKSPACE_ID` set)**: **dispatch(cmux) 만** — plan Slice File Map 에 `direct-edit` 표셀 넣으면 `enforce-cmux-dispatch` hook 이 **ExitPlanMode 차단**. 각 슬라이스는 `${CLAUDE_PLUGIN_ROOT}/scripts/dispatch-slice-pane.sh --mode=cmux` 로 자식 surface 에 띄워 작업 (사용자가 cmux 사이드바에서 진행 시각화). SessionStart 의 `cmux-dispatch-hint` advisory 가 이를 상기시킴.
 >   - cmux 에서 `direct-edit` 가 정말 필요하면 **plan 콘텐츠가 아니라 out-of-band env**: `CMUX_DIRECT_EDIT_OK=1` 로 ExitPlanMode 게이트를 의식적으로 1회 통과.
 > - **비-cmux 환경**: `direct-edit` 가 기본, dispatch 가 opt-in (시각화/격리 가치 시).
 >
-> cmux dispatch 경로(`@@SCRIPTS_DIR@@/dispatch-slice-pane.sh --mode=cmux`)는 항상 보존.
+> cmux dispatch 경로(`${CLAUDE_PLUGIN_ROOT}/scripts/dispatch-slice-pane.sh --mode=cmux`)는 항상 보존.
 >
 > 본 repo 의 settings.json 의 cmux Edit/Write 누적 hook(`track-cmux-edit-burst`)은 **advisory only** (디폴트 임계치 50) — 차단 없음. `CMUX_EDIT_BURST_STRICT=1` env 명시 시만 차단.
 
@@ -127,7 +127,7 @@ test -x scripts/foo.sh
 
 슬라이스 수 확정 후 progress 시작:
 ```bash
-@@SCRIPTS_DIR@@/plan-dev-progress.sh start --total=<N>
+${CLAUDE_PLUGIN_ROOT}/scripts/plan-dev-progress.sh start --total=<N>
 ```
 
 ## Phase 2 — TDD Execute (비동기)
@@ -159,19 +159,19 @@ test -x scripts/foo.sh
 
 #### cmux dispatch 동작 모델 (진단 가이드)
 
-- `dispatch-slice-pane.sh --mode=cmux` 호출 → `@@SCRIPTS_DIR@@/cmux-pane.sh launch` 가 cmux new-split 으로 surface 생성 + zsh + 자식 `claude --permission-mode bypassPermissions` 실행 + spec prompt 송신.
+- `dispatch-slice-pane.sh --mode=cmux` 호출 → `${CLAUDE_PLUGIN_ROOT}/scripts/cmux-pane.sh launch` 가 cmux new-split 으로 surface 생성 + zsh + 자식 `claude --permission-mode bypassPermissions` 실행 + spec prompt 송신.
 - spec prompt 송신은 자동으로 **`--enter-count=2`** 적용 (Claude TUI paste mode 끝의 첫 Enter 는 newline 으로 처리되어 명령 실행 안 됨 — 추가 Enter 필요). 단, **cmux 신규 surface 가 PTY detached 인 케이스** 에서는 첫 Enter 만으로 PTY 가 활성화되고 명령 실행이 안 될 수 있음.
 - 진단 시퀀스 (자식이 진행 안 하는 듯할 때):
   1. `cmux tree | grep surface:<N>` — surface 살아 있는지.
   2. `cmux read-screen --surface surface:<N>` — `Terminal surface not found` 이면 detached. `cmux send-key --surface surface:<N> Enter` 1~2회로 활성화.
   3. 활성화 후 자식이 spec prompt 받은 상태 (`✳ Forming…` / `Undulating…` 등 thinking) 이면 정상.
-- 부모가 회수: `@@SCRIPTS_DIR@@/cmux-pane.sh reap --pane=surface:<N>` — 완료 감지 시 자동 탭 종료, 미완료면 보존. (내부적으로 wait-idle → capture → grep ✅/❌ → close-surface 흐름. finish-plan-dev 의 bulk cleanup 은 backstop 으로 남음.)
+- 부모가 회수: `${CLAUDE_PLUGIN_ROOT}/scripts/cmux-pane.sh reap --pane=surface:<N>` — 완료 감지 시 자동 탭 종료, 미완료면 보존. (내부적으로 wait-idle → capture → grep ✅/❌ → close-surface 흐름. finish-plan-dev 의 bulk cleanup 은 backstop 으로 남음.)
 - 사용자가 직접 자식 화면 보기: cmux 사이드바의 surface 탭 클릭.
 - **자식 worktree trust 자동 시딩** (`trust-dir.sh`, cross-machine): dispatch 는 worktree launch 직전 `hasTrustDialogAccepted` 를 자동 set — fresh 머신에서 trust 다이얼로그에 막혀 자식이 멈추는 케이스 회피. 우회: `SKIP_DISPATCH_TRUST=1`.
 
 #### Dispatch wrapper 가용성 검증 (회복력 룰)
 
-- (a) wrapper PWD-relative path (`@@SCRIPTS_DIR@@/dispatch-slice-pane.sh`) 가 안 보이면 → **알려진 절대경로** (`~/scripts/dispatch-slice-pane.sh` 글로벌 설치 결과, 또는 SessionStart system-reminder 가 노출한 driver 경로) 로 직접 호출 시도. 검색 결과 부재 ≠ 실행 불가.
+- (a) wrapper PWD-relative path (`${CLAUDE_PLUGIN_ROOT}/scripts/dispatch-slice-pane.sh`) 가 안 보이면 → **알려진 절대경로** (`~/scripts/dispatch-slice-pane.sh` 글로벌 설치 결과, 또는 SessionStart system-reminder 가 노출한 driver 경로) 로 직접 호출 시도. 검색 결과 부재 ≠ 실행 불가.
 - (b) 검색 권한 거부 (find/glob/grep 막힘) ≠ 실행 권한 거부. 검색 막혔다고 실행도 막혔다고 단정 금지 — 절대경로 호출 자체는 별도 권한.
 - (c) classifier/sandbox 가 권한 거부 메시지에 "사용자에게 설명/확인" 안내를 포함하면 그대로 따른다. 자동 fallback 금지.
 - (d) 사용자가 명시 선택한 mode 의 **핵심 가치** (cmux=시각화, subagent=토큰 추적, pane=tmux 격리) 를 날리는 fallback 결정은 **AskUserQuestion 으로 확인**. 자동 결정 금지.
@@ -185,7 +185,7 @@ test -x scripts/foo.sh
 
 호출 예:
 ```bash
-@@SCRIPTS_DIR@@/dispatch-slice-pane.sh \
+${CLAUDE_PLUGIN_ROOT}/scripts/dispatch-slice-pane.sh \
   --slice=<kebab> \
   --type=<feat|fix|refactor|test|docs|chore> \
   --spec-file=.claude/specs/<kebab>.spec.md \
@@ -213,7 +213,7 @@ $wrapper capture   --pane=$pane | tail -50 | grep -E '^[[:space:]]*(⏺[[:space:
 
 슬라이스 ✅ 확인 후:
 ```bash
-@@SCRIPTS_DIR@@/plan-dev-progress.sh tick --slug=<slice>
+${CLAUDE_PLUGIN_ROOT}/scripts/plan-dev-progress.sh tick --slug=<slice>
 ```
 
 ## Phase 3 — Verify (loop)
@@ -252,7 +252,7 @@ verifier PASS 후 commit 전 코드 리뷰를 원하면 `reviewer` 에이전트 
 ## Phase 5 — Branch & Push
 
 1. commit-advisor 추천의 `<type>/<slug>` 브랜치명 적용.
-2. `@@SCRIPTS_DIR@@/finish-plan-dev.sh` 실행:
+2. `${CLAUDE_PLUGIN_ROOT}/scripts/finish-plan-dev.sh` 실행:
    - marker 읽기 → develop 있음/없음 분기 → `git push -u origin <branch>`.
    - develop 있으면: 현재 `<type>/<slug>` branch 를 remote 에 push.
    - develop 없음(main-only): main 직접 push.
@@ -272,7 +272,7 @@ verifier PASS 후 commit 전 코드 리뷰를 원하면 `reviewer` 에이전트 
 
 **종료 직전** 진행률 최종 확인:
 ```bash
-@@SCRIPTS_DIR@@/plan-dev-progress.sh show
+${CLAUDE_PLUGIN_ROOT}/scripts/plan-dev-progress.sh show
 ```
 
 **종료 직전** unlocked `worktree-agent-*` 자동 cleanup:

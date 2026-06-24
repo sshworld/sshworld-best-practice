@@ -10,11 +10,11 @@ t_settings_no_inline_strict() {
 }
 
 t_hook_threshold_default_50() {
-  grep -F 'CMUX_EDIT_BURST_THRESHOLD:-50' "$REPO/.claude/hooks/track-cmux-edit-burst.sh" >/dev/null
+  grep -F 'CMUX_EDIT_BURST_THRESHOLD:-50' "$REPO/hooks/track-cmux-edit-burst.sh" >/dev/null
 }
 
 t_skip_advisory_message() {
-  grep -F "의식적으로 검토" "$REPO/.claude/hooks/track-cmux-edit-burst.sh" >/dev/null
+  grep -F "의식적으로 검토" "$REPO/hooks/track-cmux-edit-burst.sh" >/dev/null
 }
 
 t_hook_skips_in_child_worktree() {
@@ -31,7 +31,7 @@ t_hook_skips_in_child_worktree() {
   CMUX_WORKSPACE_ID=test-ws \
   CBP_BURST_FILE=$count_file \
   CMUX_EDIT_BURST_STRICT=1 \
-    bash -c "cd $tmp/child && printf '%s' '$payload' | $REPO/.claude/hooks/track-cmux-edit-burst.sh"
+    bash -c "cd $tmp/child && printf '%s' '$payload' | $REPO/hooks/track-cmux-edit-burst.sh"
   local exit_code=$?
   local after_count=$(cat $count_file)
   rm -rf $tmp
@@ -49,7 +49,7 @@ t_hook_pass_under_threshold() {
   local payload='{"tool_name":"Edit"}'
   CMUX_WORKSPACE_ID=test-ws \
   CBP_BURST_FILE=$count_file \
-    bash -c "cd $fake_repo && printf '%s' '$payload' | $REPO/.claude/hooks/track-cmux-edit-burst.sh" 2>/dev/null
+    bash -c "cd $fake_repo && printf '%s' '$payload' | $REPO/hooks/track-cmux-edit-burst.sh" 2>/dev/null
   local exit_code=$?
   local after_count=$(cat $count_file)
   rm -rf $tmp
@@ -68,7 +68,7 @@ t_hook_advisory_only_default() {
   local payload='{"tool_name":"Edit"}'
   CMUX_WORKSPACE_ID=test-ws \
   CBP_BURST_FILE=$count_file \
-    bash -c "cd $fake_repo && printf '%s' '$payload' | $REPO/.claude/hooks/track-cmux-edit-burst.sh" 2>/dev/null
+    bash -c "cd $fake_repo && printf '%s' '$payload' | $REPO/hooks/track-cmux-edit-burst.sh" 2>/dev/null
   local exit_code=$?
   local after_count=$(cat $count_file)
   rm -rf $tmp
@@ -88,7 +88,7 @@ t_hook_strict_env_still_blocks() {
   CMUX_WORKSPACE_ID=test-ws \
   CBP_BURST_FILE=$count_file \
   CMUX_EDIT_BURST_STRICT=1 \
-    bash -c "cd $fake_repo && printf '%s' '$payload' | $REPO/.claude/hooks/track-cmux-edit-burst.sh" 2>/dev/null
+    bash -c "cd $fake_repo && printf '%s' '$payload' | $REPO/hooks/track-cmux-edit-burst.sh" 2>/dev/null
   local exit_code=$?
   rm -rf $tmp
   # strict env 명시 → exit 2

@@ -8,7 +8,7 @@
 set -uo pipefail
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-HOOK="$REPO/.claude/hooks/enforce-cmux-context.sh"
+HOOK="$REPO/hooks/enforce-cmux-context.sh"
 
 pass=0
 fail_count=0

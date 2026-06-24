@@ -1,0 +1,7 @@
+{
+  "name": "sshworld",
+  "owner": { "name": "sshworld" },
+  "plugins": [
+    { "name": "plan-dev", "source": ".", "description": "Plan-dev workflow plugin" }
+  ]
+}

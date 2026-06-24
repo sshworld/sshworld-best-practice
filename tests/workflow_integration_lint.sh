@@ -7,7 +7,7 @@
 set -uo pipefail
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-PLAN="$REPO/.claude/commands/plan-dev.md"
+PLAN="$REPO/commands/plan-dev.md"
 README="$REPO/README.md"
 CLAUDE="$REPO/CLAUDE.md"
 INSTALL="$REPO/install.sh"
@@ -60,7 +60,10 @@ grep -qi "workflow" "$README" || fail "README missing workflow"
 grep -qi "workflow" "$CLAUDE" || fail "CLAUDE.md missing workflow"
 grep -q ".claude/workflows" "$CLAUDE" || fail "CLAUDE.md missing .claude/workflows 파일책임"
 
-step 4 "install.sh 전파"
-grep -q "workflows/" "$INSTALL" || fail "install.sh missing workflows/ 전파"
+step 4 "플러그인 manifest + hooks.json 존재 (install.sh deprecated)"
+[ -f "$REPO/.claude-plugin/plugin.json" ] || fail ".claude-plugin/plugin.json 없음"
+python3 -c "import json; json.load(open('$REPO/.claude-plugin/plugin.json'))" 2>/dev/null || fail "plugin.json invalid JSON"
+[ -f "$REPO/hooks/hooks.json" ] || fail "hooks/hooks.json 없음"
+python3 -c "import json; json.load(open('$REPO/hooks/hooks.json'))" 2>/dev/null || fail "hooks/hooks.json invalid JSON"
 
 echo "OK"

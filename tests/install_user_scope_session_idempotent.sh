@@ -1,31 +1,41 @@
 #!/usr/bin/env bash
+# install user scope deprecated → hooks/hooks.json 안정성 검증 (idempotent 대체).
+
 set -uo pipefail
+
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PASS=0; FAIL=0; FAILED=()
 run() { local name="$1"; shift; if "$@" >/dev/null 2>&1; then echo "✔ $name"; PASS=$((PASS+1)); else echo "✘ $name"; FAIL=$((FAIL+1)); FAILED+=("$name"); fi; }
 
-t_idempotent() {
-  local TMP; TMP=$(mktemp -d) || return 1
-  trap "rm -rf $TMP" RETURN
-  HOME="$TMP" "$REPO/install.sh" user >/dev/null 2>&1 || return 1
-  local N1; N1=$(jq '.hooks.SessionStart[0].hooks | length' "$TMP/.claude/settings.json")
-  HOME="$TMP" "$REPO/install.sh" user >/dev/null 2>&1 || return 1
-  local N2; N2=$(jq '.hooks.SessionStart[0].hooks | length' "$TMP/.claude/settings.json")
-  [ "$N1" = "$N2" ]
+t_hooks_json_valid() {
+  python3 -c "import json; json.load(open('$REPO/hooks/hooks.json'))"
 }
 
-t_user_scope_normalized() {
-  local TMP; TMP=$(mktemp -d) || return 1
-  trap "rm -rf $TMP" RETURN
-  HOME="$TMP" "$REPO/install.sh" user >/dev/null 2>&1 || return 1
-  # inline command 안에 "$HOME/scripts/detect-pane-env.sh" 패턴이 있어야 (단순화 결과)
-  # any 사용: [] 반복 시 마지막 false 로 인한 exit 1 방지
-  jq -e '[.hooks.SessionStart[0].hooks[].command | contains("$HOME/scripts/detect-pane-env.sh")] | any' \
-     "$TMP/.claude/settings.json" >/dev/null 2>&1
+t_hooks_json_has_session_start() {
+  python3 -c "
+import json, sys
+d = json.load(open('$REPO/hooks/hooks.json'))
+hooks = d.get('hooks', {})
+ss = hooks.get('SessionStart', [])
+if not ss or not ss[0].get('hooks'):
+    sys.exit(1)
+"
 }
 
-run "user-scope SessionStart idempotent (2회 install 길이 동일)" t_idempotent
-run "변환 결과가 \$HOME/scripts/ 형태" t_user_scope_normalized
+t_hooks_json_plugin_root_form() {
+  # SessionStart inline command 에 \${CLAUDE_PLUGIN_ROOT} 형태
+  python3 -c "
+import json, sys
+d = json.load(open('$REPO/hooks/hooks.json'))
+cmds = [h['command'] for ev in d['hooks'].values() for m in ev for h in m.get('hooks', [])]
+if not any('CLAUDE_PLUGIN_ROOT' in c for c in cmds):
+    sys.exit(1)
+"
+}
+
+run "hooks.json valid JSON" t_hooks_json_valid
+run "SessionStart hooks 존재" t_hooks_json_has_session_start
+run "hook command 에 CLAUDE_PLUGIN_ROOT 형태" t_hooks_json_plugin_root_form
 
 echo "PASS=$PASS FAIL=$FAIL"
 [ "$FAIL" -eq 0 ] && echo "✅ all pass" || { echo "❌ FAILED: ${FAILED[*]}"; exit 1; }

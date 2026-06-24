@@ -4,7 +4,7 @@
 set -uo pipefail
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-HOOK="$REPO/.claude/hooks/limit-child-panes.sh"
+HOOK="$REPO/hooks/limit-child-panes.sh"
 
 step() { echo "[$1] $2"; }
 fail() { echo "❌ FAIL: $1" >&2; exit 1; }

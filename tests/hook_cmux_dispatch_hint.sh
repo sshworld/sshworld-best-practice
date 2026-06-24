@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# Tests for .claude/hooks/cmux-dispatch-hint.sh
+# Tests for hooks/cmux-dispatch-hint.sh
 
 set -uo pipefail
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-HOOK="$REPO/.claude/hooks/cmux-dispatch-hint.sh"
+HOOK="$REPO/hooks/cmux-dispatch-hint.sh"
 
 PASS=0; FAIL=0; FAILED=()
 

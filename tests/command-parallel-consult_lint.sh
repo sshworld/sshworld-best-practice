@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# Slice C lint — .claude/commands/parallel-consult.md 의 frontmatter + 필수 섹션.
+# Slice C lint — commands/parallel-consult.md 의 frontmatter + 필수 섹션.
 
 set -uo pipefail
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-CMD="$REPO/.claude/commands/parallel-consult.md"
+CMD="$REPO/commands/parallel-consult.md"
 
 step() { echo "[$1] $2"; }
 fail() { echo "❌ FAIL: $1" >&2; exit 1; }

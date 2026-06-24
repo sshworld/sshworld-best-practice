@@ -7,7 +7,7 @@
 #   - session_id 부재(inert): 기존 동작 (가드 미적용)
 set -uo pipefail
 
-HOOK="$(cd "$(dirname "$0")/../.." && pwd)/.claude/hooks/enforce-plan-dev-goal.sh"
+HOOK="$(cd "$(dirname "$0")/../.." && pwd)/hooks/enforce-plan-dev-goal.sh"
 FAIL=0
 pass() { echo "PASS: $1"; }
 fail() { echo "FAIL: $1"; FAIL=1; }

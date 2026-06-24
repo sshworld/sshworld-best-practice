@@ -4,7 +4,7 @@
 # 옛 awk(`{flag=1; next}`) 는 인라인 줄을 skip 해 빈값 → false-negative 무한 block.
 set -uo pipefail
 
-HOOK="$(cd "$(dirname "$0")/../.." && pwd)/.claude/hooks/enforce-plan-dev-goal.sh"
+HOOK="$(cd "$(dirname "$0")/../.." && pwd)/hooks/enforce-plan-dev-goal.sh"
 FAIL=0
 pass() { echo "PASS: $1"; }
 fail() { echo "FAIL: $1"; FAIL=1; }
