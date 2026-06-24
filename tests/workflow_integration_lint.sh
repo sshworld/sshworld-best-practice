@@ -8,6 +8,8 @@ set -uo pipefail
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PLAN="$REPO/commands/plan-dev.md"
+# split: 코어+레퍼런스 합본으로 검사 (plan-dev/ 분할 대응)
+_ALL=$(mktemp); cat "$REPO/commands/plan-dev.md" "$REPO"/commands/plan-dev/*.md > "$_ALL"; PLAN="$_ALL"
 README="$REPO/README.md"
 CLAUDE="$REPO/CLAUDE.md"
 INSTALL="$REPO/install.sh"
