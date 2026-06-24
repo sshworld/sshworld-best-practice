@@ -76,13 +76,13 @@ PANE=$(echo "$JSON" | python3 -c "import json,sys; d=json.loads(sys.stdin.read()
 WT=$(echo "$JSON" | python3 -c "import json,sys; d=json.loads(sys.stdin.read()); print(d['worktree'])")
 BR=$(echo "$JSON" | python3 -c "import json,sys; d=json.loads(sys.stdin.read()); print(d['branch'])")
 [ -n "$PANE" ] || fail "pane empty"
-[ "$BR" = "feat/test-slice" ] || fail "branch mismatch: $BR"
+[ "$BR" = "feature/test-slice" ] || fail "branch mismatch: $BR"
 
 step 5 "worktree 존재"
 [ -d "$WT" ] || fail "worktree dir missing: $WT"
 
-step 6 "feat/test-slice 브랜치 존재"
-(cd "$tmpdir" && git branch --list feat/test-slice | grep -q test-slice) || fail "branch not listed"
+step 6 "feature/test-slice 브랜치 존재 (feat→feature 매핑)"
+(cd "$tmpdir" && git branch --list feature/test-slice | grep -q test-slice) || fail "branch not listed"
 
 step 7 "pane 에 cd + 자식 실행 흔적 (capture)"
 sleep 1

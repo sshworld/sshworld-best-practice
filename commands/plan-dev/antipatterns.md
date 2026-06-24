@@ -4,7 +4,7 @@
 - ❌ "질문 생략 지시" 를 받았다고 plan mode 자체도 생략
 - ❌ Phase 1-0 Explore 생략하고 빈틈 질문을 추상적으로 던지기
 - ❌ Horizontal phases 로 슬라이스 분해
-- ❌ `slice/<kebab>` branch 명 사용 — 반드시 `<type>/<slug>` (feat/..., fix/..., etc.)
+- ❌ `slice/<kebab>` branch 명 사용 — 반드시 `<branch-prefix>/<slug>`. **branch prefix 는 commit type 과 별개**: `feat` → `feature/`, 그 외(fix/refactor/chore/test/docs)는 type 그대로. 예: `feature/...`, `fix/...`. (commit 메시지 type 은 conventional `feat:` 유지, **scope 안 씀**)
 - ❌ `git merge --no-ff slice/...` — rebase fast-forward + branch -D 사용
 - ❌ pane 모드에서 자식 결과(`✅` / `❌`) **회수 전 머지** 시도
 - ❌ Phase 5 우회 (`SKIP_PLAN_DEV_FINISH`) 를 기본값처럼 사용

@@ -197,6 +197,10 @@ main() {
     *) die "허용되지 않는 type: $TYPE (allowed: feat|fix|refactor|test|docs|chore)" 2 ;;
   esac
 
+  # branch prefix: commit type 은 conventional 유지(feat), branch 는 feat→feature 매핑
+  local BRANCH_TYPE="$TYPE"
+  [ "$TYPE" = "feat" ] && BRANCH_TYPE="feature"
+
   [ -z "$SLICE" ] && { echo "dispatch: --slice 필요" >&2; usage; }
   [ -z "$SPEC_FILE" ] && { echo "dispatch: --spec-file 필요" >&2; usage; }
 
@@ -278,7 +282,7 @@ main() {
     local trust_flag="true"
     [ "${SKIP_DISPATCH_TRUST:-0}" = "1" ] && trust_flag="false"
     printf '{"driver":"%s","wrapper":"%s","worktree":"%s","branch":"%s/%s","trust_seeded":%s}\n' \
-      "$DRIVER" "$WRAPPER" "$worktree_path" "$TYPE" "$SLICE" "$trust_flag"
+      "$DRIVER" "$WRAPPER" "$worktree_path" "$BRANCH_TYPE" "$SLICE" "$trust_flag"
     exit 0
   fi
 
@@ -296,10 +300,10 @@ main() {
     # 호환성: 기존 slice/<kebab> 브랜치가 있으면 그것을 재사용, 없으면 <type>/<kebab> 신규 생성
     if git show-ref --verify --quiet "refs/heads/slice/$SLICE"; then
       git worktree add "$WORKTREE" "slice/$SLICE" >&2 || die "worktree add 실패 (기존 slice/ 브랜치)"
-    elif git show-ref --verify --quiet "refs/heads/$TYPE/$SLICE"; then
-      git worktree add "$WORKTREE" "$TYPE/$SLICE" >&2 || die "worktree add 실패 (기존 type/ 브랜치)"
+    elif git show-ref --verify --quiet "refs/heads/$BRANCH_TYPE/$SLICE"; then
+      git worktree add "$WORKTREE" "$BRANCH_TYPE/$SLICE" >&2 || die "worktree add 실패 (기존 branch)"
     else
-      git worktree add -b "$TYPE/$SLICE" "$WORKTREE" HEAD >&2 || die "worktree add 실패 (신규 브랜치)"
+      git worktree add -b "$BRANCH_TYPE/$SLICE" "$WORKTREE" HEAD >&2 || die "worktree add 실패 (신규 브랜치)"
     fi
   fi
 
@@ -346,7 +350,7 @@ main() {
   "$WRAPPER" wait-idle --pane="$PANE" --idle=2 --timeout=8 >/dev/null 2>&1 || true
 
   printf '{"pane":"%s","worktree":"%s","branch":"%s/%s","driver":"%s"}\n' \
-    "$PANE" "$WORKTREE_ABS" "$TYPE" "$SLICE" "$DRIVER"
+    "$PANE" "$WORKTREE_ABS" "$BRANCH_TYPE" "$SLICE" "$DRIVER"
 }
 
 # Sourcing guard — 직접 실행 시에만 main 호출. test 가 source 하면 함수만 노출.

@@ -56,7 +56,7 @@ scripts/
 > ⚠️ `install.sh` 는 **deprecated**. Claude Code 플러그인으로 설치하세요.
 
 ```bash
-/plugin marketplace add sshworld/<repo>
+/plugin marketplace add sshworld/sshworld-best-practice
 /plugin install plan-dev
 ```
 
@@ -64,13 +64,7 @@ scripts/
 
 ### 동반설치 + 가역
 
-`/plugin install plan-dev` 시 `taste-skill`·`andrej-karpathy-skills` 가 자동으로 함께 설치됩니다.
-
-```bash
-/plugin marketplace add sshworld/sshworld-best-practice
-/plugin install plan-dev
-# → taste-skill, andrej-karpathy-skills 자동 동반설치
-```
+위 `/plugin install plan-dev` 한 번에 `taste-skill`·`andrej-karpathy-skills` 가 **자동으로 함께 설치**됩니다 (별도 명령 불필요). `caveman` 은 opt-in(아래).
 
 ### 토큰 절약 레이어
 

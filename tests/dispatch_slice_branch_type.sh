@@ -24,14 +24,14 @@ branch_of() {
   python3 -c "import json,sys; d=json.loads(sys.stdin.read()); print(d['branch'])"
 }
 
-step A "--type 생략 (기본 feat) + DRY_RUN → feat/<slug>"
+step A "--type 생략 (기본 feat) + DRY_RUN → feature/<slug> (feat→feature 매핑)"
 OUT=$(DISPATCH_DRY_RUN=1 DISPATCH_SKIP_CLEANUP=1 \
   bash "$DISPATCH" \
     --slice=detect-pane-env \
     --spec-file="$tmpdir/spec.md" \
     --mode=tmux 2>/dev/null) || fail "case A: exit non-zero"
 BR=$(echo "$OUT" | branch_of) || fail "case A: JSON 파싱 실패: $OUT"
-[ "$BR" = "feat/detect-pane-env" ] || fail "case A: branch mismatch: got '$BR', want 'feat/detect-pane-env'"
+[ "$BR" = "feature/detect-pane-env" ] || fail "case A: branch mismatch: got '$BR', want 'feature/detect-pane-env'"
 echo "  branch=$BR OK"
 
 step B "--type=test + DRY_RUN → test/<slug>"

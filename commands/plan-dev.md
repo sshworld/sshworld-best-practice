@@ -69,7 +69,7 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/plan-dev-session.sh start
 - `Mode` — **`Mode 컬럼 필수`**, 빈 셀 금지. 값: `direct-edit` / `dispatch(cmux)` / `dispatch(tmux)` / `workflow`. **기본은 환경 의존**: **cmux 환경(`CMUX_WORKSPACE_ID` set)이면 `dispatch(cmux)` 만 정상값** — direct-edit 는 plan Mode 컬럼에 쓰지 않는다(`enforce-cmux-dispatch` hook 이 ExitPlanMode 차단). cmux 에서 direct-edit 가 정말 필요하면 **plan 콘텐츠가 아니라 out-of-band env** 로: `CMUX_DIRECT_EDIT_OK=1` escape (ExitPlanMode 게이트 1회 통과). 비-cmux 환경이면 `direct-edit` 기본, dispatch 가 opt-in. `workflow` 는 opt-in (대규모/비시각, ➜ "Workflow 통합" 섹션).
 - `DOC_IMPACT` — `none` / `updated` 중 plan 단계에 미리 결정 (commit 시점에 발견하면 hook 차단 후 재시도 비용).
 
-Slice 정의 시 **type 도 같이 결정**: `feat|fix|refactor|test|docs|chore`.
+Slice 정의 시 **type 도 같이 결정**: `feat|fix|refactor|test|docs|chore`. (commit type. **branch prefix 는 `feat`→`feature/`, 그 외 type 그대로** — dispatch 가 자동 매핑. commit 메시지엔 scope 안 씀: `feat: …` 형식.)
 
 #### Goal Statement — plan-dev 자체 loop 의 gate
 
