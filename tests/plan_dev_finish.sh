@@ -89,6 +89,10 @@ with open(mp, 'w') as f:
     json.dump(d, f, indent=2)
     f.write('\n')
 PYEOF
+  # commit-advisor gate 통과를 위해 commit-advised marker도 touch
+  local repo_dir
+  repo_dir="$(dirname "$marker_path")"
+  touch "${repo_dir}/plan-dev-commit-advised"
 }
 
 assert_eq() {

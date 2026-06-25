@@ -58,6 +58,16 @@ Commit cmd:
 - 변경 범위가 여러 type 섞이면 가장 큰 비중으로 분류 + 분리 커밋 권고.
 - 토큰 / 비밀번호 / `.env` 등 민감 파일 staged → 경고 후 중단.
 
+## Marker 기록 (필수)
+
+분석·추천을 마친 직후 다음 명령으로 marker 를 기록한다:
+
+```bash
+touch "$(git rev-parse --git-common-dir)/plan-dev-commit-advised"
+```
+
+이 marker 는 "Phase 4 commit-advisor 가 실행됨"의 증거로 `finish-plan-dev.sh` 의 push 게이트를 통과시킨다. marker 없이는 push 가 차단(exit 2)된다.
+
 ## 안 하는 것
 
-- 실제 `git commit` / `git push` 실행 — 메인이 사용자 승인 후 실행.
+- 실제 `git commit` / `git push` 실행 — 메인이 사용자 승인 후 실행. marker `touch` 는 commit/push 가 아님.

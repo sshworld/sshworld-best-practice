@@ -91,6 +91,7 @@ COMMON_DIR="$(git rev-parse --git-common-dir 2>/dev/null)" || {
   exit 2
 }
 MARKER="${COMMON_DIR}/plan-dev-session.json"
+MARKER_ADVISED="${COMMON_DIR}/plan-dev-commit-advised"
 
 if [ ! -f "$MARKER" ]; then
   if [ "${FINISH_AUTO_PUSH_WITHOUT_MARKER:-0}" = "1" ]; then
@@ -143,6 +144,19 @@ if [ "$NEW_COMMITS" = "0" ]; then
   exit 0
 fi
 
+# ── commit-advisor gate ────────────────────────────────────────────
+# push 직전에 commit-advisor(Phase 4) 가 실행됐는지 marker 로 검사.
+# 우회: SKIP_COMMIT_ADVISOR_GATE=1 (1회) / DISABLE_COMMIT_ADVISOR_GATE=1 (영구)
+
+if [ "${DISABLE_COMMIT_ADVISOR_GATE:-0}" != "1" ] && [ "${SKIP_COMMIT_ADVISOR_GATE:-0}" != "1" ]; then
+  if [ ! -f "$MARKER_ADVISED" ]; then
+    echo "⛔ commit-advisor (Phase 4) 미실행 — push 차단." >&2
+    echo "   commit-advisor 에이전트를 먼저 호출해 커밋 메시지/브랜치명을 정리하라." >&2
+    echo "   우회: SKIP_COMMIT_ADVISOR_GATE=1 (1회) / DISABLE_COMMIT_ADVISOR_GATE=1 (영구)" >&2
+    exit 2
+  fi
+fi
+
 # ── cmux cleanup 헬퍼 (S3) ────────────────────────────────────────
 do_cmux_cleanup() {
   if [ "${SKIP_PLAN_DEV_CMUX_CLEANUP:-0}" = "1" ]; then
@@ -168,6 +182,7 @@ do_cmux_cleanup() {
 
 clear_marker() {
   rm -f "$MARKER"
+  rm -f "$MARKER_ADVISED"
 }
 
 # ── develop 또는 main-only 분기 ────────────────────────────────────

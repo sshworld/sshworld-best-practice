@@ -44,6 +44,8 @@ setup_fixture() {
 }
 JEOF
   git -C "$repo" -c commit.gpgsign=false commit --allow-empty -q -m "test commit"
+  # commit-advisor gate 통과를 위해 marker 미리 touch
+  touch "$repo/.git/plan-dev-commit-advised"
   echo "$tmp"
 }
 
