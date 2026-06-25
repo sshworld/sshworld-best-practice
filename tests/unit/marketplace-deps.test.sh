@@ -24,8 +24,8 @@ else
   fail "name=$NAME (expected sshworld-best-practice)"
 fi
 
-# 4 entries: plan-dev, taste-skill, andrej-karpathy-skills, caveman
-for p in plan-dev taste-skill andrej-karpathy-skills caveman; do
+# 4 entries: sshworld, taste-skill, andrej-karpathy-skills, caveman
+for p in sshworld taste-skill andrej-karpathy-skills caveman; do
   FOUND=$(python3 -c "import json; plugins=json.load(open('$MARKET'))['plugins']; print(any(pl['name']=='$p' for pl in plugins))" 2>/dev/null || echo "False")
   if [[ "$FOUND" == "True" ]]; then
     ok "marketplace has $p"

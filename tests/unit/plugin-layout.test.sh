@@ -8,17 +8,17 @@ fail() { echo "  FAIL: $*"; FAIL=$((FAIL+1)); }
 
 echo "=== plugin-layout tests ==="
 
-# 1. .claude-plugin/plugin.json 존재 + valid JSON + name == "plan-dev"
+# 1. .claude-plugin/plugin.json 존재 + valid JSON + name == "sshworld"
 if [ -f "$REPO/.claude-plugin/plugin.json" ]; then
   ok ".claude-plugin/plugin.json 존재"
-  if python3 -c "import json,sys; d=json.load(open('$REPO/.claude-plugin/plugin.json')); sys.exit(0 if d.get('name')=='plan-dev' else 1)" 2>/dev/null; then
-    ok "plugin.json valid JSON + name==plan-dev"
+  if python3 -c "import json,sys; d=json.load(open('$REPO/.claude-plugin/plugin.json')); sys.exit(0 if d.get('name')=='sshworld' else 1)" 2>/dev/null; then
+    ok "plugin.json valid JSON + name==sshworld"
   else
-    fail "plugin.json invalid JSON 또는 name!=plan-dev"
+    fail "plugin.json invalid JSON 또는 name!=sshworld"
   fi
 else
   fail ".claude-plugin/plugin.json 없음"
-  fail "plugin.json valid JSON + name==plan-dev (skip)"
+  fail "plugin.json valid JSON + name==sshworld (skip)"
 fi
 
 # 2. .claude-plugin/marketplace.json 존재 + valid JSON
