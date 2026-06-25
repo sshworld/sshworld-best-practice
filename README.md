@@ -34,6 +34,8 @@ hooks/
 │   ├── track-cmux-edit-burst.sh # cmux env Edit/Write 누적 advisory (dispatch-first 유도). 자식 worktree 감지 시 skip
 │   ├── enforce-plan-mode.sh  # PreToolUse Write|Edit — /sshworld:plan-dev plan mode 미진입 시 차단. 비-plan-dev 세션 no-op
 │   ├── cmux-dispatch-hint.sh # SessionStart — cmux env 면 "dispatch 기본" advisory inject (비-cmux 무출력)
+│   ├── mark-plan-approved.sh # PostToolUse ExitPlanMode — 사용자 승인 시 plan-approved marker 기록
+│   ├── enforce-dispatch-gate.sh # PreToolUse Bash — ExitPlanMode 승인 전 dispatch-slice-pane.sh 실행 차단
 │   ├── statusline-tokens.sh  # (opt-in) 하단 status bar 모드 — 기본은 token-stats.sh 사용
 │   └── token-stats.sh        # Stop hook 으로 직전 응답 토큰 사용량 + 캐시 히트율 inline 노출
 .claude/
@@ -484,6 +486,20 @@ SKIP_CMUX_DISPATCH_GATE=1          # 1회 우회
 DISABLE_CMUX_DISPATCH_GATE_HOOK=1  # 영구 비활성
 ```
 
+### 11) mark-plan-approved.sh (PostToolUse: ExitPlanMode) + enforce-dispatch-gate.sh (PreToolUse: Bash) — **dispatch 승인 게이트**
+
+`dispatch-slice-pane.sh` 는 Bash 도구라 `enforce-plan-mode`(Write/Edit 전용) 를 타지 않는다. ExitPlanMode 승인 전에도 dispatch 가 가능한 갭을 막는 dual-hook 가드.
+
+- **mark-plan-approved.sh**: ExitPlanMode 가 사용자에게 **승인**되면 PostToolUse 발화 → `<git-common-dir>/plan-dev-plan-approved` 에 session_id 기록. reject/interrupt 면 미발화 = 신뢰 가능한 승인 신호. 파싱 실패 시 conservative exit 0 (비차단 — PostToolUse 는 informational).
+- **enforce-dispatch-gate.sh**: `dispatch-slice-pane.sh` 를 포함한 Bash 명령 시도 시 plan-dev 세션 활성 여부 + approved marker 를 확인. 미승인(marker 부재 또는 session_id 불일치) 이면 exit 2 차단.
+  - 자식 worktree / `bypassPermissions` 모드 → skip (dispatch 자식은 이미 승인됨).
+  - plan-dev 세션 marker 없음 → no-op (비-plan-dev 세션 무관).
+
+```bash
+SKIP_DISPATCH_GATE=1           # 1회 우회
+DISABLE_DISPATCH_GATE_HOOK=1   # 영구 비활성
+```
+
 ---
 
 ## 환경변수 정리
@@ -517,6 +533,10 @@ DISABLE_CMUX_DISPATCH_GATE_HOOK=1  # 영구 비활성
 | `DISABLE_PLAN_MODE_ENFORCE_HOOK=1` | off | enforce-plan-mode.sh 영구 비활성화 |
 | `PLAN_MODE_SESSION_FILE=<path>` | auto | enforce-plan-mode.sh 마커 경로 override (테스트 mock) |
 | `PLAN_MODE_PLANS_DIR=<path>` | `$HOME/.claude/plans` | enforce-plan-mode.sh 의 plan 파일 디렉토리 override (테스트 mock) |
+| `SKIP_DISPATCH_GATE=1` | off | enforce-dispatch-gate.sh 1회 우회 — dispatch 승인 게이트 bypass |
+| `DISABLE_DISPATCH_GATE_HOOK=1` | off | enforce-dispatch-gate.sh 영구 비활성화 |
+| `PLAN_APPROVED_MARKER=<path>` | auto | mark-plan-approved.sh / enforce-dispatch-gate.sh 의 approved marker 경로 override (테스트 mock) |
+| `DISPATCH_GATE_SESSION_FILE=<path>` | auto | enforce-dispatch-gate.sh / mark-plan-approved.sh 의 세션 marker 경로 override (테스트 mock) |
 | `PLAN_DEV_GOAL_PLAN_PATH=<path>` | auto | hook 가 평가할 plan 파일 경로 override (테스트 mock) |
 | `PLAN_DEV_GOAL_SESSION_FILE=<path>` | `.git/sshworld:plan-dev-session.json` | marker 파일 경로 override (테스트 mock) |
 | `PLAN_DEV_GOAL_VERBOSE=1` | off | PASS 도 stderr 에 요약 출력 |

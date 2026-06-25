@@ -67,6 +67,8 @@
 | `hooks/enforce-cmux-dispatch.sh` | PreToolUse ExitPlanMode. cmux env(`CMUX_WORKSPACE_ID` set)에서 plan Slice File Map 의 `direct-edit` 표셀 탐지 시 **exit 2 차단**. `CMUX_DIRECT_EDIT_OK=1` 의식적 escape (1회 통과). `SKIP_CMUX_DISPATCH_GATE=1` / `DISABLE_CMUX_DISPATCH_GATE_HOOK=1` 우회. 비-cmux 환경 no-op. |
 | `hooks/cmux-dispatch-hint.sh` | SessionStart. cmux env(`CMUX_WORKSPACE_ID` set) 시 **dispatch-first advisory** 를 stdout(additionalContext)으로 inject — "cmux 환경에선 plan-dev Slice 가 dispatch(cmux) 기본, direct-edit 는 `CMUX_DIRECT_EDIT_OK=1` escape". 비-cmux 환경은 무출력(exit 0). advisory nudge + ExitPlanMode 게이트 reminder. |
 | `hooks/enforce-plan-mode.sh` | PreToolUse Write\|Edit. **/plan-dev plan mode 진입 강제** — plan-dev-session marker 활성 + plan mode 미진입 상태에서 Write/Edit 시도 시 exit 2 차단. 판정: **marker 의 `start_ts` 이후 작성된 plan 파일(`~/.claude/plans/*.md`)이 존재하면 allow** (plan mode 진입 = plan 파일 작성). `permission_mode==plan`(plan mode 중) / `==bypassPermissions`(dispatch 자식·명시 우회) → allow. 자식 worktree(git-dir≠git-common-dir) → skip. **마커 없음(비-plan-dev 세션) → no-op**. start_ts 파싱 불가 → conservative allow. ⚠️ marker **파일 mtime** 이 아니라 **start_ts JSON** 사용 — `plan-dev-progress.sh` 가 marker 를 재기록해 mtime 을 bump 하므로(mtime 기준이면 progress 후 false-positive). override: `PLAN_MODE_SESSION_FILE` / `PLAN_MODE_PLANS_DIR`. 우회: `SKIP_PLAN_MODE_ENFORCE` / `DISABLE_PLAN_MODE_ENFORCE_HOOK`. 한계: plan reject 후에도 plan 파일 존재 시 통과 — 목적은 "plan mode 아예 미진입" catch. (구 flag 방식은 plan 파일 write 가 PreToolUse Write 를 안 타 flag 미기록 → 승인 후 전부 차단하는 false-positive 였음, start_ts 신호로 교체 수정.) |
+| `hooks/mark-plan-approved.sh` | PostToolUse ExitPlanMode. ExitPlanMode 승인 시 `<git-common-dir>/plan-dev-plan-approved` 에 session_id 기록. PostToolUse 는 도구 성공 시에만 발화 → reject/interrupt 면 미발화 = 신뢰 가능한 승인 신호. 파싱 실패 시 conservative exit 0 (절대 비차단). `PLAN_APPROVED_MARKER` / `DISPATCH_GATE_SESSION_FILE` env 로 경로 mock. |
+| `hooks/enforce-dispatch-gate.sh` | PreToolUse Bash. `dispatch-slice-pane.sh` 명령 감지 시 plan-dev 세션 활성 여부 + approved marker(`plan-dev-plan-approved`) 확인 — 미승인(marker 부재 또는 session_id 불일치) 이면 exit 2 차단. 자식 worktree / bypassPermissions → skip. 파싱 실패 → conservative exit 0. `SKIP_DISPATCH_GATE=1` (1회) / `DISABLE_DISPATCH_GATE_HOOK=1` (영구) 우회. `DISPATCH_GATE_SESSION_FILE` / `PLAN_APPROVED_MARKER` env 로 경로 mock. |
 
 ## 추가 / 수정 체크리스트
 
@@ -185,6 +187,10 @@
 | `CMUX_DIRECT_EDIT_OK` | unset | `enforce-cmux-dispatch.sh` 의식적 escape — cmux 환경 plan direct-edit ExitPlanMode 게이트 1회 통과 |
 | `SKIP_CMUX_DISPATCH_GATE` | unset | `enforce-cmux-dispatch.sh` 1회 우회 |
 | `DISABLE_CMUX_DISPATCH_GATE_HOOK` | unset | `enforce-cmux-dispatch.sh` 영구 비활성화 |
+| `SKIP_DISPATCH_GATE` | unset | `enforce-dispatch-gate.sh` 1회 우회 — dispatch 승인 게이트 bypass |
+| `DISABLE_DISPATCH_GATE_HOOK` | unset | `enforce-dispatch-gate.sh` 영구 비활성화 |
+| `PLAN_APPROVED_MARKER` | auto (`<git-common-dir>/plan-dev-plan-approved`) | `mark-plan-approved.sh` / `enforce-dispatch-gate.sh` 의 approved marker 경로 override (테스트 mock) |
+| `DISPATCH_GATE_SESSION_FILE` | auto (`<git-common-dir>/plan-dev-session.json`) | `enforce-dispatch-gate.sh` / `mark-plan-approved.sh` 의 세션 marker 경로 override (테스트 mock) |
 
 ## 향후 작업 (플러그인화)
 

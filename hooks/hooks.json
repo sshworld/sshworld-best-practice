@@ -41,6 +41,21 @@
           {
             "type": "command",
             "command": "CMUX_CONTEXT_HOOK_STRICT=1 \"${CLAUDE_PLUGIN_ROOT}\"/hooks/enforce-cmux-context.sh"
+          },
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}\"/hooks/enforce-dispatch-gate.sh"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "ExitPlanMode",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}\"/hooks/mark-plan-approved.sh"
           }
         ]
       }
