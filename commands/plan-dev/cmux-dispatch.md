@@ -8,7 +8,7 @@
 
 > 🚀 **환경별 기본 Mode 룰**:
 > - **cmux 환경(`CMUX_WORKSPACE_ID` set)**: **dispatch(cmux) 만** — plan Slice File Map 에 `direct-edit` 표셀 넣으면 `enforce-cmux-dispatch` hook 이 **ExitPlanMode 차단**. 각 슬라이스는 `${CLAUDE_PLUGIN_ROOT}/scripts/dispatch-slice-pane.sh --mode=cmux` 로 자식 surface 에 띄워 작업 (사용자가 cmux 사이드바에서 진행 시각화). SessionStart 의 `cmux-dispatch-hint` advisory 가 이를 상기시킴.
->   - cmux 에서 `direct-edit` 가 정말 필요하면 **plan 콘텐츠가 아니라 out-of-band env**: `CMUX_DIRECT_EDIT_OK=1` 로 ExitPlanMode 게이트를 의식적으로 1회 통과.
+>   - cmux 에서 `direct-edit` 가 정말 필요하면 **plan 콘텐츠가 아니라 out-of-band env**: `CMUX_DIRECT_EDIT_OK=1` 로 ExitPlanMode 게이트를 의식적으로 1회 통과. "정책/문서/하네스 파일이라서 direct-edit" 라는 일반화는 잘못됨 — 자기수정도 dispatch 기본. escape 는 dispatch 자체가 불가한 환경 등 진짜 예외만.
 > - **비-cmux 환경**: `direct-edit` 가 기본, dispatch 가 opt-in (시각화/격리 가치 시).
 >
 > cmux dispatch 경로(`${CLAUDE_PLUGIN_ROOT}/scripts/dispatch-slice-pane.sh --mode=cmux`)는 항상 보존.
@@ -29,7 +29,7 @@
 | `--mode=cmux` | cmux workspace dispatch (부모 workspace 안 grid split — 사용자가 attach/시각화) |
 | `Workflow` 툴 (mode=workflow) | dispatch-slice-pane **미경유** — 부모가 `Workflow` 툴로 `pipeline(slices,...)` fan-out. 비시각·대규모·자동 verify. opt-in. `/workflows` 트리로 관찰. ➜ "Workflow 통합" 섹션 참조 |
 
-**cmux dispatch (cmux 환경 기본)**: cmux 환경에서는 슬라이스 기본 mode. `--mode=cmux` 면 부모 workspace 안에 자식 surface 가 grid 분할되어 사용자가 화면에서 직접 진행 확인. 자식 토큰은 부모 token-stats 로 추적 안 됨 (trade-off — 비-cmux 면 subagent mode 가 토큰 추적). cmux 환경에서 direct-edit 가 필요하면 plan Mode 컬럼이 아니라 `CMUX_DIRECT_EDIT_OK=1` escape.
+**cmux dispatch (cmux 환경 기본)**: cmux 환경에서는 슬라이스 기본 mode. `--mode=cmux` 면 부모 workspace 안에 자식 surface 가 grid 분할되어 사용자가 화면에서 직접 진행 확인. 자식 토큰은 부모 token-stats 로 추적 안 됨 (trade-off — 비-cmux 면 subagent mode 가 토큰 추적). cmux 에서 direct-edit 가 정말 필요하면 plan Mode 컬럼이 아니라 `CMUX_DIRECT_EDIT_OK=1` escape — "이 파일은 정책/문서라서 direct-edit" 라는 일반화는 잘못됨. **자기수정(plan-dev 자신의 hook·문서 편집)도 cmux 환경에서는 dispatch(cmux) 기본**. 진짜 예외(dispatch 자체가 불가한 환경)일 때만 escape 사용.
 
 #### cmux dispatch 동작 모델 (진단 가이드)
 
@@ -101,6 +101,8 @@ git branch -D <type>/<slug>  # 슬라이스 브랜치 삭제
 git worktree remove .worktrees/<slug>
 ```
 충돌 발생 시: 즉시 `git rebase --abort` → 충돌 파일 목록 사용자 보고.
+
+> ❌ `git merge <type>/<slug>` **절대 금지** — merge 커밋이 `S1`/`merge:` 잡음을 협업 히스토리에 영구 노출. 항상 rebase fast-forward 만 사용.
 
 ---
 

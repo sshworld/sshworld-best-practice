@@ -19,7 +19,7 @@ agents/
 │   ├── implementor.md        # TDD Red→Green→Refactor, <type>/<slug> worktree 격리 (+ tmux pane 모드 지원)
 │   ├── verifier.md           # Read-only 빌드/테스트 실행 + diff 제안
 │   ├── reviewer.md           # 치명적 이슈만 블로킹, 나머지 제안
-│   └── commit-advisor.md     # 한글 Conventional Commit + DOC 영향 평가 + 다중 커밋 분석
+│   └── commit-advisor.md     # 한글 Conventional Commit + DOC 영향 평가 + 다중 커밋 분석 + 히스토리 위생/squash 추천
 skills/
 │   ├── fork/SKILL.md         # 자식 컨텍스트에서 처리하고 요약만 반환
 │   ├── tmux-orchestrate/SKILL.md # 부모-자식 Claude tmux pane 협업 패턴
@@ -220,7 +220,7 @@ Workflow agent 는 **cmux surface 가 아니다** — 다른 런타임이라 한
 |---|---|
 | 브랜치명 형식 | `<type>/<slug>` — `feat/user-signup`, `fix/auth-token`, `test/session-marker` 등 |
 | type 결정 시점 | plan 파일의 Vertical Slices 섹션에서 각 slice 별로 결정 |
-| 머지 방식 | **rebase fast-forward** — `git rebase <type>/<slug>` + `git branch -D` (merge commit 없음) |
+| 머지 방식 | **rebase fast-forward** — `git rebase <type>/<slug>` + `git branch -D` (merge commit 없음). `git merge` 금지 — merge 커밋이 S라벨·잡음을 협업 히스토리에 누출. |
 | `slice/` prefix | 폐기됨 — `<type>/<slug>` 로 전환 (기존 `slice/` 브랜치는 dispatch 가 재사용 가능) |
 | push | `finish-plan-dev.sh` 가 develop 있으면 feature branch, 없으면 main 직접 push |
 
@@ -439,7 +439,7 @@ DISABLE_CMUX_EDIT_BURST_HOOK=1 # 영구 비활성화
 
 ### 7) cmux-dispatch-hint.sh (SessionStart)
 
-cmux 환경(`CMUX_WORKSPACE_ID` set) 세션 시작 시 **dispatch-first advisory** 를 stdout(additionalContext)으로 inject — "cmux 환경에선 plan-dev Slice 가 **dispatch(cmux) 기본**, direct-edit 는 justification 동반 opt-in 예외". 비-cmux 환경은 무출력(exit 0). **하드 차단 아님** — advisory nudge (편집 자체는 자유, 정당한 direct-edit 가능).
+cmux 환경(`CMUX_WORKSPACE_ID` set) 세션 시작 시 **dispatch-first advisory** 를 stdout(additionalContext)으로 inject — "cmux 환경에선 plan-dev Slice 가 **dispatch(cmux) 기본**, direct-edit 는 dispatch 자체가 불가한 환경 등 진짜 예외만". 비-cmux 환경은 무출력(exit 0). **하드 차단 아님** — advisory nudge. 자기수정(plan-dev 자신의 hook·문서 편집)도 cmux 환경에서는 dispatch 기본.
 
 > cmux workspace 에서 plan-dev 가 자꾸 direct-edit 로 가던 문제(글로벌 정책이 direct-edit 기본이었음)를 바로잡기 위해, cmux 환경 한정으로 dispatch 를 기본으로 reframe. 비-cmux 환경은 영향 없음.
 
@@ -478,7 +478,7 @@ cmux 환경(`CMUX_WORKSPACE_ID` set)에서 plan 의 Slice File Map Mode 컬럼�
 
 - `CMUX_WORKSPACE_ID` 미set → no-op (비-cmux 환경, direct-edit 기본 유지).
 - plan 본문에서 파이프 표셀(`|..direct-edit..|`) 탐지 — 산문 오탐 없음.
-- cmux 에서 direct-edit 가 정말 필요하면(정책/문서/하네스 파일 자체 편집 등) out-of-band escape: `CMUX_DIRECT_EDIT_OK=1`.
+- cmux 에서 direct-edit 가 정말 필요하면(dispatch 자체가 불가한 환경 등 진짜 예외) out-of-band escape: `CMUX_DIRECT_EDIT_OK=1`. "정책/하네스/문서 파일이라서" 는 escape 정당 사유 아님 — 자기수정도 dispatch 기본.
 
 ```bash
 CMUX_DIRECT_EDIT_OK=1              # 의식적 escape — ExitPlanMode 게이트 1회 통과

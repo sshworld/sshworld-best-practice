@@ -23,6 +23,12 @@ model: haiku
    - **updated**: 사용자/개발자가 보는 동작·옵션·진입점이 바뀜 → README.md 또는 CLAUDE.md 도 같이 업데이트해야 함.
    - 추천 commit 명령에 `DOC_IMPACT=none` 또는 `DOC_IMPACT=updated` prefix 를 **반드시** 포함시킨다. doc-sync hook 이 이 prefix 가 없으면 commit 을 차단한다.
 
+1-c. **세션 히스토리 위생 (plan-dev Phase 4 에서 호출될 때)**
+   - `git log <start_ref>..HEAD --oneline` 결과에 내부 슬라이스 라벨(`S1`/`S2`/`슬라이스 N`), `merge:` 잡음, 과도한 소커밋이 보이면 → **squash 추천**.
+   - squash 방법: `git reset --soft <start_ref>` 후 단일(또는 소수 의미단위) 깨끗한 conventional 커밋으로 재작성.
+   - **명문화 — 절대 규칙**: `S1`/`S2` 등 내부 계획 라벨·`merge:` prefix 는 plan-dev 내부 artifact다. **최종 커밋 메시지·브랜치명에 절대 노출 금지**. 협업자는 슬라이스 번호를 모른다. 메시지는 "무엇을 왜 바꿨는가" 만으로.
+   - 실제 reset/commit 은 사용자 승인 후 메인이 실행 — commit-advisor 는 추천만 (기존 "안 하는 것" 유지).
+
 2. **type 분류** (fix vs refactor 헷갈리면 아래 2문 판별):
    - `feat`: 새 기능 / 엔드포인트 / 엔티티 — 사용자가 보는 **새 동작 추가**.
    - `fix`: **버그 수정** — 변경 전 의도와 다르게 동작/에러가 있었고 그걸 바로잡음. (전제: 고치기 전 "틀린 동작"이 존재)

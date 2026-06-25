@@ -140,9 +140,7 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/plan-dev-progress.sh start --total=<N>
 
 ## Phase 3 — Verify (loop)
 
-완료된 slice worktree 를 순서대로 rebase 후 verifier 호출.
-
-> 📎 rebase 명령 · 충돌 처리 상세: [cmux dispatch 가이드](./plan-dev/cmux-dispatch.md)
+완료된 slice worktree 를 순서대로 **rebase fast-forward** 후 verifier 호출. (`git merge` 금지 — merge 커밋이 S라벨·잡음 누출. 📎 [cmux dispatch 가이드](./plan-dev/cmux-dispatch.md))
 
 **verifier 루프:**
 - rebase 완료 후 `verifier` 에이전트 호출.
@@ -163,6 +161,7 @@ verifier PASS 후 commit 전 코드 리뷰를 원하면 `reviewer` 에이전트 
 `commit-advisor` 에이전트 호출:
 - `start_ref..HEAD` 의 커밋 메시지 전체 분석 → 가장 비중 큰 type + 작업 요약 slug → `<type>/<slug>` 브랜치명 추천.
 - **한글 Conventional Commit** 메시지 + DOC_IMPACT 추천.
+- 세션에 내부 라벨/머지 잡음 커밋이 쌓였으면 commit-advisor 가 squash 추천 → 깨끗한 단일/소수 커밋. **S1/S2 라벨은 최종 히스토리에 남기지 않는다.**
 - 사용자 승인 후 `git add` + `git commit`.
 
 ## Phase 5 — Branch & Push

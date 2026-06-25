@@ -40,7 +40,7 @@
 | `agents/implementor.md` | TDD Red→Green→Refactor. subagent / tmux pane 모드 양쪽 지원. |
 | `agents/verifier.md` | Read-only 빌드/테스트. 코드 수정 안 함. |
 | `agents/reviewer.md` | 치명적 vs 제안 분류. 직접 수정 안 함. |
-| `agents/commit-advisor.md` | 한글 Conventional Commit + DOC 영향 평가. 실제 commit 안 함. |
+| `agents/commit-advisor.md` | 한글 Conventional Commit + DOC 영향 평가 + 히스토리 위생/squash 추천. 실제 commit 안 함. |
 | `agents/goal-checker.md` | plan-dev Stop hook 의 agent layer (Haiku). plan Semantic goal + start_ref..HEAD diff 보고 JSON `{pass, missing}` 응답. enforce-plan-dev-goal.sh 가 `claude -p` 로 호출. |
 | `.claude/workflows/*.mjs` | dynamic **Workflow** 툴용 reference 스크립트 (plan-review-panel / slice-pipeline / codebase-audit / `vuln-scan-pipeline`(defending-code-reference-harness find→grade→judge→report 정적분석 재현, 코드 실행 X)). plan-dev 의 A(Plan/Review judge·적대 panel) / B(opt-in workflow 실행모드) / C(대규모 audit) 통합 템플릿. `Workflow({scriptPath})` 또는 inline `script:` paste. `export const meta` + top-level await/return → 런타임이 async fn wrap (raw `node --check` 불가, `tests/workflow_integration_lint.sh` 가 export-strip+wrap 후 syntax 검증). cmux surface 아님 — `/workflows` 트리 표현, cmux 시각화와 상호배타. **이동 안 함 — Workflow 툴 reference 로 .claude/ 유지.** |
 | `skills/fork/SKILL.md` | 자식 컨텍스트로 작업 위임, 요약만 반환. |
@@ -122,6 +122,8 @@
 - ❌ cmux 시각화 의도 슬라이스를 `Workflow` 로 돌려 사이드바에서 안 보이게 — Workflow agent 는 cmux surface 아님(상호배타 런타임). 시각 실행은 `--mode=cmux`, 비시각·대규모만 workflow.
 - ❌ B(workflow 실행모드)를 비-cmux **기본값**으로 격상 — opt-in 유지. 환경별 기본(cmux=dispatch, 비-cmux=direct-edit)은 안 뒤집음.
 - ❌ `.claude/workflows/*.mjs` 를 `node --check` 로 직접 검증 — top-level return/await 로 SyntaxError. export-strip + async fn wrap 후 검사 (`tests/workflow_integration_lint.sh` 참조).
+- ❌ `S1`/`S2` 등 슬라이스 라벨 또는 `merge:` 를 최종 커밋 메시지·브랜치명에 노출 — 협업자는 슬라이스 번호를 모름. commit-advisor 가 squash·위생 추천, rebase-ff 로 merge 커밋 자체 제거.
+- ❌ cmux 환경에서 "정책/하네스/문서 파일이니 direct-edit 가 맞다"며 반사적 direct-edit — 자기수정도 dispatch(cmux) 기본. `CMUX_DIRECT_EDIT_OK=1` 는 dispatch 자체가 불가한 환경 등 진짜 예외 한정.
 
 ## 환경변수 (tmux / cmux 통합)
 

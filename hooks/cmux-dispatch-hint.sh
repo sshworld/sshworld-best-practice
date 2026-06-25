@@ -15,7 +15,7 @@ cat <<'EOF'
 - 이 워크스페이스는 cmux. plan-dev Slice 는 **dispatch(cmux) 기본** — 직접 Edit 가 아니라
   ${CLAUDE_PLUGIN_ROOT}/scripts/dispatch-slice-pane.sh --mode=cmux 로 자식 surface 띄워 작업.
 - Slice File Map 의 Mode 는 cmux 환경에서 **dispatch(cmux) 만** 정상값.
-  direct-edit 가 정말 필요하면(정책/문서/하네스 파일 자체 편집 등) out-of-band escape:
+  direct-edit 가 정말 필요하면(dispatch 자체가 불가한 환경 등 진짜 예외) out-of-band escape:
     CMUX_DIRECT_EDIT_OK=1 <명령>  — ExitPlanMode 게이트(enforce-cmux-dispatch) 1회 통과.
 - 자식 surface 는 cmux 사이드바에서 사용자가 직접 진행 시각화. 회수: ${CLAUDE_PLUGIN_ROOT}/scripts/cmux-pane.sh
   wait-idle → read-screen | grep ✅/❌.

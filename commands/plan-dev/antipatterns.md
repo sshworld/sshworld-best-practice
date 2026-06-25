@@ -26,3 +26,5 @@
 - ❌ Goal Statement 에 측정 불가 추상 표현 ("품질 향상", "안정성 강화") 만 박기 — Stop hook 가 평가 못 함. grep/test/명령 결과로 확인 가능한 항목만 허용.
 - ❌ Goal Statement 섹션에 `<!-- machine-checks -->` 블록 누락 — hook 가 평가할 입력 없음 → exit 0 통과로 loop 의미 상실. 형식 박스 그대로 따를 것.
 - ❌ 세션을 plan full goal 미만으로 의도적 종료(plan 문서화만 / 범위 축소 / 중단)했는데 Stop hook(`enforce-plan-dev-goal`)가 machine-checks fail 로 막자 **machine-checks 를 부분 deliverable 에 맞춰 rewrite** — plan goal 오염, 다음 구현 세션이 실제 구현을 미검증. machine-checks 는 plan 의 종료 상태로 보존. loop 종료는 marker 제거로: `plan-dev-session.sh clear` (env 우회 `SKIP_PLAN_DEV_GOAL` 류는 세션 시작 前 export 만 먹고 Stop hook 도중 모델 주입 불가).
+- ❌ `S1`/`S2` 등 슬라이스 라벨 또는 `merge:` 를 최종 커밋 메시지·브랜치명에 노출 — 협업자는 슬라이스 번호를 모른다. commit-advisor 가 squash·위생 추천, rebase-ff 로 merge 커밋 자체 제거. 커밋 메시지는 "무엇을 왜 바꿨는가" 만으로.
+- ❌ cmux 환경에서 "정책/하네스/문서 파일이니 direct-edit 가 맞다"며 반사적 direct-edit — 자기수정도 dispatch(cmux) 기본. `CMUX_DIRECT_EDIT_OK=1` 는 dispatch 자체가 불가한 환경 등 진짜 예외 한정.
