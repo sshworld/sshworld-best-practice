@@ -277,7 +277,11 @@ cmux 앱 안에서 실행 중일 때 (`CMUX_WORKSPACE_ID` set) `scripts/cmux-pan
 
 #### cmux dispatch 진단 가이드 (자식이 진행 안 하는 듯할 때)
 
-`scripts/dispatch-slice-pane.sh --mode=cmux` 의 spec prompt 송신은 **자동 `--enter-count=2`** 적용 — Claude TUI paste mode 끝의 첫 Enter 가 newline 으로 처리되어 자식이 spec 받고도 명령 실행 안 하던 이슈 해소.
+`scripts/dispatch-slice-pane.sh --mode=cmux` 는 **launch·자식 기동 검증으로 silent 실패를 방지**한다:
+- surface PTY 가 terminal 상태인지 검증(`CBP_LAUNCH_VERIFY_TRIES`, 기본 5회 재시도) — 실패 시 exit 3.
+- 자식 claude TUI 기동 신호 검증(`DISPATCH_VERIFY_TRIES`, 기본 3회 재시도) — 실패 시 exit 비0. 끝내 실패 시 `--mode=subagent` 폴백 권장.
+
+spec prompt 송신은 **자동 `--enter-count=2`** 적용 — Claude TUI paste mode 끝의 첫 Enter 가 newline 으로 처리되어 자식이 spec 받고도 명령 실행 안 하던 이슈 해소.
 
 그래도 자식이 멈춰 보이면 진단:
 
@@ -519,6 +523,8 @@ DISABLE_DISPATCH_GATE_HOOK=1   # 영구 비활성
 | `DISPATCH_DEFAULT_TYPE=<type>` | feat | dispatch-slice-pane.sh 의 --type 미지정 시 기본 type |
 | `DISPATCH_DEFAULT_MODE=<mode>` | auto | dispatch-slice-pane.sh 의 --mode 미지정 시 기본 driver (auto/tmux/cmux/pane/subagent). 기존 동작 복원: `pane` |
 | `DISPATCH_SKIP_CLEANUP=1` | off | dispatch-slice-pane.sh 가 main 진입 시 자식 pane 자동 정리 끄기 |
+| `DISPATCH_VERIFY=0` | 1 (on) | dispatch-slice-pane.sh cmux 자식 claude TUI 기동 검증. `0` 이면 스킵 (기존 동작 보존). |
+| `DISPATCH_VERIFY_TRIES=<n>` | 3 | dispatch-slice-pane.sh TUI 기동 검증 최대 재시도 횟수. |
 | `DISPATCH_PERMISSION_MODE=<mode>` | `bypassPermissions` | dispatch-slice-pane.sh 가 자식 claude 에 `--permission-mode <mode>` flag 전달. `default` 시 flag 생략. `DISPATCH_CHILD_CMD` set 시 무시. |
 | `SKIP_PLAN_DEV_FINISH=1` | off | Phase 5 (finish-plan-dev.sh) 1회 우회 |
 | `SKIP_PLAN_DEV_GOAL=1` | off | Stop hook (enforce-plan-dev-goal.sh) 1회 우회 — Goal Statement loop bypass. 자식 dispatch worktree 진행 중에는 hook 자체가 자동 skip 하므로 보통 불필요. |
@@ -552,6 +558,7 @@ DISABLE_DISPATCH_GATE_HOOK=1   # 영구 비활성
 | `CBP_LIST_LINES=<str>` | unset | cmux-pane.sh list/cleanup/status 의 list-workspaces 입력 mock (테스트용) |
 | `CLAUDE_FAKE_SELF_CMUX_WS=<ref>` | unset | cmux-pane.sh kill/cleanup 의 자기 workspace ref mock (테스트용) |
 | `CBP_SPLIT_POLICY=<dir>` | unset (라운드로빈) | cmux-pane.sh grid split 방향 고정 (`down` 또는 `right`). unset 시 라운드로빈 (홀수→down, 짝수→right) |
+| `CBP_LAUNCH_VERIFY_TRIES=<n>` | 5 | cmux-pane.sh launch 후 PTY terminal 검증 루프 최대 시도 횟수. 끝내 실패 시 die(exit 3). `CBP_DISABLE_WARMUP=1` 시 스킵. |
 | `CMUX_CONTEXT_HOOK_STRICT=1` | off | enforce-cmux-context.sh strict 모드 — cmux 안 tmux 계열 명령 차단(exit 2) |
 | `SKIP_CMUX_CONTEXT_HOOK=1` | off | enforce-cmux-context.sh 1회 우회 (advisory 억제) |
 | `DISABLE_CMUX_CONTEXT_HOOK=1` | off | enforce-cmux-context.sh 영구 비활성화 |
