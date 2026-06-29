@@ -23,6 +23,10 @@
 #   CLAUDE_FAKE_SELF_CMUX_WS   — 자기 workspace ref mock (테스트용)
 #   FORCE_SELF_KILL            — 자기 workspace kill 거부 우회. surface kill 은 self-surface 만 거부 (FORCE_SELF_KILL 영향 없음).
 #   PROGRESS_DRY_RUN           — notify/set-status 가 실제 cmux 호출 없이 명령 echo 후 exit 0 (테스트용)
+#   CBP_LAUNCH_VERIFY_TRIES    — _do_launch_grid PTY 검증 루프 최대 시도 횟수 (디폴트 5).
+#                                각 회: send-key Enter → sleep CBP_WARMUP_SLEEP → read-screen 확인.
+#                                CBP_DISABLE_WARMUP=1 이면 검증 루프 자체를 스킵 (기존 동작 보존).
+#   CBP_WARMUP_SLEEP           — _do_launch_grid 검증 루프 내 각 슬립 초 (디폴트 0.5).
 
 set -uo pipefail
 
@@ -249,6 +253,15 @@ do_launch() {
   printf '%s\n' "$ref"
 }
 
+# surface 가 terminal(PTY 살아있음) 상태인지 확인.
+# "$CMUX_BIN" read-screen --surface "<ref>" 로 확인 — rc0 이면 terminal, 그 외 not terminal.
+# stdout/stderr 는 버림.
+# 반환: 0=terminal, 1=not terminal.
+_cbp_surface_is_terminal() {
+  local surface_ref="$1"
+  "$CMUX_BIN" read-screen --surface "$surface_ref" >/dev/null 2>&1
+}
+
 # do_launch 의 grid split 내부 구현 (CMUX_WORKSPACE_ID 가 set 인 경우).
 # 라운드로빈 방향: count=0 → right (첫 자식), count=1 → down, count=2 → right, count=3 → down, ...
 # CBP_SPLIT_POLICY env 로 방향 override 가능 (Slice A3 에서 확장 예정).
@@ -322,11 +335,31 @@ _do_launch_grid() {
   # rename-tab (stdout/stderr 모두 redirect — rename-tab 이 OK 한 줄 stdout 출력하므로)
   "$CMUX_BIN" rename-tab --surface "$surface_ref" "$name" >/dev/null 2>&1 || true
 
-  # PTY warmup — surface 신규 생성 후 underlying tty 가 첫 send 입력을 swallow 하는 경우 우회.
-  # send-key Enter 로 PTY 강제 attach + 짧은 sleep. 우회: CBP_DISABLE_WARMUP=1.
-  if [ "${CBP_DISABLE_WARMUP:-0}" != "1" ]; then
+  # PTY 검증 루프 (lock 밖 — lock 해제 후 실행).
+  # CBP_DISABLE_WARMUP=1 이면 기존처럼 검증 스킵 → surface_ref 즉시 반환 (회귀 보존).
+  # 아니면: 최대 CBP_LAUNCH_VERIFY_TRIES(기본 5)회 — 매회 send-key Enter → sleep → read-screen.
+  # terminal 되면 break(성공). 끝까지 실패 시 die(exit 3).
+  if [ "${CBP_DISABLE_WARMUP:-0}" = "1" ]; then
+    printf '%s\n' "$surface_ref"
+    return 0
+  fi
+
+  local verify_tries="${CBP_LAUNCH_VERIFY_TRIES:-5}"
+  local warmup_sleep="${CBP_WARMUP_SLEEP:-0.5}"
+  local verified=0
+  local _vt=0
+  while [ "$_vt" -lt "$verify_tries" ]; do
     "$CMUX_BIN" send-key --surface "$surface_ref" Enter >/dev/null 2>&1 || true
-    sleep "${CBP_WARMUP_SLEEP:-0.5}"
+    sleep "$warmup_sleep"
+    if _cbp_surface_is_terminal "$surface_ref"; then
+      verified=1
+      break
+    fi
+    _vt=$(( _vt + 1 ))
+  done
+
+  if [ "$verified" = "0" ]; then
+    die "launch: surface '$surface_ref' PTY 미기동 (not a terminal) — ${verify_tries}회 검증 실패. cmux 불안정 가능, --mode=subagent 폴백 고려." 3
   fi
 
   printf '%s\n' "$surface_ref"
