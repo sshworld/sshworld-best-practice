@@ -157,6 +157,7 @@ claude plugin prune                        # 고아 플러그인 일괄 정리
 11. **Context 정리** (Phase 6): 다음 추천 명령 노출 + unlocked worktree-agent-* 자동 cleanup
 12. **Goal Loop** (자동, 백그라운드): plan 의 `## Goal Statement` 를 Stop hook 가 매 model turn 종료 시 **dual gate** 평가 — (a) `<!-- machine-checks -->` bash block (mechanical) + (b) `goal-checker` agent (Haiku, semantic). 둘 다 PASS 시만 종료. 하나라도 미충족 시 자동 다음 turn 재진입 (native /goal flow 자체 재현). 사용자 입력 0.
 13. **자식 surface 자동 cleanup** (Phase 5 끝): `finish-plan-dev.sh` 가 push 성공 직후 cmux 자식 surface (`cbp-*` 등 state file 등록 surface) 일괄 close. 사용자 수동 정리 0.
+14. **cross-WS dead orphan 자동 정리**: `plan-dev-session.sh start`(Phase 0) 및 `finish-plan-dev.sh`(Phase 5) 가 best-effort 로 `cmux-pane.sh reap-orphans` 를 호출 — 이전 세션이 finish 없이 종료해 잔존하는 dead 자식 surface 를 모든 `~/.cache/cbp/children-*.json` 에 걸쳐 회수. 살아있는 타 세션 자식은 보호, self surface 제외. 우회: `SKIP_CMUX_REAP=1`.
 
 ### 보조 — `/fork`
 
@@ -269,6 +270,7 @@ cmux 앱 안에서 실행 중일 때 (`CMUX_WORKSPACE_ID` set) `scripts/cmux-pan
 - `cmux-pane.sh send/capture/wait-idle --pane=surface:N` → `--surface` flag 자동 dispatch. `workspace:N` ref 는 기존 `--workspace` (회귀 zero).
 - `cmux-pane.sh list` → state file 의 자식 surface 우선, 폴백으로 cbp- workspace 목록. cmux tree 와 lazy reconcile (mock 환경 자동 감지).
 - `cmux-pane.sh cleanup` → state file 의 surface 일괄 `close-surface` + state 제거 후, 기존 cbp- workspace cleanup 도 실행 (호환).
+- `cmux-pane.sh reap-orphans` → `~/.cache/cbp/children-*.json` **전체** 스캔 (cross-workspace). self surface 제외 + alive surface 보존 + dead surface best-effort close-surface + 빈 state file 제거. `CBP_REAP_ORPHANS_DRY_RUN=1` dry-run (close 없이 "would reap" 출력). `CBP_STATE_DIR` 로 스캔 경로 override 가능. `plan-dev-session.sh start` 및 `finish-plan-dev.sh` 가 best-effort 로 자동 호출 — 이전 세션 finish 누락 시에도 다음 plan-dev 시작 시 cross-WS dead orphan 이 자동 정리됨.
 
 `CBP_SPLIT_POLICY` 환경변수로 방향을 `down` / `right` 고정 가능 (unset 시 라운드로빈 고정).
 
@@ -531,6 +533,9 @@ DISABLE_DISPATCH_GATE_HOOK=1   # 영구 비활성
 | `DISABLE_GOAL_AGENT=1` | off | agent layer 영구 비활성. claude binary 부재 시 자동 fallback 과 같음. |
 | `SKIP_PLAN_DEV_CMUX_CLEANUP=1` | off | finish-plan-dev.sh push 후 cmux 자식 surface cleanup 1회 우회. |
 | `DISABLE_PLAN_DEV_CMUX_CLEANUP=1` | off | cmux cleanup 영구 비활성. |
+| `SKIP_CMUX_REAP=1` | off | `plan-dev-session.sh start` 및 `finish-plan-dev.sh` 의 reap-orphans best-effort 호출 skip. |
+| `CBP_REAP_ORPHANS_DRY_RUN=1` | off | `cmux-pane.sh reap-orphans` dry-run — close 없이 "would reap" 출력만 (state file 변경 없음). 실제 회수 전 미리보기용. |
+| `CBP_STATE_DIR=<path>` | `~/.cache/cbp` | `cmux-pane.sh reap-orphans` 가 스캔하는 state file 디렉토리 override (테스트 mock). |
 | `SKIP_COMMIT_ADVISOR_GATE=1` | off | finish-plan-dev.sh push 직전 commit-advisor 게이트 1회 우회. |
 | `DISABLE_COMMIT_ADVISOR_GATE=1` | off | finish-plan-dev.sh commit-advisor 게이트 영구 비활성화. |
 | `DISABLE_PLAN_DEV_GOAL_HOOK=1` | off | Stop hook 영구 비활성화 |

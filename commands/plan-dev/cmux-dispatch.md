@@ -89,6 +89,21 @@ $wrapper wait-idle --pane=$pane --idle=10 --timeout=1800
 $wrapper capture   --pane=$pane | tail -50 | grep -E '^[[:space:]]*(⏺[[:space:]]*)?(✅|❌)'
 ```
 
+#### cross-WS dead orphan 자동 정리 (reap-orphans)
+
+`cmux-pane.sh reap-orphans` 는 **현재 workspace 뿐 아니라 모든 workspace** 의 잔존 dead surface 를 회수한다. 이전 plan-dev 세션이 `finish-plan-dev.sh` 없이 종료됐거나 crash 로 cleanup 을 못 한 경우에도 다음 plan-dev 시작 시 자동으로 dead orphan 을 정리한다.
+
+- `plan-dev-session.sh start` (Phase 0 시작) 및 `finish-plan-dev.sh` (Phase 5 완료 후 backstop) 가 best-effort 로 자동 호출.
+- 살아있는 타 세션 자식 surface 는 **보호** (alive 판정 = `cmux read-screen` rc0). self surface 는 항상 skip.
+- 수동 실행 (미리보기 포함):
+  ```bash
+  # 미리보기 (실제 close 없음)
+  CBP_REAP_ORPHANS_DRY_RUN=1 ${CLAUDE_PLUGIN_ROOT}/scripts/cmux-pane.sh reap-orphans
+  # 실제 회수
+  ${CLAUDE_PLUGIN_ROOT}/scripts/cmux-pane.sh reap-orphans
+  ```
+- 우회: `SKIP_CMUX_REAP=1` (plan-dev 자동 호출 skip). `CBP_STATE_DIR` 로 스캔 디렉토리 override.
+
 슬라이스 ✅ 확인 후:
 ```bash
 ${CLAUDE_PLUGIN_ROOT}/scripts/plan-dev-progress.sh tick --slug=<slice>
