@@ -44,6 +44,8 @@
 #   DISPATCH_SKIP_CLEANUP=1         시작 시 자식 pane 자동 정리 끄기.
 #   DISPATCH_PERMISSION_MODE=<mode> 자식 claude 에 --permission-mode <mode> flag 전달. "default" 시 flag 생략.
 #                                    기본값: bypassPermissions. DISPATCH_CHILD_CMD set 시 무시.
+#   DISPATCH_VERIFY=0               cmux 자식 기동 검증 전체 스킵 (기본: on). 기존 동작 보존 시 사용.
+#   DISPATCH_VERIFY_TRIES=<n>       claude TUI 기동 검증 최대 재시도 횟수 (기본: 3).
 
 set -uo pipefail
 
@@ -68,6 +70,8 @@ dispatch-slice-pane.sh --slice=<kebab> --spec-file=.claude/specs/<kebab>.spec.md
   DISPATCH_DEFAULT_TYPE=<type>    --type 미지정 시 기본 type (기본: feat).
   DISPATCH_SKIP_CLEANUP=1         자동 pane 정리 끄기.
   DISPATCH_PERMISSION_MODE=<mode> 자식 claude 에 --permission-mode <mode> flag 전달 (기본: bypassPermissions). "default" 시 flag 생략.
+  DISPATCH_VERIFY=0               cmux 자식 기동 검증 스킵 (기본: on). 기존 동작 보존 시 사용.
+  DISPATCH_VERIFY_TRIES=<n>       TUI 기동 검증 최대 재시도 횟수 (기본: 3).
 USAGE
   exit 2
 }
@@ -338,6 +342,39 @@ main() {
   "$WRAPPER" send "$CHILD_CMD" --pane="$PANE" --delay=0.3 >/dev/null || die "send child 실패"
   "$WRAPPER" wait-idle --pane="$PANE" --idle=1 --timeout=15 >/dev/null 2>&1 || true
 
+  # ── cmux 자식 기동 검증 (DISPATCH_VERIFY != 0, DRIVER=cmux 일 때만) ──
+  local VERIFY_TRIES="${DISPATCH_VERIFY_TRIES:-3}"
+  if [ "$DRIVER" = "cmux" ] && [ "${DISPATCH_VERIFY:-1}" != "0" ]; then
+    local tui_ok=0
+    local vtry=1
+    while [ "$vtry" -le "$VERIFY_TRIES" ]; do
+      local cap_out
+      cap_out=$("$WRAPPER" capture --pane="$PANE" 2>/dev/null) || true
+      if printf '%s' "$cap_out" | grep -qE '(│|╰|╭|[?] for shortcuts|Forming|Undulating|✳|claude|Claude)'; then
+        tui_ok=1
+        break
+      fi
+      # 미감지 → CHILD_CMD 재전송 후 재시도
+      if [ "$vtry" -lt "$VERIFY_TRIES" ]; then
+        "$WRAPPER" send "$CHILD_CMD" --pane="$PANE" --delay=0.3 >/dev/null 2>&1 || true
+        sleep 0.5
+      fi
+      vtry=$((vtry + 1))
+    done
+
+    if [ "$tui_ok" -eq 0 ]; then
+      # 검증 실패 — surface 정리 best-effort 후 명확 실패
+      "$WRAPPER" kill --pane="$PANE" >/dev/null 2>&1 || true
+      echo "dispatch: cmux dispatch 자식 기동/생존 검증 실패 (pane=$PANE, tries=$VERIFY_TRIES)" >&2
+      echo "dispatch: cmux PTY 불안정 가능. subagent 모드로 폴백 권장:" >&2
+      echo "  plan-dev Phase 2 의 Agent(subagent_type=implementor) 호출 또는" >&2
+      echo "  dispatch-slice-pane.sh --mode=subagent." >&2
+      echo "dispatch: worktree=$WORKTREE_ABS 는 부모가 정리하세요 (git worktree remove --force)." >&2
+      exit 3
+    fi
+  fi
+  # ─────────────────────────────────────────────────────────────────────────
+
   local SPEC_FILE_ABS
   SPEC_FILE_ABS="$(cd "$(dirname "$SPEC_FILE")" && pwd)/$(basename "$SPEC_FILE")"
   local SPEC_PROMPT
@@ -348,6 +385,21 @@ main() {
     "$WRAPPER" send "$SPEC_PROMPT" --pane="$PANE" --delay=0.5 >/dev/null || die "send spec-prompt 실패"
   fi
   "$WRAPPER" wait-idle --pane="$PANE" --idle=2 --timeout=8 >/dev/null 2>&1 || true
+
+  # ── SPEC 후 surface 생존 확인 (cmux + verify on) ──
+  if [ "$DRIVER" = "cmux" ] && [ "${DISPATCH_VERIFY:-1}" != "0" ]; then
+    local post_cap
+    post_cap=$("$WRAPPER" capture --pane="$PANE" 2>/dev/null) || {
+      echo "dispatch: spec 전송 후 surface 사망 감지 (pane=$PANE)" >&2
+      echo "dispatch: subagent 모드로 폴백 권장: dispatch-slice-pane.sh --mode=subagent." >&2
+      exit 3
+    }
+    if [ -z "$post_cap" ]; then
+      echo "dispatch: spec 전송 후 surface 가 비어있음 (pane=$PANE) — PTY 불안정 가능" >&2
+      echo "dispatch: subagent 모드로 폴백 권장: dispatch-slice-pane.sh --mode=subagent." >&2
+      exit 3
+    fi
+  fi
 
   printf '{"pane":"%s","worktree":"%s","branch":"%s/%s","driver":"%s"}\n' \
     "$PANE" "$WORKTREE_ABS" "$BRANCH_TYPE" "$SLICE" "$DRIVER"

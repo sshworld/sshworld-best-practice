@@ -138,6 +138,8 @@
 | `DISPATCH_DEFAULT_TYPE` | feat | `dispatch-slice-pane.sh` 의 --type 미지정 시 기본 type (기본: feat) |
 | `DISPATCH_DEFAULT_MODE` | auto | `dispatch-slice-pane.sh` 의 --mode 미지정 시 기본 driver (auto/tmux/cmux/pane/subagent). auto = `detect-pane-env.sh` 결과 분기. 기존 동작 복원: `pane` |
 | `DISPATCH_SKIP_CLEANUP` | unset | `dispatch-slice-pane.sh` 의 시작 시 자식 pane 자동 정리 끄기 |
+| `DISPATCH_VERIFY` | 1 (on) | `dispatch-slice-pane.sh` cmux 자식 claude TUI 기동 검증. `0` 이면 스킵 (기존 동작 보존). |
+| `DISPATCH_VERIFY_TRIES` | 3 | `dispatch-slice-pane.sh` TUI 기동 검증 최대 재시도 횟수. |
 | `SKIP_DISPATCH_TRUST` | unset | `dispatch-slice-pane.sh` worktree trust 시딩 1회 우회 (`trust-dir.sh` 호출 skip) |
 | `CBP_CLAUDE_CONFIG` | `~/.claude.json` | `trust-dir.sh` 가 읽고 쓸 Claude config 경로 override. 테스트 mock 에 사용. |
 | `DISPATCH_DRY_RUN` | unset | `dispatch-slice-pane.sh` 가 launch 직전 driver/wrapper/worktree JSON 출력 후 exit 0 (테스트용) |
