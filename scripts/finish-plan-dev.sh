@@ -5,11 +5,13 @@
 #   finish-plan-dev.sh [--dry-run] [--remote=<name>]
 #
 # 환경변수:
-#   SKIP_PLAN_DEV_FINISH=1      → exit 0 + stdout "skipped (SKIP)"
-#   DISABLE_PLAN_DEV_FINISH=1   → exit 0 + stdout "disabled"
-#   GIT_PUSH_CMD                → 디폴트 "git push" (테스트에서 실패 명령 주입 시 사용)
-#   PLAN_DEV_SESSION_BIN        → 디폴트 "<repo>/scripts/plan-dev-session.sh"
-#                                 없으면 marker 파일 직접 파싱 폴백.
+#   SKIP_PLAN_DEV_FINISH=1           → exit 0 + stdout "skipped (SKIP)"
+#   DISABLE_PLAN_DEV_FINISH=1        → exit 0 + stdout "disabled"
+#   GIT_PUSH_CMD                     → 디폴트 "git push" (테스트에서 실패 명령 주입 시 사용)
+#   PLAN_DEV_SESSION_BIN             → 디폴트 "<repo>/scripts/plan-dev-session.sh"
+#                                      없으면 marker 파일 직접 파싱 폴백.
+#   SKIP_CMUX_REAP=1                 → push 후 reap-orphans backstop 1회 skip
+#   SKIP_PLAN_DEV_CMUX_CLEANUP=1     → push 후 cmux 자식 surface cleanup 1회 skip
 
 set -uo pipefail
 
@@ -176,6 +178,12 @@ do_cmux_cleanup() {
   fi
   echo "finish-plan-dev: cmux 자식 surface cleanup 실행" >&2
   "$CMUX_PANE_BIN" cleanup 2>&1 | sed 's/^/  /' >&2 || true
+
+  # reap-orphans backstop: cleanup 후에도 잔존하는 dead surface 회수 (best-effort).
+  # SKIP_CMUX_REAP=1 로 우회 가능.
+  if [ "${SKIP_CMUX_REAP:-0}" != "1" ]; then
+    "$CMUX_PANE_BIN" reap-orphans >/dev/null 2>&1 || true
+  fi
 }
 
 # ── clear marker 헬퍼 ─────────────────────────────────────────────

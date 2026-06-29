@@ -10,8 +10,15 @@
 # marker 경로: $(git rev-parse --git-common-dir)/plan-dev-session.json
 # 키: start_ref, base_branch, work_branch, start_ts, start_pid, auto_branch,
 #     total_slices, done_slices
+#
+# 환경변수:
+#   SKIP_CMUX_REAP=1   — start 시 reap-orphans best-effort 호출 skip
+#   CMUX_PANE_BIN      — cmux-pane.sh 경로 override (디폴트: SCRIPT_DIR/cmux-pane.sh)
 
 set -uo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+CMUX_PANE_BIN="${CMUX_PANE_BIN:-$SCRIPT_DIR/cmux-pane.sh}"
 
 usage() {
   cat >&2 <<'USAGE'
@@ -213,6 +220,15 @@ with open('$marker', 'w') as f:
 
   if [ "$quiet" = "0" ]; then
     echo "$marker"
+  fi
+
+  # best-effort reap-orphans: cmux 환경에서 dead 자식 surface 자동 정리.
+  # SKIP_CMUX_REAP=1 → skip. CMUX_WORKSPACE_ID unset → skip.
+  # 실패해도 start 본동작(marker 기록)은 절대 깨지지 않음.
+  if [ "${SKIP_CMUX_REAP:-0}" != "1" ] && [ -n "${CMUX_WORKSPACE_ID:-}" ]; then
+    if [ -x "$CMUX_PANE_BIN" ]; then
+      "$CMUX_PANE_BIN" reap-orphans >/dev/null 2>&1 || true
+    fi
   fi
 }
 
