@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # cmux-pane.sh — 얇은 cmux CLI wrapper.
-# tmux-pane.sh 와 명령 표면 정렬. 명령: launch / send / capture / wait-idle / kill / list / cleanup / status.
+# tmux-pane.sh 와 명령 표면 정렬. 명령: launch / send / capture / wait-idle / kill / list / cleanup / status / reap-orphans.
 #
 # 사용:
 #   cmux-pane launch [<cmd>]
@@ -13,12 +13,14 @@
 #   cmux-pane status
 #   cmux-pane notify --title=<t> [--body=<b>] [--subtitle=<s>] [--workspace=<ref>] [--surface=<ref>]
 #   cmux-pane set-status <key> <value> [--icon=<name>] [--color=<#hex>] [--workspace=<ref>]
+#   cmux-pane reap-orphans
 #
 # 환경변수:
 #   CMUX_BIN                  — cmux 바이너리 경로 (미지정 시 PATH 의 cmux)
 #   CBP_WORKSPACE_PREFIX       — workspace 이름 prefix (디폴트 cbp-)
 #   CBP_STATE_FILE             — state file 경로 override (디폴트: ~/.cache/cbp/children-<ws_sanitized>.json)
 #                                ws_sanitized = ${CMUX_WORKSPACE_ID//[:\/]/_}
+#   CBP_STATE_DIR              — reap-orphans 가 스캔하는 state file 디렉토리 (디폴트: ~/.cache/cbp)
 #   CBP_LIST_LINES             — list 명령 입력 mock (테스트용. set 시 실제 cmux 호출 생략)
 #   CLAUDE_FAKE_SELF_CMUX_WS   — 자기 workspace ref mock (테스트용)
 #   FORCE_SELF_KILL            — 자기 workspace kill 거부 우회. surface kill 은 self-surface 만 거부 (FORCE_SELF_KILL 영향 없음).
@@ -27,6 +29,7 @@
 #                                각 회: send-key Enter → sleep CBP_WARMUP_SLEEP → read-screen 확인.
 #                                CBP_DISABLE_WARMUP=1 이면 검증 루프 자체를 스킵 (기존 동작 보존).
 #   CBP_WARMUP_SLEEP           — _do_launch_grid 검증 루프 내 각 슬립 초 (디폴트 0.5).
+#   CBP_REAP_ORPHANS_DRY_RUN   — reap-orphans dry-run 모드. 1 이면 close 없이 "would reap <ref>" 출력만.
 
 set -uo pipefail
 
@@ -63,6 +66,11 @@ commands:
   set-status <key> <value> [--icon=<name>] [--color=<#hex>] [--workspace=<ref>]
                                                 workspace 사이드바 탭 status pill 갱신 (key 별로 관리).
                                                 예: set-status plan-dev "2/3 (66%)" --icon sparkle
+  reap-orphans                                  모든 state file(CBP_STATE_DIR, 디폴트 ~/.cache/cbp) 스캔.
+                                                dead surface(read-screen rc≠0) → close-surface + state 제거.
+                                                alive / self(CMUX_SURFACE_ID) surface 보호.
+                                                CBP_REAP_ORPHANS_DRY_RUN=1: close 없이 "would reap <ref>" 만 출력.
+                                                CMUX_BIN 미존재 시 conservative exit 0.
 USAGE
   exit 2
 }
@@ -835,6 +843,125 @@ do_set_status() {
   "$CMUX_BIN" "${args[@]}" || die "set-status: 실패" 3
 }
 
+# ----------------------------------------------------------------
+# do_reap_orphans — cross-workspace 에 잔존하는 dead cmux 자식 surface 회수.
+#
+# 부모 세션이 finish 없이 종료해 영구 잔존하는 dead surface 를 모든 state file 에 걸쳐
+# 안전하게 회수. 살아있는(alive) surface 는 건드리지 않음.
+#
+# 알고리즘:
+#   1. state dir(CBP_STATE_DIR, 디폴트 ~/.cache/cbp) 의 children-*.json 전체 스캔.
+#   2. 각 줄 "surface=<ref>|...|ws=<WS>" 파싱:
+#      - self surface (CMUX_SURFACE_ID 일치) → skip.
+#      - read-screen --surface <ref> --workspace <WS> rc0 → alive → 건드리지 않음, 줄 유지.
+#        (ws_ref 있으면 --workspace 포함 — cross-workspace surface 오판 방지)
+#      - rc 비0 → dead:
+#          dry-run(CBP_REAP_ORPHANS_DRY_RUN=1) → "would reap <ref>" 출력, 줄 유지.
+#          아니면 → close-surface --surface <ref> --workspace <WS> (best-effort) + 줄 제거.
+#   3. 처리 후 빈 state file → rm.
+#   4. CMUX_BIN 미존재/실패 시 conservative exit 0.
+#   5. 요약: "reaped N, kept M[, dry-run]" stdout.
+# ----------------------------------------------------------------
+do_reap_orphans() {
+  # CMUX_BIN 존재 확인 — 미존재 시 no-op exit 0
+  if ! command -v "$CMUX_BIN" >/dev/null 2>&1; then
+    echo "cmux-pane reap-orphans: CMUX_BIN('$CMUX_BIN') 미존재 — skip" >&2
+    return 0
+  fi
+
+  local state_dir="${CBP_STATE_DIR:-${HOME}/.cache/cbp}"
+  local dry_run="${CBP_REAP_ORPHANS_DRY_RUN:-0}"
+  local self_surface="${CMUX_SURFACE_ID:-}"
+
+  # state dir 없으면 no-op
+  if [ ! -d "$state_dir" ]; then
+    echo "reaped 0, kept 0"
+    return 0
+  fi
+
+  local total_reaped=0
+  local total_kept=0
+
+  # children-*.json 全스캔
+  local sf
+  for sf in "$state_dir"/children-*.json; do
+    [ -f "$sf" ] || continue   # glob 불일치(no match) 시 스킵
+
+    local kept_lines=""
+    local sf_reaped=0
+    local sf_kept=0
+
+    while IFS= read -r line; do
+      [ -z "$line" ] && continue
+
+      # surface=<ref> 추출
+      local surface_ref
+      surface_ref=$(printf '%s' "$line" | grep -o 'surface=[^|]*' | sed 's/surface=//')
+      # ws=<WS> 추출
+      local ws_ref
+      ws_ref=$(printf '%s' "$line" | grep -o 'ws=[^|]*' | sed 's/ws=//')
+
+      [ -z "$surface_ref" ] && {
+        # 파싱 불가 줄 → 보존 (conservative)
+        kept_lines="${kept_lines}${line}
+"
+        sf_kept=$((sf_kept + 1))
+        continue
+      }
+
+      # self surface → skip (보존)
+      if [ -n "$self_surface" ] && [ "$surface_ref" = "$self_surface" ]; then
+        kept_lines="${kept_lines}${line}
+"
+        sf_kept=$((sf_kept + 1))
+        continue
+      fi
+
+      # 생존 확인: read-screen rc0=alive, 비0=dead.
+      # cross-workspace surface 는 --workspace 없이 조회 시 "not found" 로 dead 오판 위험.
+      # ws_ref 가 있으면 --workspace 도 함께 전달 (close-surface 와 동일 컨텍스트).
+      local _liveness_cmd=("$CMUX_BIN" read-screen --surface "$surface_ref")
+      [ -n "$ws_ref" ] && _liveness_cmd+=(--workspace "$ws_ref")
+      if "${_liveness_cmd[@]}" >/dev/null 2>&1; then
+        # alive → 보존
+        kept_lines="${kept_lines}${line}
+"
+        sf_kept=$((sf_kept + 1))
+      else
+        # dead
+        if [ "$dry_run" = "1" ]; then
+          echo "would reap $surface_ref"
+          kept_lines="${kept_lines}${line}
+"
+          sf_kept=$((sf_kept + 1))
+        else
+          # best-effort close-surface (실패 무시)
+          "$CMUX_BIN" close-surface --surface "$surface_ref" --workspace "$ws_ref" >/dev/null 2>&1 || true
+          sf_reaped=$((sf_reaped + 1))
+        fi
+      fi
+    done < "$sf"
+
+    total_reaped=$((total_reaped + sf_reaped))
+    total_kept=$((total_kept + sf_kept))
+
+    if [ "$dry_run" != "1" ]; then
+      if [ -z "$(printf '%s' "$kept_lines" | tr -d '[:space:]')" ]; then
+        # 남은 줄 없음 → state file rm
+        rm -f "$sf"
+      else
+        # 살아있는 줄만 덮어쓰기
+        printf '%s' "$kept_lines" > "$sf"
+      fi
+    fi
+  done
+
+  local summary="reaped ${total_reaped}, kept ${total_kept}"
+  [ "$dry_run" = "1" ] && summary="${summary}, dry-run"
+  echo "$summary"
+  return 0
+}
+
 main() {
   [ $# -lt 1 ] && usage
   local cmd="$1"; shift
@@ -848,6 +975,7 @@ main() {
     wait-idle) do_wait_idle "$@" ;;
     kill)      do_kill "$@" ;;
     reap)      do_reap "$@" ;;
+    reap-orphans) do_reap_orphans "$@" ;;
     list)      do_list "$@" ;;
     cleanup)   do_cleanup "$@" ;;
     status)    do_status "$@" ;;
