@@ -49,17 +49,6 @@
         ]
       }
     ],
-    "PostToolUse": [
-      {
-        "matcher": "ExitPlanMode",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "\"${CLAUDE_PLUGIN_ROOT}\"/hooks/mark-plan-approved.sh"
-          }
-        ]
-      }
-    ],
     "Stop": [
       {
         "matcher": "",

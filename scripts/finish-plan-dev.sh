@@ -183,7 +183,6 @@ do_cmux_cleanup() {
 clear_marker() {
   rm -f "$MARKER"
   rm -f "$MARKER_ADVISED"
-  rm -f "${COMMON_DIR}/plan-dev-plan-approved"
 }
 
 # ── develop 또는 main-only 분기 ────────────────────────────────────

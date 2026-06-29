@@ -211,11 +211,6 @@ with open('$marker', 'w') as f:
     f.write('\n')
 "
 
-  # 새 세션 시작 시 stale approved marker 제거 (fresh 세션은 미승인 상태로 시작)
-  local common_dir
-  common_dir="$(git rev-parse --git-common-dir 2>/dev/null)" || common_dir=""
-  [ -n "$common_dir" ] && rm -f "${common_dir}/plan-dev-plan-approved"
-
   if [ "$quiet" = "0" ]; then
     echo "$marker"
   fi
