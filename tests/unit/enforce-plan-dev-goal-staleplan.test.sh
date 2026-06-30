@@ -19,6 +19,7 @@ TMP=$(mktemp -d)
 trap 'rm -rf "$TMP"' EXIT
 PLANS="$TMP/plans"; mkdir -p "$PLANS"
 
+# 의도적 far-past sentinel (now>2020 불멸) — relative 화 불필요(비이식 churn)
 # stale plan (marker 보다 오래됨)
 touch -t 202001010000 "$PLANS/stale.md"
 # marker 생성 (중간 시점)

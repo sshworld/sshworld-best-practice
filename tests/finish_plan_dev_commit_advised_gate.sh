@@ -34,12 +34,13 @@ setup_fixture() {
   git -C "$repo" -c commit.gpgsign=false commit --allow-empty -q -m "init"
   local start_ref
   start_ref=$(git -C "$repo" rev-parse HEAD)
+  START_TS=$(python3 -c "from datetime import datetime,timezone,timedelta; print((datetime.now(timezone.utc)-timedelta(hours=1)).strftime('%Y-%m-%dT%H:%M:%SZ'))")
   cat > "$repo/.git/plan-dev-session.json" <<JEOF
 {
   "start_ref": "$start_ref",
   "base_branch": "main",
   "work_branch": "main",
-  "start_ts": "2026-05-28T00:00:00Z",
+  "start_ts": "$START_TS",
   "start_pid": 1,
   "auto_branch": false
 }

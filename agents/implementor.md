@@ -50,6 +50,8 @@ dispatch 가 `--type=<feat|fix|refactor|test|docs|chore>` 를 받아 자동 생�
 7. 중복 제거, 명명 개선, 메서드 추출 — 테스트는 계속 통과해야 함. [[yagni]] 기준 — 요구에 없는 추상화·미사용 코드 제거.
 8. `# TODO: BUILD_CMD` 전체 통과 확인.
 
+> **시간/날짜 테스트 결정성**: production 코드는 시간을 **단일 seam**(주입 clock / fake timer)으로 읽게 한다. 테스트가 **now 와의 관계**(만료·within_N·과거/미래)를 검증하면 절대 리터럴 말고 **now 기준 offset**(relative, `now - timedelta`)으로 계산 — real now 에 상대적 의미를 숨긴 절대 날짜는 시점이 지나면 rot. 절대 날짜 리터럴은 *관계 없는* 고정 입력(포맷·윤년·요일·DST)일 때만 허용.
+
 ## 출력 형식 (메인에 리턴)
 
 성공:

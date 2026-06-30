@@ -123,6 +123,7 @@
 - ❌ `.claude/workflows/*.mjs` 를 `node --check` 로 직접 검증 — top-level return/await 로 SyntaxError. export-strip + async fn wrap 후 검사 (`tests/workflow_integration_lint.sh` 참조).
 - ❌ `S1`/`S2` 등 슬라이스 라벨 또는 `merge:` 를 최종 커밋 메시지·브랜치명에 노출 — 협업자는 슬라이스 번호를 모름. commit-advisor 가 squash·위생 추천, rebase-ff 로 merge 커밋 자체 제거.
 - ❌ cmux 환경에서 "정책/하네스/문서 파일이니 direct-edit 가 맞다"며 반사적 direct-edit — 자기수정도 dispatch(cmux) 기본. `CMUX_DIRECT_EDIT_OK=1` 는 dispatch 자체가 불가한 환경 등 진짜 예외 한정.
+- ❌ 테스트에 now 와의 관계를 가정한 절대 날짜 리터럴(2026-01-01 식 start_ts 등) — 시점 지나면 rot. now-offset(relative)으로.
 
 ## 환경변수 (tmux / cmux 통합)
 

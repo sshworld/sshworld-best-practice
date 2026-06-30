@@ -76,12 +76,13 @@ write_marker() {
 
   python3 - "$marker_path" "$start_ref" "$base_branch" "$work_branch" "$auto_val" <<'PYEOF'
 import json, sys
+from datetime import datetime, timezone, timedelta
 mp, start_ref, base_branch, work_branch, auto_val = sys.argv[1:]
 d = {
     'start_ref':   start_ref,
     'base_branch': base_branch,
     'work_branch': work_branch,
-    'start_ts':    '2026-01-01T00:00:00Z',
+    'start_ts':    (datetime.now(timezone.utc) - timedelta(hours=1)).strftime('%Y-%m-%dT%H:%M:%SZ'),
     'start_pid':   99999,
     'auto_branch': auto_val == 'True',
 }

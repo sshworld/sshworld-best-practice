@@ -43,14 +43,15 @@ setup_fixture() {
   git -C "$repo" config user.email "t@e.local"
   git -C "$repo" config user.name "tester"
   git -C "$repo" -c commit.gpgsign=false commit --allow-empty -q -m "init"
-  # 세션 marker 생성 (start_ts: 2026-01-01 → 이후 plan 파일은 mtime > this)
+  # 세션 marker 생성 (start_ts(=now-1h) → 이후 plan 파일은 mtime > this)
   local session_file="$repo/.git/plan-dev-session.json"
+  START_TS=$(python3 -c "from datetime import datetime,timezone,timedelta; print((datetime.now(timezone.utc)-timedelta(hours=1)).strftime('%Y-%m-%dT%H:%M:%SZ'))")
   cat > "$session_file" <<JEOF
 {
   "start_ref": "abc123",
   "base_branch": "main",
   "work_branch": "main",
-  "start_ts": "2026-01-01T00:00:00Z",
+  "start_ts": "$START_TS",
   "start_pid": 1,
   "auto_branch": false
 }
@@ -92,7 +93,7 @@ step C1 "세션활성 + Bash dispatch-slice-pane.sh --slice=x + plan 파일 없�
   RC=$(echo "$PAYLOAD" | \
     DISPATCH_GATE_SESSION_FILE="$SESSION_FILE" \
     PLAN_MODE_PLANS_DIR="$PLANS_DIR" \
-    "$ENFORCE_HOOK" 2>/dev/null; echo $?)
+    sh -c "cd \"$REPO_DIR\" && \"$ENFORCE_HOOK\"" 2>/dev/null; echo $?)
   set -e
 
   [ "$RC" = "2" ] || fail "C1: exit code should be 2, got $RC"
@@ -109,7 +110,7 @@ step C2 "세션활성 + --slice + start_ts 이후 plan 파일 존재 → exit 0"
   SESSION_FILE="$REPO_DIR/.git/plan-dev-session.json"
   PLANS_DIR="$TMP/plans"
   mkdir -p "$PLANS_DIR"
-  # start_ts 이후 mtime 인 plan 파일 생성 (touch 로 현재 시간 = 2026-01-01보다 최신)
+  # start_ts(=now-1h) 이후 mtime 인 plan 파일 생성 (touch 로 현재 시간 = start_ts 이후)
   touch "$PLANS_DIR/my-plan.md"
 
   PAYLOAD=$(make_payload "Bash" "/path/to/dispatch-slice-pane.sh --slice=feat-x --mode=cmux" "sess-002")
