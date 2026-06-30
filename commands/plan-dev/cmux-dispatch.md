@@ -123,6 +123,29 @@ git worktree remove .worktrees/<slug>
 
 > ❌ `git merge <type>/<slug>` **절대 금지** — merge 커밋이 `S1`/`merge:` 잡음을 협업 히스토리에 영구 노출. 항상 rebase fast-forward 만 사용.
 
+### 병렬 슬라이스 순차 통합 시 주의사항
+
+병렬 dispatch 슬라이스를 순차 통합할 때: worktree 가 **점유 중인 브랜치는 `git rebase` 불가** (`fatal: 'branch' is already used by worktree`). 올바른 순서:
+
+**(1) worktree 먼저 `git worktree remove --force` → (2) `git rebase` → (3) `git merge --ff-only`**
+
+cleanup(`git branch -D` / `worktree remove`)은 **머지 성공 확인 후**. `rebase && ... && branch -D` 를 한 배치 `&&` 체인으로 묶지 말 것 — 중간 rebase 실패 시 뒤 cleanup 이 **미머지 브랜치를 삭제**(dangling 커밋 → cherry-pick 복구 필요).
+
+```bash
+# 올바른 순차 통합 패턴 (슬라이스 A → B 순서 예)
+# 1. worktree 먼저 제거 (브랜치 점유 해제)
+git worktree remove --force .worktrees/<slug-a>
+# 2. rebase (점유 해제 후에만 가능)
+git rebase feat/<slug-a>
+# 3. 머지 성공 확인 후 브랜치 삭제
+git branch -D feat/<slug-a>
+
+# 다음 슬라이스도 동일 패턴 반복
+git worktree remove --force .worktrees/<slug-b>
+git rebase feat/<slug-b>
+git branch -D feat/<slug-b>
+```
+
 ---
 
 ## Phase 6 — 종료 직전 bash 예시

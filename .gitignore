@@ -29,6 +29,10 @@ Thumbs.db
 # Claude Code built-in subagent worktrees (agent-*/worktree-agent-* 브랜치)
 .claude/worktrees/
 
+# dispatch spec 잔여물 — 매 dispatch 마다 생기는 일회성 산출물
+# 이미 추적 중인 파일(commit-advisor-gate.spec.md 등)은 영향 없음
+.claude/specs/*.spec.md
+
 # Node / Python (있다면)
 node_modules/
 __pycache__/
