@@ -46,7 +46,7 @@ check_not_contains() {
 
 [ -f "$SCRIPT" ] || { echo "FAIL: $SCRIPT 없음" >&2; exit 1; }
 
-total=19
+total=22
 
 # fake cmux: read-screen → CMUX_SCREEN_FILE 출력, 그 외 → CMUX_CALLS_LOG 에 append
 cat > "$TMP/cmux" << 'EOF'
@@ -176,6 +176,38 @@ check "TC-e: dead surface → exit 5" "5" "$exit_code"
 check_contains "TC-e: dead surface → stdout 'died' 포함" "died" "$stdout_out"
 close_called=$(grep -c "close-surface" "$TMP/calls.log" 2>/dev/null || true)
 check "TC-e: dead surface → close-surface 미호출" "0" "$close_called"
+
+# ----------------------------------------------------------------
+# TC (f): dead surface (died exit5) → state file 에서 해당 surface ref 제거됨
+cat > "$TMP/cmux-dead2" << 'DEADEOF2'
+#!/usr/bin/env bash
+cmd="$1"; shift
+if [ "$cmd" = "read-screen" ]; then
+  echo "Terminal surface not found" >&2
+  exit 1
+else
+  echo "$cmd $*" >> "${CMUX_CALLS_LOG:-/dev/null}"
+fi
+DEADEOF2
+chmod +x "$TMP/cmux-dead2"
+
+STATE_FILE_F="$TMP/reap-f.state"
+# state file 에 surface:9 포함시켜 놓음
+printf 'surface=surface:9|name=cbp-aaa|ts=1234567890|ws=ws1\nsurface=surface:10|name=cbp-bbb|ts=1234567891|ws=ws1\n' > "$STATE_FILE_F"
+
+> "$TMP/calls-f.log"
+exit_code=0
+CMUX_BIN="$TMP/cmux-dead2" \
+  CMUX_CALLS_LOG="$TMP/calls-f.log" \
+  CBP_STATE_FILE="$STATE_FILE_F" \
+  bash "$SCRIPT" reap --pane=surface:9 --idle=0 --timeout=5 2>/dev/null || exit_code=$?
+check "TC-f: died exit 5 확인" "5" "$exit_code"
+# surface:9 가 state 에서 제거됐는지 확인
+state_has_9=$(grep 'surface=surface:9|' "$STATE_FILE_F" 2>/dev/null | wc -l | tr -d ' ')
+check "TC-f: died → surface:9 state 에서 제거" "0" "$state_has_9"
+# surface:10 은 보존돼야 함
+state_has_10=$(grep 'surface=surface:10|' "$STATE_FILE_F" 2>/dev/null | wc -l | tr -d ' ')
+check "TC-f: died → surface:10 는 state 보존" "1" "$state_has_10"
 
 echo ""
 echo "ok: $pass/$total passed"

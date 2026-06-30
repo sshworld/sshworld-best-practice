@@ -308,23 +308,50 @@ _do_launch_grid() {
       --workspace "$CMUX_WORKSPACE_ID" 2>/dev/null || true)
     surface_ref=$(printf '%s' "$raw_out" | awk '/^OK / {print $2; exit}')
   else
-    # 후속 자식: 직전 자식 surface 를 기준으로 split
-    local prev_surface
-    prev_surface=$(tail -1 "$sf" | grep -o 'surface=[^|]*' | sed 's/surface=//')
-
-    # 라운드로빈 방향: count 홀수 → down, 짝수 → right
-    local dir
-    if [ -n "${CBP_SPLIT_POLICY:-}" ]; then
-      dir="$CBP_SPLIT_POLICY"
-    elif [ $(( count % 2 )) -eq 1 ]; then
-      dir="down"
+    # 후속 자식: 마지막→처음 순으로 살아있는 첫 번째 surface 를 prev_surface 로 선택.
+    # 살아있는 게 없으면 count=0 과 동일하게 new-pane 폴백.
+    local prev_surface=""
+    local _sref
+    # children 변수는 이미 위에서 읽음 (state_list 결과, 줄당 1개 surface ref).
+    # 마지막→처음 순회: tac 또는 tail→head 폴백.
+    local _reversed
+    if command -v tac >/dev/null 2>&1; then
+      _reversed=$(printf '%s\n' "$children" | tac)
     else
-      dir="right"
+      _reversed=$(printf '%s\n' "$children" | tail -r 2>/dev/null || printf '%s\n' "$children" | awk '{a[NR]=$0} END{for(i=NR;i>=1;i--) print a[i]}')
     fi
+    while IFS= read -r _sref; do
+      [ -z "$_sref" ] && continue
+      if _cbp_surface_is_terminal "$_sref"; then
+        prev_surface="$_sref"
+        break
+      fi
+    done <<_REVEOF
+$_reversed
+_REVEOF
 
-    raw_out=$("$CMUX_BIN" new-split "$dir" \
-      --surface "$prev_surface" 2>/dev/null || true)
-    surface_ref=$(printf '%s' "$raw_out" | awk '/^OK / {print $2; exit}')
+    if [ -z "$prev_surface" ]; then
+      # 살아있는 prev 없음 → new-pane 폴백 (첫 자식 경로 재사용)
+      raw_out=$("$CMUX_BIN" new-pane \
+        --type terminal \
+        --direction right \
+        --workspace "$CMUX_WORKSPACE_ID" 2>/dev/null || true)
+      surface_ref=$(printf '%s' "$raw_out" | awk '/^OK / {print $2; exit}')
+    else
+      # 라운드로빈 방향: count 홀수 → down, 짝수 → right
+      local dir
+      if [ -n "${CBP_SPLIT_POLICY:-}" ]; then
+        dir="$CBP_SPLIT_POLICY"
+      elif [ $(( count % 2 )) -eq 1 ]; then
+        dir="down"
+      else
+        dir="right"
+      fi
+
+      raw_out=$("$CMUX_BIN" new-split "$dir" \
+        --surface "$prev_surface" 2>/dev/null || true)
+      surface_ref=$(printf '%s' "$raw_out" | awk '/^OK / {print $2; exit}')
+    fi
   fi
 
   # surface ref 공백 trim + fallback
@@ -578,6 +605,7 @@ do_reap() {
   if [ "$rc" -ne 0 ]; then
     echo "died — surface '$PANE' not a terminal (자식 비정상 종료 의심; subagent 폴백 권장)" >&2
     echo "died $PANE"
+    cbp_state_remove "$PANE"
     return 5
   fi
 
