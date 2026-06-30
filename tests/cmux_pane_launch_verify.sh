@@ -121,8 +121,11 @@ run_launch() {
     CBP_DISABLE_LAUNCH_LOCK=1 \
     CBP_WARMUP_SLEEP=0 \
     "$@" \
-    bash "$WRAPPER" launch zsh
+    bash "$WRAPPER" launch
 }
+# 주: 이 테스트는 _do_launch_grid 의 PTY 검증 루프만 검증 → cmd 없이 launch 호출.
+# (launch <cmd> 의 cmd 전달=do_send 는 tests/unit/cmux-pane-launch-cmd.test.sh 가 담당.
+#  cmd 를 주면 do_send confirm 루프가 read-screen 을 추가 호출해 검증 카운트가 오염됨.)
 
 # ============================================================================
 # 케이스 1: read-screen 즉시 성공 (succeed_after_n=1 → 첫 번째 호출부터 성공)
