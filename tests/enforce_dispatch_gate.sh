@@ -118,7 +118,7 @@ step C2 "세션활성 + --slice + start_ts 이후 plan 파일 존재 → exit 0"
   RC=$(echo "$PAYLOAD" | \
     DISPATCH_GATE_SESSION_FILE="$SESSION_FILE" \
     PLAN_MODE_PLANS_DIR="$PLANS_DIR" \
-    "$ENFORCE_HOOK" 2>/dev/null; echo $?)
+    sh -c "cd \"$REPO_DIR\" && \"$ENFORCE_HOOK\"" 2>/dev/null; echo $?)
 
   [ "$RC" = "0" ] || fail "C2: exit code should be 0, got $RC"
   rm -rf "$TMP"
@@ -141,7 +141,7 @@ step C3 "command=grep dispatch-slice-pane.sh scripts/ (--slice 없음) → exit 
   RC=$(echo "$PAYLOAD" | \
     DISPATCH_GATE_SESSION_FILE="$SESSION_FILE" \
     PLAN_MODE_PLANS_DIR="$PLANS_DIR" \
-    "$ENFORCE_HOOK" 2>/dev/null; echo $?)
+    sh -c "cd \"$REPO_DIR\" && \"$ENFORCE_HOOK\"" 2>/dev/null; echo $?)
 
   [ "$RC" = "0" ] || fail "C3: exit code should be 0, got $RC"
   rm -rf "$TMP"
@@ -163,7 +163,7 @@ step C4 "command=echo hi → exit 0 (dispatch 무관)"
   RC=$(echo "$PAYLOAD" | \
     DISPATCH_GATE_SESSION_FILE="$SESSION_FILE" \
     PLAN_MODE_PLANS_DIR="$PLANS_DIR" \
-    "$ENFORCE_HOOK" 2>/dev/null; echo $?)
+    sh -c "cd \"$REPO_DIR\" && \"$ENFORCE_HOOK\"" 2>/dev/null; echo $?)
 
   [ "$RC" = "0" ] || fail "C4: exit code should be 0, got $RC"
   rm -rf "$TMP"
@@ -191,7 +191,7 @@ step C5 "세션 marker 없음 → exit 0 (비-plan-dev)"
   RC=$(echo "$PAYLOAD" | \
     DISPATCH_GATE_SESSION_FILE="$SESSION_FILE" \
     PLAN_MODE_PLANS_DIR="$PLANS_DIR" \
-    "$ENFORCE_HOOK" 2>/dev/null; echo $?)
+    sh -c "cd \"$REPO_DIR\" && \"$ENFORCE_HOOK\"" 2>/dev/null; echo $?)
 
   [ "$RC" = "0" ] || fail "C5: exit code should be 0, got $RC"
   rm -rf "$TMP"
@@ -214,7 +214,7 @@ step C6 "permission_mode=bypassPermissions + --slice + plan 없음 → exit 0 (d
   RC=$(echo "$PAYLOAD" | \
     DISPATCH_GATE_SESSION_FILE="$SESSION_FILE" \
     PLAN_MODE_PLANS_DIR="$PLANS_DIR" \
-    "$ENFORCE_HOOK" 2>/dev/null; echo $?)
+    sh -c "cd \"$REPO_DIR\" && \"$ENFORCE_HOOK\"" 2>/dev/null; echo $?)
 
   [ "$RC" = "0" ] || fail "C6: exit code should be 0, got $RC"
   rm -rf "$TMP"
@@ -238,7 +238,7 @@ step C7 "SKIP_DISPATCH_GATE=1 + 차단 조건 → exit 0 (1회 우회)"
     SKIP_DISPATCH_GATE=1 \
     DISPATCH_GATE_SESSION_FILE="$SESSION_FILE" \
     PLAN_MODE_PLANS_DIR="$PLANS_DIR" \
-    "$ENFORCE_HOOK" 2>/dev/null; echo $?)
+    sh -c "cd \"$REPO_DIR\" && \"$ENFORCE_HOOK\"" 2>/dev/null; echo $?)
 
   [ "$RC" = "0" ] || fail "C7: exit code should be 0, got $RC"
   rm -rf "$TMP"
