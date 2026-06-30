@@ -76,7 +76,7 @@ Branch: <type>/<slug>
 - **cmux workspace 모드** (`--mode=cmux`) — 부모 cmux workspace 안에 surface 가 grid split. 사용자가 직접 attach/시각화. 자식 토큰 추적 ✗.
 - **auto 모드** (기본) — `detect-pane-env.sh` 결과로 자동 분기.
 
-dispatch 모드에서 자식 Claude 가 받는 spec-file 의 첫 줄/상단 블록은 항상 "너는 implementor 다. TDD R→G→R. 마지막에 `✅`/`❌` 출력." + **작업 디렉토리 절대경로** + "시작 시 `pwd` 검증" 명시. 부모는 `wait-idle` + `capture | grep -E '^(✅|❌)'` 로 회수.
+dispatch 모드에서 자식 Claude 가 받는 spec-file 의 첫 줄/상단 블록은 항상 "너는 implementor 다. TDD R→G→R. 마지막에 `✅`/`❌` 출력." + **작업 디렉토리 절대경로** + "시작 시 `pwd` 검증" 명시. 부모는 `${CLAUDE_PLUGIN_ROOT}/scripts/cmux-pane.sh reap --pane=surface:<N>` 로 회수 — lenient 마커 패턴(`⏺`/들여쓰기 prefix 허용) 단일 경로. hand-rolled strict-column-0 grep 금지 (실제 TUI 렌더 `⏺ ✅` 못 잡음 — `reap` 단일 경로 사용).
 
 ## 안 하는 것
 

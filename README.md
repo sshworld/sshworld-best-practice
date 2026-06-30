@@ -307,7 +307,7 @@ cmux read-screen --surface surface:<N> --lines 30
 scripts/cmux-pane.sh reap --pane=surface:<N> --idle=15 --timeout=900
 # 수동 회수 (tmux/기타 모드)
 scripts/cmux-pane.sh wait-idle --pane=surface:<N> --idle=15 --timeout=900
-cmux read-screen --surface surface:<N> --lines 30 | grep -E '^(✅|❌)'
+cmux read-screen --surface surface:<N> --lines 30 | grep -E '^[[:space:]]*(⏺[[:space:]]*)?(✅|❌)'  # ⏺/들여쓰기 prefix 허용
 ```
 
 사용자 시각 확인: cmux 사이드바의 surface 탭 클릭 → 자식 화면 attach.

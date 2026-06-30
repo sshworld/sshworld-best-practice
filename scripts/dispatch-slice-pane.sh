@@ -30,9 +30,9 @@
 # 자식 명령 결정 우선순위 (build_child_cmd):
 #   DISPATCH_CHILD_CMD env > --model=<arg> > DISPATCH_DEFAULT_MODEL env > "sonnet"
 #
-# 완료 감지는 호출자 책임:
-#   $wrapper wait-idle --pane=$pane --idle=10 --timeout=1800
-#   $wrapper capture   --pane=$pane | tail -50 | grep -E '^(✅|❌)'
+# 완료 감지·회수는 호출자 책임 — 단일 경로 reap (lenient 마커 패턴, ⏺/들여쓰기 prefix 허용):
+#   $wrapper reap --pane=$pane --idle=15 --timeout=900
+#   (hand-rolled capture + strict-column-0 grep 금지 — 실제 TUI 렌더 ⏺ ✅ 못 잡음)
 #
 # 환경변수:
 #   DISPATCH_DRY_RUN=1              wrapper 호출 직전 driver/wrapper/worktree JSON 출력 후 exit 0.
