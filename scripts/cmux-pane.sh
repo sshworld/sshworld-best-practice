@@ -239,7 +239,7 @@ cbp_state_remove() {
 
 # ----------------------------------------------------------------
 do_launch() {
-  local cmd="${1:-zsh}"
+  local cmd="${1:-}"  # 명시 cmd. grid 경로 → 비어있으면 send 안 함. non-grid 경로 → zsh 기본.
   local name="${CBP_WORKSPACE_PREFIX}$(rand_hex6)"
 
   # CMUX_WORKSPACE_ID set → grid split 분기 (부모 workspace 안에서 surface 생성)
@@ -248,7 +248,8 @@ do_launch() {
     return $?
   fi
 
-  # CMUX_WORKSPACE_ID unset → 기존 new-workspace 흐름
+  # CMUX_WORKSPACE_ID unset → 기존 new-workspace 흐름 (cmd 없으면 zsh 기본)
+  [ -z "$cmd" ] && cmd="zsh"
   local out
   out=$("$CMUX_BIN" new-workspace --cwd "$PWD" --name "$name" --command "$cmd" 2>/dev/null || true)
   # workspace ref: cmux 출력의 첫 줄 (실제 cmux 는 "workspace:name" 한 줄 반환).
@@ -274,7 +275,7 @@ _cbp_surface_is_terminal() {
 # 라운드로빈 방향: count=0 → right (첫 자식), count=1 → down, count=2 → right, count=3 → down, ...
 # CBP_SPLIT_POLICY env 로 방향 override 가능 (Slice A3 에서 확장 예정).
 _do_launch_grid() {
-  local _cmd="$1"  # cmd 는 new-pane/new-split 미지원 — Slice A3 에서 send 로 전달 예정
+  local _cmd="$1"  # cmd 가 있으면 PTY 검증 통과 후 do_send 로 전달
   local name="$2"
 
   local sf lockpath
@@ -375,6 +376,10 @@ _REVEOF
   # 아니면: 최대 CBP_LAUNCH_VERIFY_TRIES(기본 5)회 — 매회 send-key Enter → sleep → read-screen.
   # terminal 되면 break(성공). 끝까지 실패 시 die(exit 3).
   if [ "${CBP_DISABLE_WARMUP:-0}" = "1" ]; then
+    # warmup 스킵 경로 — cmd 가 있으면 surface 로 전달
+    if [ -n "$_cmd" ]; then
+      do_send "$_cmd" --pane="$surface_ref" >/dev/null
+    fi
     printf '%s\n' "$surface_ref"
     return 0
   fi
@@ -395,6 +400,11 @@ _REVEOF
 
   if [ "$verified" = "0" ]; then
     die "launch: surface '$surface_ref' PTY 미기동 (not a terminal) — ${verify_tries}회 검증 실패. cmux 불안정 가능, --mode=subagent 폴백 고려." 3
+  fi
+
+  # PTY 검증 통과 후 cmd 전달 (cmd 있을 때만)
+  if [ -n "$_cmd" ]; then
+    do_send "$_cmd" --pane="$surface_ref" >/dev/null
   fi
 
   printf '%s\n' "$surface_ref"

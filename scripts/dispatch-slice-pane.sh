@@ -323,9 +323,10 @@ main() {
   local CHILD_CMD
   CHILD_CMD=$(build_child_cmd "${DISPATCH_CHILD_CMD:-}" "interactive" "$MODEL" "${DISPATCH_DEFAULT_MODEL:-}" "${DISPATCH_PERMISSION_MODE:-}")
 
-  # pane/workspace 띄우기 — 항상 zsh 먼저, 그 다음 cd + 자식 명령
+  # pane/workspace 띄우기 — cmd 없이 빈 surface 생성, 이후 send 로 cd + 자식 명령 전달
+  # (launch cmd 인자 제거: nested zsh 회피. grid 경로는 send 시퀀스로 처리)
   local PANE PANE_RAW
-  PANE_RAW=$("$WRAPPER" launch zsh) || die "wrapper launch 실패"
+  PANE_RAW=$("$WRAPPER" launch) || die "wrapper launch 실패"
   # cmux: surface:N / workspace:N 단일 토큰 strict 계약.
   # tmux: session:window.pane 형식 (driver 외부) — CRLF 트림 + 빈값 거부만.
   if [ "$DRIVER" = "cmux" ]; then

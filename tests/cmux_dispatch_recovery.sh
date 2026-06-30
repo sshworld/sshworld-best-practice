@@ -69,6 +69,7 @@ if [ "${CMUX_E2E:-0}" = "1" ] && [ -n "${CMUX_WORKSPACE_ID:-}" ]; then
   step 7 "[CMUX_E2E=1] 실 cmux — workspace 안 split + capture (사용자 화면에 surface 1개 추가됨)"
   unset CMUX_BIN
   # 가벼운 자식 cmd: echo + sleep — mock 아닌 실 cmux 명령.
+  # launch cmd 가 PTY 검증 통과 후 do_send 로 전달되므로 echo 가 실제 실행됨.
   if ref=$("$WRAPPER" launch "echo '✅ real-cmux-e2e: ok'; sleep 30" --name=cmux-e2e-test 2>&1); then
     echo "  launched: $ref"
     sleep 3
