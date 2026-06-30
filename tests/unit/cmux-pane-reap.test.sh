@@ -46,7 +46,7 @@ check_not_contains() {
 
 [ -f "$SCRIPT" ] || { echo "FAIL: $SCRIPT 없음" >&2; exit 1; }
 
-total=16
+total=19
 
 # fake cmux: read-screen → CMUX_SCREEN_FILE 출력, 그 외 → CMUX_CALLS_LOG 에 append
 cat > "$TMP/cmux" << 'EOF'
@@ -150,6 +150,32 @@ check "TC-a3: 들여쓰기 ✅ → exit 0" "0" "$exit_code"
 close_called=$(grep -c "close-surface --surface surface:5" "$TMP/calls.log" 2>/dev/null || echo 0)
 check "TC-a3: 들여쓰기 ✅ → close-surface 호출" "1" "$close_called"
 check_contains "TC-a3: 들여쓰기 ✅ → 'reaped' 출력" "reaped" "$stdout_out"
+
+# ----------------------------------------------------------------
+# TC (e): dead surface — read-screen 가 비0 exit 반환 → stdout "died" 포함 + exit 5
+# 별도 cmux mock: read-screen 가 exit 1 (not a terminal)
+cat > "$TMP/cmux-dead" << 'DEADEOF'
+#!/usr/bin/env bash
+cmd="$1"; shift
+if [ "$cmd" = "read-screen" ]; then
+  echo "Terminal surface not found" >&2
+  exit 1
+else
+  echo "$cmd $*" >> "${CMUX_CALLS_LOG:-/dev/null}"
+fi
+DEADEOF
+chmod +x "$TMP/cmux-dead"
+
+> "$TMP/calls.log"
+exit_code=0
+stdout_out=$(CMUX_BIN="$TMP/cmux-dead" \
+  CMUX_CALLS_LOG="$TMP/calls.log" \
+  CBP_STATE_FILE="$STATE_FILE" \
+  bash "$SCRIPT" reap --pane=surface:9 --idle=0 --timeout=5 2>/dev/null) || exit_code=$?
+check "TC-e: dead surface → exit 5" "5" "$exit_code"
+check_contains "TC-e: dead surface → stdout 'died' 포함" "died" "$stdout_out"
+close_called=$(grep -c "close-surface" "$TMP/calls.log" 2>/dev/null || true)
+check "TC-e: dead surface → close-surface 미호출" "0" "$close_called"
 
 echo ""
 echo "ok: $pass/$total passed"

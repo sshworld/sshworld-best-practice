@@ -573,8 +573,13 @@ do_reap() {
 
   do_wait_idle --pane="$PANE" --idle="$IDLE" --timeout="$TIMEOUT"
 
-  local screen
-  screen=$(do_capture --pane="$PANE" 2>/dev/null || echo "")
+  local screen rc
+  screen=$(do_capture --pane="$PANE" 2>/dev/null); rc=$?
+  if [ "$rc" -ne 0 ]; then
+    echo "died — surface '$PANE' not a terminal (자식 비정상 종료 의심; subagent 폴백 권장)" >&2
+    echo "died $PANE"
+    return 5
+  fi
 
   printf '%s\n' "$screen" | tail -20
 
