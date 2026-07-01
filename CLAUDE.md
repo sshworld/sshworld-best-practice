@@ -35,7 +35,7 @@
 
 | 파일 | 책임 |
 |---|---|
-| `commands/plan-dev.md` | 사용자 entry point. 단계별 가이드와 안티패턴. |
+| `commands/plan-dev.md` | 사용자 entry point. 단계별 가이드와 안티패턴. Phase 6 = `/fork` 스킬 직접 호출(세션 클로저). |
 | `commands/parallel-consult.md` | 자식 Claude pane 띄워 1회 질의응답. |
 | `agents/implementor.md` | TDD Red→Green→Refactor. subagent / tmux pane 모드 양쪽 지원. |
 | `agents/verifier.md` | Read-only 빌드/테스트. 코드 수정 안 함. |
@@ -43,7 +43,7 @@
 | `agents/commit-advisor.md` | 한글 Conventional Commit + DOC 영향 평가 + 히스토리 위생/squash 추천. 실제 commit 안 함. |
 | `agents/goal-checker.md` | plan-dev Stop hook 의 agent layer (Haiku). plan Semantic goal + start_ref..HEAD diff 보고 JSON `{pass, missing}` 응답. enforce-plan-dev-goal.sh 가 `claude -p` 로 호출. |
 | `.claude/workflows/*.mjs` | dynamic **Workflow** 툴용 reference 스크립트 (plan-review-panel / slice-pipeline / codebase-audit / `vuln-scan-pipeline`(defending-code-reference-harness find→grade→judge→report 정적분석 재현, 코드 실행 X)). plan-dev 의 A(Plan/Review judge·적대 panel) / B(opt-in workflow 실행모드) / C(대규모 audit) 통합 템플릿. `Workflow({scriptPath})` 또는 inline `script:` paste. `export const meta` + top-level await/return → 런타임이 async fn wrap (raw `node --check` 불가, `tests/workflow_integration_lint.sh` 가 export-strip+wrap 후 syntax 검증). cmux surface 아님 — `/workflows` 트리 표현, cmux 시각화와 상호배타. **이동 안 함 — Workflow 툴 reference 로 .claude/ 유지.** |
-| `skills/fork/SKILL.md` | 자식 컨텍스트로 작업 위임, 요약만 반환. |
+| `skills/fork/SKILL.md` | 자식 컨텍스트로 작업 위임, 요약만 반환. 이중 용도(격리 실행 / Phase 6 클로저). |
 | `skills/tmux-orchestrate/SKILL.md` | 부모-자식 Claude tmux pane 협업 패턴 가이드. |
 | `hooks/*.sh` | 런타임 강제. stderr 메시지에 우회 방법 항상 명시. |
 | `hooks/hooks.json` | 플러그인 hooks 정의 파일. `${CLAUDE_PLUGIN_ROOT}` 기반 경로. permissions 는 미포함(플러그인 비지원 — README 권장 permissions 참조). |
@@ -94,6 +94,7 @@
 
 ## 안티패턴
 
+- ✅ 예외: **스킬 호출(예: Phase 6 의 `/fork`)은 hook 으로 강제 불가** — Stop hook 은 turn 재개만 가능하고 특정 액션 지정을 못 한다. 이 경우 "콘텐츠만/하네스 없음" 이 안티패턴이 아니라 **정당한 콘텐츠-전용**이다(구조적 한계). 순진한 하네스 누락과 구분할 것.
 - ❌ 콘텐츠만 추가 / 하네스 없음 (모델이 빼먹으면 무력)
 - ❌ 하네스만 추가 / 콘텐츠 가이드 없음 (사용자가 차단 이유 모름)
 - ❌ hook 에서 stderr 메시지에 우회 방법 안 적기

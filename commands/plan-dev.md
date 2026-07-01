@@ -179,15 +179,13 @@ verifier PASS 후 commit 전 코드 리뷰를 원하면 `reviewer` 에이전트 
 
 ## Phase 6 — Context 정리
 
-작업이 끝나면 다음 입력을 한 줄로 추천:
+작업 종료 후 **`fork` 스킬을 직접 호출**한다 (텍스트로 추천만 하지 않는다). Skill(fork) 이:
+- 세션의 잔여 정리(worktree cleanup 등) + 작업 요약을 수행하고,
+- 마지막 줄에 다음 명령(`/clear` 또는 `/compact <남길 핵심>`)을 추천한다.
 
-- **완전히 새 작업 → `/clear`**
-- **같은 도메인 후속 작업 → `/compact <남길 핵심 + 다음 방향>`**
-- **부수 조사/탐색 격리 → `/fork`**
+> ℹ️ 이 단계는 **콘텐츠 전용 강제**다. `/fork` 는 Skill = 모델이 호출하는 것이라 hook 으로 호출을 강제할 수 없다(Stop hook 은 turn 재개만 가능, 액션 지정 불가). 따라서 이 지시를 반드시 따를 것.
 
 > 📎 bash 예시 (progress show · worktree cleanup): [cmux dispatch 가이드](./plan-dev/cmux-dispatch.md)
-
-응답 마지막 줄: `다음 추천: <명령>`
 
 > 📎 상세: [Workflow 통합 가이드](./plan-dev/workflow-integration.md)
 

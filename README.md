@@ -154,7 +154,7 @@ claude plugin prune                        # 고아 플러그인 일괄 정리
 8. **Review**: reviewer 치명적 이슈 점검 (선택)
 9. **Commit**: commit-advisor 다중 커밋 분석 → 한글 메시지 + `<type>/<slug>` 브랜치명 추천
 10. **Branch & Push** (Phase 5): `finish-plan-dev.sh` 로 develop/main 분기 push 자동화
-11. **Context 정리** (Phase 6): 다음 추천 명령 노출 + unlocked worktree-agent-* 자동 cleanup
+11. **Context 정리** (Phase 6): **`/fork` 스킬을 직접 호출** — 잔여 정리(unlocked worktree-agent-* cleanup 등) + 세션 요약 후, fork 가 마지막 줄에 다음 명령(`/clear`/`/compact`) 추천
 12. **Goal Loop** (자동, 백그라운드): plan 의 `## Goal Statement` 를 Stop hook 가 매 model turn 종료 시 **dual gate** 평가 — (a) `<!-- machine-checks -->` bash block (mechanical) + (b) `goal-checker` agent (Haiku, semantic). 둘 다 PASS 시만 종료. 하나라도 미충족 시 자동 다음 turn 재진입 (native /goal flow 자체 재현). 사용자 입력 0.
 13. **자식 surface 자동 cleanup** (Phase 5 끝): `finish-plan-dev.sh` 가 push 성공 직후 cmux 자식 surface (`cbp-*` 등 state file 등록 surface) 일괄 close. 사용자 수동 정리 0.
 14. **cross-WS dead orphan 자동 정리**: `plan-dev-session.sh start`(Phase 0) 및 `finish-plan-dev.sh`(Phase 5) 가 best-effort 로 `cmux-pane.sh reap-orphans` 를 호출 — 이전 세션이 finish 없이 종료해 잔존하는 dead 자식 surface 를 모든 `~/.cache/cbp/children-*.json` 에 걸쳐 회수. 살아있는 타 세션 자식은 보호, self surface 제외. 우회: `SKIP_CMUX_REAP=1`.
