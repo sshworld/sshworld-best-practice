@@ -86,12 +86,19 @@ else
   fi
   # Fallback: marker(SESSION_FILE)보다 새로 수정된 plan 만 (stale plan 다음 세션 이월 차단).
   # start 는 plan 작성 前 → marker mtime < 이 세션 plan mtime. 직전 세션 stale plan 은 marker 보다 오래됨 → 제외.
+  # ~/.claude/plans 는 전역(모든 repo/세션 공유) — 동시 세션이 쓴 plan 이 섞일 수 있음.
+  # 정확히 1개일 때만 신뢰 — 2개↑는 어느 게 이 세션 것인지 모름(모호) → 게이팅 skip(오염/오판 방지).
   if [[ -z "$PLAN_PATH" ]]; then
-    PLAN_PATH=$(find ~/.claude/plans -maxdepth 1 -name '*.md' -newer "$SESSION_FILE" 2>/dev/null \
-                | xargs -r ls -t 2>/dev/null | head -1)
-    # 해결한 경로를 marker 에 best-effort persist (다음 turn 안정 + 빠름)
-    if [[ -n "$PLAN_PATH" ]] && command -v python3 &>/dev/null; then
-      PLAN_PATH="$PLAN_PATH" SESSION_FILE="$SESSION_FILE" python3 -c "
+    newer_plans=()
+    while IFS= read -r p; do [[ -n "$p" ]] && newer_plans+=("$p"); done < <(
+      find ~/.claude/plans -maxdepth 1 -name '*.md' -newer "$SESSION_FILE" 2>/dev/null | sort
+    )
+    count=${#newer_plans[@]}
+    if [[ "$count" -eq 1 ]]; then
+      PLAN_PATH="${newer_plans[0]}"
+      # 해결한 경로를 marker 에 best-effort persist (다음 turn 안정 + 빠름)
+      if [[ -n "$PLAN_PATH" ]] && command -v python3 &>/dev/null; then
+        PLAN_PATH="$PLAN_PATH" SESSION_FILE="$SESSION_FILE" python3 -c "
 import json, os
 f = os.environ['SESSION_FILE']
 try:
@@ -101,6 +108,11 @@ try:
 except Exception:
     pass
 " 2>/dev/null || true
+      fi
+    elif [[ "$count" -gt 1 ]]; then
+      # 모호: 동시 세션 plan 다수 → 이 세션 것 특정 불가 → 게이팅 skip, persist 안 함
+      echo "[enforce-plan-dev-goal] ⏭ 동시 세션 plan ${count}개 감지 → plan_path 특정 불가, goal 게이팅 skip (cross-session 오염 방지)" >&2
+      PLAN_PATH=""
     fi
   fi
 fi

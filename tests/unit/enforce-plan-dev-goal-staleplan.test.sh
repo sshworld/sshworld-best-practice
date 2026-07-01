@@ -8,11 +8,18 @@ FAIL=0
 pass() { echo "PASS: $1"; }
 fail() { echo "FAIL: $1"; FAIL=1; }
 
-# 해결 로직 = hook fallback 계약 복제 (find -newer marker 중 최신)
+# 해결 로직 = hook fallback 계약 복제 (find -newer marker, count 판정)
+# count==1 → 그 plan. count==0 또는 count>=2(모호, 동시 세션) → 빈값.
 resolve() {
   local plans_dir="$1" session_file="$2"
-  find "$plans_dir" -maxdepth 1 -name '*.md' -newer "$session_file" 2>/dev/null \
-    | xargs -r ls -t 2>/dev/null | head -1
+  local newer_plans=()
+  while IFS= read -r p; do [[ -n "$p" ]] && newer_plans+=("$p"); done < <(
+    find "$plans_dir" -maxdepth 1 -name '*.md' -newer "$session_file" 2>/dev/null | sort
+  )
+  local count=${#newer_plans[@]}
+  if [[ "$count" -eq 1 ]]; then
+    echo "${newer_plans[0]}"
+  fi
 }
 
 TMP=$(mktemp -d)
@@ -34,13 +41,16 @@ sleep 1; : > "$PLANS/fresh.md"   # now > marker(2024)
 got=$(resolve "$PLANS" "$MARKER")
 [[ "$(basename "$got")" == "fresh.md" ]] && pass "fresh plan 해결" || fail "fresh 해결 실패: '$got'"
 
-# case 3: 더 새로운 plan 2개 → 최신
+# case 3: marker 보다 새로운 plan 2개(동시 세션 모호) → 빈값(게이팅 skip), 특정 plan 아님
 sleep 1; : > "$PLANS/fresher.md"
 got=$(resolve "$PLANS" "$MARKER")
-[[ "$(basename "$got")" == "fresher.md" ]] && pass "최신 plan 우선" || fail "최신 우선 실패: '$got'"
+[[ -z "$got" ]] && pass "newer plan 2개 → 모호 skip(빈값)" || fail "모호 케이스 오판: '$got'"
 
 # grep 가드: hook 이 -newer 기반 해결 포함 + 옛 무조건 ls -t fallback 제거
 HOOK="$(cd "$(dirname "$0")/../.." && pwd)/hooks/enforce-plan-dev-goal.sh"
 grep -qF '-newer' "$HOOK" && pass "hook -newer 필터 존재" || fail "hook -newer 필터 부재"
+
+# grep 가드: hook 에 모호성(count>1) 분기 존재
+grep -qiE 'count|newer_plans|모호|ambig' "$HOOK" && pass "hook 모호성 분기 존재" || fail "hook 모호성 분기 부재"
 
 [[ $FAIL -eq 0 ]] && echo "=== ALL PASS ===" || { echo "=== FAILED ==="; exit 1; }
