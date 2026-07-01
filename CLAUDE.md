@@ -31,10 +31,36 @@
    - 본 repo 안에서 `.claude/` 또는 `install.sh` 의 동작이 바뀌면 README.md 의 해당 섹션을 같이 업데이트.
    - DOC 영향 평가는 본 repo 의 commit 에도 동일하게 적용 — `DOC_IMPACT` prefix 사용.
 
+## 릴리즈 & 버저닝 규칙
+
+- **버전 소스**: `.claude-plugin/plugin.json` + `.claude-plugin/marketplace.json` 두 곳 동시. `release.sh` 가 동기화.
+- **semver bump 기준**: breaking(하위호환 깨짐)=major / 새 기능(feat)=minor / fix·docs·refactor·chore=patch. plan-dev Phase 4 의 commit-advisor 가 산정한 최대 type 을 참고.
+- **태그 컨벤션**: `sshworld--vX.Y.Z` (double-dash prefix 유지).
+- **발행 위치**: **GitHub Release native 로만**. CHANGELOG.md 파일은 두지 않는다(중복). 사용자 판단.
+- **릴리즈 노트 형식**: 섹션 헤더는 **conventional 영문 라벨**(Feature/Fix/Refactor/Chore/Docs/Breaking), 항목 설명은 **한글**.
+```
+## v1.3.6 — <한줄 요약>
+
+### ✨ Feature          (feat)
+### 🐛 Fix              (fix)
+### ♻️ Refactor / Chore (refactor·chore)
+### 📝 Docs             (docs)
+### ⚠️ Breaking         (있을 때만)
+
+**업데이트**: `/plugin update sshworld`
+```
+  - 빈 섹션 생략. 항목은 사용자 관점 한 줄. **슬라이스 라벨(S1/S2)·머지 잡음 금지** (commit-advisor 원칙과 동일).
+- **릴리즈 흐름 (매 배포마다 Claude 가 수행)**:
+  1. `scripts/release.sh draft` 로 skeleton 뽑고 → Claude 가 사용자 관점으로 살 붙임 → notes 파일 저장.
+  2. `RELEASE_DRY_RUN=1 scripts/release.sh publish <ver> <notes>` 로 검증.
+  3. `scripts/release.sh publish <ver> <notes>` 로 실발행 (bump+commit+tag+push+gh release).
+- plan-dev Phase 5(Branch & Push) 와의 관계: feature 머지와 릴리즈(버전 bump)는 별개 행위. 버전 올릴 때만 release.sh.
+
 ## 파일별 책임 분리
 
 | 파일 | 책임 |
 |---|---|
+| `scripts/release.sh` | 릴리즈 자동화 — draft(type별 한글 skeleton)/publish(bump+commit+태그+push+gh release)/backfill(과거 소급 태그+release). 버전 소스 plugin.json+marketplace.json 동기화. `RELEASE_DRY_RUN`/`GH_CMD`/`GIT_PUSH_CMD` mock. 노트 body 는 Claude 가 작성해 --notes-file 로 전달. |
 | `commands/plan-dev.md` | 사용자 entry point. 단계별 가이드와 안티패턴. Phase 6 = `/fork` 스킬 직접 호출(세션 클로저). |
 | `commands/parallel-consult.md` | 자식 Claude pane 띄워 1회 질의응답. |
 | `agents/implementor.md` | TDD Red→Green→Refactor. subagent / tmux pane 모드 양쪽 지원. |
@@ -91,6 +117,10 @@
 - [ ] allow 인가 deny 인가 명확.
 - [ ] glob 패턴이 너무 좁거나 넓지 않은가.
 - [ ] README.md "Permissions" 섹션 업데이트.
+
+버전 bump / 배포 시:
+- [ ] `release.sh` 로 발행 (직접 tag/gh 명령 금지 — drift 원인).
+- [ ] 릴리즈 노트 한글 형식 준수 ("## 릴리즈 & 버저닝 규칙" 참조).
 
 ## 안티패턴
 
@@ -201,6 +231,11 @@
 | `SKIP_DISPATCH_GATE` | unset | `enforce-dispatch-gate.sh` 1회 우회 — dispatch plan mode 게이트 bypass |
 | `DISABLE_DISPATCH_GATE_HOOK` | unset | `enforce-dispatch-gate.sh` 영구 비활성화 |
 | `DISPATCH_GATE_SESSION_FILE` | auto (`<git-common-dir>/plan-dev-session.json`) | `enforce-dispatch-gate.sh` 의 세션 marker 경로 override (테스트 mock) |
+| `RELEASE_DRY_RUN` | unset | `release.sh` 의 git commit/tag/push + gh release 를 실행 없이 echo (버전 파일 쓰기도 skip) |
+| `GH_CMD` | `gh` | `release.sh` 의 gh 바이너리 override (테스트 mock) |
+| `GIT_PUSH_CMD` | `git push` | `release.sh` push 명령 override (테스트 mock). finish-plan-dev.sh 와 공유 이름. |
+| `RELEASE_PLUGIN_JSON` | `.claude-plugin/plugin.json` | `release.sh` 버전 소스 경로 override (테스트 mock) |
+| `RELEASE_MARKETPLACE_JSON` | `.claude-plugin/marketplace.json` | `release.sh` marketplace 버전 소스 경로 override (테스트 mock) |
 
 ## 향후 작업 (플러그인화)
 

@@ -583,6 +583,15 @@ DISABLE_DISPATCH_GATE_HOOK=1   # 영구 비활성
 
 ---
 
+## 릴리즈 / 버전
+
+- 릴리즈 노트는 [GitHub Releases](https://github.com/sshworld/sshworld-best-practice/releases) 에서 확인.
+- 태그 컨벤션 `sshworld--vX.Y.Z`.
+- 업데이트: `/plugin update sshworld`.
+- (개발자용) 릴리즈는 `scripts/release.sh` 로 발행 — 상세는 CLAUDE.md "릴리즈 & 버저닝 규칙".
+
+---
+
 ## 베이스 출처
 
 - GitHub: [shanraisshan/claude-code-best-practice](https://github.com/shanraisshan/claude-code-best-practice)
