@@ -146,6 +146,21 @@ git rebase feat/<slug-b>
 git branch -D feat/<slug-b>
 ```
 
+### disjoint 슬라이스는 cherry-pick 권장
+
+슬라이스들이 **서로 다른 파일 영역**을 건드리면(파일 교집합 없음 = disjoint), 위 rebase dance 대신 **`git cherry-pick` 이 더 안전하고 간단**하다. worktree 점유 해제나 main HEAD 이동 걱정이 없고 충돌 위험도 없다:
+
+```bash
+# disjoint 슬라이스 통합 (파일 영역 안 겹칠 때) — main 에서 바로
+git cherry-pick feat/<slug-a>       # 해당 커밋만 main 에 얹기
+git cherry-pick feat/<slug-b>
+# 확인 후 정리
+git worktree remove --force .worktrees/<slug-a> && git branch -D feat/<slug-a>
+git worktree remove --force .worktrees/<slug-b> && git branch -D feat/<slug-b>
+```
+
+rebase(fast-forward)는 슬라이스가 **같은 파일 영역**을 건드려 순서가 중요할 때만 사용한다. 판단 기준 = Slice File Map 의 Files 교집합 여부.
+
 ---
 
 ## Phase 6 — 종료 직전 bash 예시

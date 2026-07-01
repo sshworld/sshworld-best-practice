@@ -91,6 +91,8 @@ MOCK
     DISPATCH_CHILD_CMD="zsh" \
     DISPATCH_SKIP_CLEANUP=1 \
     DISPATCH_VERIFY_TRIES=2 \
+    CBP_WARMUP_SLEEP=0 \
+    CBP_SEND_CONFIRM=0 \
     bash "$DISPATCH" \
       --slice=verify-t1 \
       --spec-file="$tmpdir/spec.md" \
@@ -151,6 +153,8 @@ MOCK
     DISPATCH_CHILD_CMD="zsh" \
     DISPATCH_SKIP_CLEANUP=1 \
     DISPATCH_VERIFY_TRIES=2 \
+    CBP_WARMUP_SLEEP=0 \
+    CBP_SEND_CONFIRM=0 \
     bash "$DISPATCH" \
       --slice=verify-t2 \
       --spec-file="$tmpdir/spec.md" \
