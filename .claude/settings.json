@@ -124,10 +124,6 @@
           {
             "type": "command",
             "command": "$CLAUDE_PROJECT_DIR/hooks/token-stats.sh"
-          },
-          {
-            "type": "command",
-            "command": "$CLAUDE_PROJECT_DIR/hooks/enforce-plan-dev-goal.sh"
           }
         ]
       }
