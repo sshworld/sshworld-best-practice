@@ -67,7 +67,6 @@
 | `agents/verifier.md` | Read-only 빌드/테스트. 코드 수정 안 함. |
 | `agents/reviewer.md` | 치명적 vs 제안 분류. 직접 수정 안 함. |
 | `agents/commit-advisor.md` | 한글 Conventional Commit + DOC 영향 평가 + 히스토리 위생/squash 추천. 실제 commit 안 함. |
-| `agents/goal-checker.md` | plan-dev Stop hook 의 agent layer (Haiku). plan Semantic goal + start_ref..HEAD diff 보고 JSON `{pass, missing}` 응답. enforce-plan-dev-goal.sh 가 `claude -p` 로 호출. |
 | `.claude/workflows/*.mjs` | dynamic **Workflow** 툴용 reference 스크립트 (plan-review-panel / slice-pipeline / codebase-audit / `vuln-scan-pipeline`(defending-code-reference-harness find→grade→judge→report 정적분석 재현, 코드 실행 X)). plan-dev 의 A(Plan/Review judge·적대 panel) / B(opt-in workflow 실행모드) / C(대규모 audit) 통합 템플릿. `Workflow({scriptPath})` 또는 inline `script:` paste. `export const meta` + top-level await/return → 런타임이 async fn wrap (raw `node --check` 불가, `tests/workflow_integration_lint.sh` 가 export-strip+wrap 후 syntax 검증). cmux surface 아님 — `/workflows` 트리 표현, cmux 시각화와 상호배타. **이동 안 함 — Workflow 툴 reference 로 .claude/ 유지.** |
 | `skills/fork/SKILL.md` | 자식 컨텍스트로 작업 위임, 요약만 반환. 이중 용도(격리 실행 / Phase 6 클로저). |
 | `skills/tmux-orchestrate/SKILL.md` | 부모-자식 Claude tmux pane 협업 패턴 가이드. |
@@ -89,7 +88,6 @@
 | `scripts/plan-dev-progress.sh` | plan-dev 진행률 cmux push 헬퍼 (start/tick/show). `PLAN_DEV_SESSION_BIN` / `CMUX_PANE_BIN` env 로 mock 가능. `PROGRESS_DRY_RUN=1` 로 notify/set-status dry-run. cmux 환경 외에서는 tick stdout 만 출력. |
 | `scripts/finish-plan-dev.sh` | develop/main 분기 push 자동화 + marker clear. `origin/develop` 있으면 feature branch push, 없으면 main 직접 push. branch 이름 충돌 시 suffix -2~-5 자동 부여. **push 직전 commit-advised marker 게이트(commit-advisor 미실행 차단)** — `.git/plan-dev-commit-advised` 부재 시 exit 2. **push 성공 직후 cmux 자식 surface 자동 cleanup** (`do_cmux_cleanup` — CMUX_WORKSPACE_ID set 시만) + **reap-orphans backstop** (cleanup 후 dead surface 회수, `SKIP_CMUX_REAP=1` 우회). `SKIP_PLAN_DEV_FINISH` / `DISABLE_PLAN_DEV_FINISH` / `SKIP_COMMIT_ADVISOR_GATE` / `DISABLE_COMMIT_ADVISOR_GATE` / `SKIP_PLAN_DEV_CMUX_CLEANUP` / `DISABLE_PLAN_DEV_CMUX_CLEANUP` / `SKIP_CMUX_REAP` 우회 지원. |
 | `hooks/track-cmux-edit-burst.sh` | PreToolUse Write\|Edit. cmux env Edit/Write 누적 N회 advisory (디폴트 임계치 **50**). 디폴트 **advisory only** — settings.json 의 inline `CMUX_EDIT_BURST_STRICT=1` 제거됨. `CMUX_EDIT_BURST_STRICT=1` env 명시 시만 차단(exit 2, 회귀 가드). count file 은 cmux workspace 별 독립 — 다른 workspace 끼리 누적 공유 안 됨. mtime idle 기반 자동 리셋. dispatch-slice-pane.sh launch 시 명시 리셋. **자식 worktree 감지 (git-dir != git-common-dir) 시 자동 skip** — dispatch 자식 환경 false-positive 회피. |
-| `hooks/enforce-plan-dev-goal.sh` | Stop hook. plan-dev-session marker 활성 + plan 파일 Goal Statement 의 `<!-- machine-checks -->` bash block 매 turn 종료 시 실행 = **bash layer**. 전부 PASS 후 `claude -p` headless 로 `goal-checker` agent 호출 = **agent layer** (semantic 판단). 두 layer PASS → exit 0 / 하나라도 fail → exit 2 + stderr reason → 모델 자동 다음 turn. native /goal 의 self-built 대체. **Active dispatch worktree (`.worktrees/<slug>`) 진행 중 자동 skip** — 자식 wait 단계 false-positive 회피. agent layer 우회: `SKIP_GOAL_AGENT` / `DISABLE_GOAL_AGENT`. **Semantic goal 추출은 템플릿의 인라인 `**Semantic goal**: <텍스트>` 형식을 캡처 (awk `next` 없이 매치 줄 포함 + prefix strip); 추출 빈값이면 agent layer 자동 skip (빈 goal false-negative 무한 block 방지).** **Stale-marker carryover 가드: Stop hook stdin 의 `session_id` 로 marker 소유권 추적 — 처음 본 session 이 `gate_session_id` claim, 다른 session 이 상속하면 orphan 판정 → 자동 skip + marker `.bak` 이동(plan 파일 보존, 삭제 X). 원인: plan-dev 세션이 marker clear 없이 종료 → `within_24h` 내 무관한 다음 세션이 stale plan 으로 gate(`start_pid=$$` 는 항상 dead 라 liveness 불가, session_id 가 유일 신뢰 신호). payload/python3 부재 시 inert(기존 동작). 동일 세션이 plan full goal 미만으로 의도 종료 시엔 machine-checks rewrite 금지 — `plan-dev-session.sh clear` 로 loop 종료.** **plan_path mtime fallback 은 `-newer` 매치가 정확히 1개일 때만 사용 — 2개↑(동시 세션) 모호 시 게이팅 skip + persist 안 함(cross-session 오염 방지).** |
 | `hooks/enforce-cmux-dispatch.sh` | PreToolUse ExitPlanMode. cmux env(`CMUX_WORKSPACE_ID` set)에서 plan Slice File Map 의 `direct-edit` 표셀 탐지 시 **exit 2 차단**. `CMUX_DIRECT_EDIT_OK=1` 의식적 escape (1회 통과). `SKIP_CMUX_DISPATCH_GATE=1` / `DISABLE_CMUX_DISPATCH_GATE_HOOK=1` 우회. 비-cmux 환경 no-op. |
 | `hooks/cmux-dispatch-hint.sh` | SessionStart. cmux env(`CMUX_WORKSPACE_ID` set) 시 **dispatch-first advisory** 를 stdout(additionalContext)으로 inject — "cmux 환경에선 plan-dev Slice 가 dispatch(cmux) 기본, direct-edit 는 `CMUX_DIRECT_EDIT_OK=1` escape". 비-cmux 환경은 무출력(exit 0). advisory nudge + ExitPlanMode 게이트 reminder. |
 | `hooks/enforce-plan-mode.sh` | PreToolUse Write\|Edit. **/plan-dev plan mode 진입 강제** — plan-dev-session marker 활성 + plan mode 미진입 상태에서 Write/Edit 시도 시 exit 2 차단. 판정: **marker 의 `start_ts` 이후 작성된 plan 파일(`~/.claude/plans/*.md`)이 존재하면 allow** (plan mode 진입 = plan 파일 작성). `permission_mode==plan`(plan mode 중) / `==bypassPermissions`(dispatch 자식·명시 우회) → allow. 자식 worktree(git-dir≠git-common-dir) → skip. **마커 없음(비-plan-dev 세션) → no-op**. start_ts 파싱 불가 → conservative allow. ⚠️ marker **파일 mtime** 이 아니라 **start_ts JSON** 사용 — `plan-dev-progress.sh` 가 marker 를 재기록해 mtime 을 bump 하므로(mtime 기준이면 progress 후 false-positive). override: `PLAN_MODE_SESSION_FILE` / `PLAN_MODE_PLANS_DIR`. 우회: `SKIP_PLAN_MODE_ENFORCE` / `DISABLE_PLAN_MODE_ENFORCE_HOOK`. 한계: plan reject 후에도 plan 파일 존재 시 통과 — 목적은 "plan mode 아예 미진입" catch. (구 flag 방식은 plan 파일 write 가 PreToolUse Write 를 안 타 flag 미기록 → 승인 후 전부 차단하는 false-positive 였음, start_ts 신호로 교체 수정.) |
@@ -144,10 +142,9 @@
 - ❌ Dead code 판정 시 사용처 grep + 테스트 prop 직접 주입 확인 누락 — 부모가 prop 으로 set 하는 분기를 "도달 불가" 로 오판해 삭제하면 기존 테스트가 회귀로 catch.
 - ❌ 검증용 단순 curl / sleep 단독 호출 — Bash 자동 background 진입으로 동기 결과 못 받음. `timeout 5 curl ...` 또는 cmux browser eval 사용.
 - ❌ cmux 환경 plan Mode 컬럼에 `direct-edit` — **`enforce-cmux-dispatch`** hook 이 ExitPlanMode 차단. cmux 기본은 dispatch(cmux). 예외는 plan 콘텐츠가 아니라 out-of-band env: `CMUX_DIRECT_EDIT_OK=1` escape. 비-cmux 환경은 그 반대(direct-edit 기본). `track-cmux-edit-burst` 는 advisory only(50, 차단 없음).
-- ❌ enforce-plan-dev-goal hook 의 active dispatch worktree skip 룰을 잊고 자식 wait 단계에서 SKIP env 우회 시도 — `git worktree list --porcelain` 결과 안 `.worktrees/<slug>` 존재 시 hook 가 이미 자동 skip. SKIP env 불필요.
 - ❌ dispatch spec-file 을 `/tmp/<slug>-spec.md` 등 repo 밖에 두기 — classifier transcript-blind 시 dispatch 거부 위험. `.claude/specs/<slug>.spec.md` 컨벤션 사용.
-- ❌ Goal Statement 에 `<!-- machine-checks -->` bash block 누락 — Stop hook 가 평가할 입력 없음 → exit 0 으로 통과해 loop 의미 상실. 형식 박스 그대로 따를 것.
-- ❌ Goal Statement 에 측정 불가 추상 표현 ("품질 향상", "안정성 강화") 만 박기 — Stop hook 가 평가 못 함 / false-positive. `grep` / `test` / `jq` / shell command 결과 기반 bash one-liner 만.
+- ❌ Goal Statement 에 `<!-- machine-checks -->` bash block 누락 — Phase 3 Verify 때 모델이 실행할 입력 없음. 형식 박스 그대로 따를 것.
+- ❌ Goal Statement 에 측정 불가 추상 표현 ("품질 향상", "안정성 강화") 만 박기 — 모델이 PASS/FAIL 판정 못 함. `grep` / `test` / `jq` / shell command 결과 기반 bash one-liner 만.
 - ❌ 옵션 list (A/B/C) 를 plain text 로 응답 끝에 dump 하고 turn 종료 — selection chip UI 가 안 떠 사용자 입력 비용 증가, plan-dev 흐름 끊김. AskUserQuestion 의무 (Phase 1-1 `정반대 가능` trigger 매치 시).
 - ❌ opt-in 없이 `Workflow` 툴 호출 — 수십 agent 비용. 사용자가 "workflow"/"multi-agent" 명시 또는 명시 지시(예: "모든 수로 검증")/ultracode on 일 때만. 그 외엔 단일 `Agent`.
 - ❌ cmux 시각화 의도 슬라이스를 `Workflow` 로 돌려 사이드바에서 안 보이게 — Workflow agent 는 cmux surface 아님(상호배타 런타임). 시각 실행은 `--mode=cmux`, 비시각·대규모만 workflow.
@@ -209,13 +206,6 @@
 | `SKIP_CMUX_EDIT_BURST` | unset | `track-cmux-edit-burst` hook 1회 우회 |
 | `DISABLE_CMUX_EDIT_BURST_HOOK` | unset | `track-cmux-edit-burst` hook 영구 비활성화 |
 | `CBP_BURST_FILE` | unset | `track-cmux-edit-burst` hook 카운터 파일 경로 override (테스트 mock) |
-| `SKIP_PLAN_DEV_GOAL` | unset | `enforce-plan-dev-goal.sh` Stop hook 1회 우회 — Goal Statement loop bypass |
-| `DISABLE_PLAN_DEV_GOAL_HOOK` | unset | `enforce-plan-dev-goal.sh` Stop hook 영구 비활성화 |
-| `PLAN_DEV_GOAL_PLAN_PATH` | auto | hook 가 평가할 plan 파일 경로 override (테스트 mock). 미지정 시 marker 의 plan_path 필드 또는 `~/.claude/plans/` 최신 mtime fallback |
-| `PLAN_DEV_GOAL_SESSION_FILE` | `.git/plan-dev-session.json` | marker 파일 경로 override (테스트 mock) |
-| `PLAN_DEV_GOAL_VERBOSE` | unset | PASS 도 stderr 에 요약 출력 |
-| `SKIP_GOAL_AGENT` | unset | `enforce-plan-dev-goal.sh` agent layer 1회 우회 (bash 만 평가) |
-| `DISABLE_GOAL_AGENT` | unset | `enforce-plan-dev-goal.sh` agent layer 영구 비활성 (bash 만 평가) |
 | `SKIP_CMUX_REAP` | unset | `plan-dev-session.sh start` 및 `finish-plan-dev.sh` 의 reap-orphans best-effort 호출 skip |
 | `SKIP_PLAN_DEV_CMUX_CLEANUP` | unset | `finish-plan-dev.sh` push 후 cmux 자식 surface cleanup 1회 우회 |
 | `DISABLE_PLAN_DEV_CMUX_CLEANUP` | unset | `finish-plan-dev.sh` push 후 cmux cleanup 영구 비활성 |

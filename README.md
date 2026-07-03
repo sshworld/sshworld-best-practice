@@ -155,7 +155,7 @@ claude plugin prune                        # 고아 플러그인 일괄 정리
 9. **Commit**: commit-advisor 다중 커밋 분석 → 한글 메시지 + `<type>/<slug>` 브랜치명 추천
 10. **Branch & Push** (Phase 5): `finish-plan-dev.sh` 로 develop/main 분기 push 자동화
 11. **Context 정리** (Phase 6): **`/fork` 스킬을 직접 호출** — 잔여 정리(unlocked worktree-agent-* cleanup 등) + 세션 요약 후, fork 가 마지막 줄에 다음 명령(`/clear`/`/compact`) 추천
-12. **Goal Loop** (자동, 백그라운드): plan 의 `## Goal Statement` 를 Stop hook 가 매 model turn 종료 시 **dual gate** 평가 — (a) `<!-- machine-checks -->` bash block (mechanical) + (b) `goal-checker` agent (Haiku, semantic). 둘 다 PASS 시만 종료. 하나라도 미충족 시 자동 다음 turn 재진입 (native /goal flow 자체 재현). 사용자 입력 0.
+12. **Goal Statement**: plan 의 `## Goal Statement` — Phase 1-1 Acceptance criteria 를 측정가능 form(`<!-- machine-checks -->` bash one-liner) 으로 옮긴 것. Phase 3 Verify 에서 모델이 직접 실행해 완료 판정.
 13. **자식 surface 자동 cleanup** (Phase 5 끝): `finish-plan-dev.sh` 가 push 성공 직후 cmux 자식 surface (`cbp-*` 등 state file 등록 surface) 일괄 close. 사용자 수동 정리 0.
 14. **cross-WS dead orphan 자동 정리**: `plan-dev-session.sh start`(Phase 0) 및 `finish-plan-dev.sh`(Phase 5) 가 best-effort 로 `cmux-pane.sh reap-orphans` 를 호출 — 이전 세션이 finish 없이 종료해 잔존하는 dead 자식 surface 를 모든 `~/.cache/cbp/children-*.json` 에 걸쳐 회수. 살아있는 타 세션 자식은 보호, self surface 제외. 우회: `SKIP_CMUX_REAP=1`.
 
@@ -463,7 +463,7 @@ cmux 환경(`CMUX_WORKSPACE_ID` set) 세션 시작 시 **dispatch-first advisory
 `/sshworld:plan-dev` 는 plan mode 진입(EnterPlanMode → plan 파일 작성 → ExitPlanMode 승인)이 필수다. 콘텐츠 가이드만으로는 모델이 `plan-dev-session.sh start` 만 돌리고 plan mode 를 건너뛴 채 바로 Edit/Write 로 직행할 수 있어, 이를 하네스로 차단한다.
 
 - plan-dev 세션 마커(`<git-common-dir>/sshworld:plan-dev-session.json`)가 **없으면 no-op** — 비-plan-dev 세션은 전혀 영향 없음.
-- "plan mode 거침" 판정 = **marker 의 `start_ts` 이후 작성된 plan 파일(`~/.claude/plans/*.md`)이 존재** (plan mode 진입 = plan 파일 작성, enforce-plan-dev-goal 의 세션-plan 탐지와 동류). 존재 → 통과.
+- "plan mode 거침" 판정 = **marker 의 `start_ts` 이후 작성된 plan 파일(`~/.claude/plans/*.md`)이 존재** (plan mode 진입 = plan 파일 작성). 존재 → 통과.
   - `permission_mode==plan`(plan mode 중) / `==bypassPermissions`(dispatch 자식·명시 우회) → 통과.
   - 자식 worktree(git-dir≠git-common-dir) → skip.
   - start_ts 파싱 불가 → conservative 통과.
@@ -528,9 +528,6 @@ DISABLE_DISPATCH_GATE_HOOK=1   # 영구 비활성
 | `DISPATCH_VERIFY_TRIES=<n>` | 3 | dispatch-slice-pane.sh TUI 기동 검증 최대 재시도 횟수. |
 | `DISPATCH_PERMISSION_MODE=<mode>` | `bypassPermissions` | dispatch-slice-pane.sh 가 자식 claude 에 `--permission-mode <mode>` flag 전달. `default` 시 flag 생략. `DISPATCH_CHILD_CMD` set 시 무시. |
 | `SKIP_PLAN_DEV_FINISH=1` | off | Phase 5 (finish-plan-dev.sh) 1회 우회 |
-| `SKIP_PLAN_DEV_GOAL=1` | off | Stop hook (enforce-plan-dev-goal.sh) 1회 우회 — Goal Statement loop bypass. 자식 dispatch worktree 진행 중에는 hook 자체가 자동 skip 하므로 보통 불필요. |
-| `SKIP_GOAL_AGENT=1` | off | enforce-plan-dev-goal.sh agent layer 1회 우회 (bash 만 평가). semantic 판단 생략. |
-| `DISABLE_GOAL_AGENT=1` | off | agent layer 영구 비활성. claude binary 부재 시 자동 fallback 과 같음. |
 | `SKIP_PLAN_DEV_CMUX_CLEANUP=1` | off | finish-plan-dev.sh push 후 cmux 자식 surface cleanup 1회 우회. |
 | `DISABLE_PLAN_DEV_CMUX_CLEANUP=1` | off | cmux cleanup 영구 비활성. |
 | `SKIP_CMUX_REAP=1` | off | `plan-dev-session.sh start` 및 `finish-plan-dev.sh` 의 reap-orphans best-effort 호출 skip. |
@@ -538,7 +535,6 @@ DISABLE_DISPATCH_GATE_HOOK=1   # 영구 비활성
 | `CBP_STATE_DIR=<path>` | `~/.cache/cbp` | `cmux-pane.sh reap-orphans` 가 스캔하는 state file 디렉토리 override (테스트 mock). |
 | `SKIP_COMMIT_ADVISOR_GATE=1` | off | finish-plan-dev.sh push 직전 commit-advisor 게이트 1회 우회. |
 | `DISABLE_COMMIT_ADVISOR_GATE=1` | off | finish-plan-dev.sh commit-advisor 게이트 영구 비활성화. |
-| `DISABLE_PLAN_DEV_GOAL_HOOK=1` | off | Stop hook 영구 비활성화 |
 | `SKIP_PLAN_MODE_ENFORCE=1` | off | enforce-plan-mode.sh (PreToolUse) 1회 우회 — plan mode 미진입 차단 bypass |
 | `DISABLE_PLAN_MODE_ENFORCE_HOOK=1` | off | enforce-plan-mode.sh 영구 비활성화 |
 | `PLAN_MODE_SESSION_FILE=<path>` | auto | enforce-plan-mode.sh 마커 경로 override (테스트 mock) |
@@ -546,9 +542,6 @@ DISABLE_DISPATCH_GATE_HOOK=1   # 영구 비활성
 | `SKIP_DISPATCH_GATE=1` | off | enforce-dispatch-gate.sh 1회 우회 — dispatch 승인 게이트 bypass |
 | `DISABLE_DISPATCH_GATE_HOOK=1` | off | enforce-dispatch-gate.sh 영구 비활성화 |
 | `DISPATCH_GATE_SESSION_FILE=<path>` | auto | enforce-dispatch-gate.sh 의 세션 marker 경로 override (테스트 mock). `PLAN_MODE_PLANS_DIR` 도 dispatch 게이트의 plan 파일 탐색에 사용됨. |
-| `PLAN_DEV_GOAL_PLAN_PATH=<path>` | auto | hook 가 평가할 plan 파일 경로 override (테스트 mock) |
-| `PLAN_DEV_GOAL_SESSION_FILE=<path>` | `.git/sshworld:plan-dev-session.json` | marker 파일 경로 override (테스트 mock) |
-| `PLAN_DEV_GOAL_VERBOSE=1` | off | PASS 도 stderr 에 요약 출력 |
 | `DISABLE_PLAN_DEV_FINISH=1` | off | Phase 5 영구 비활성화 |
 | `FINISH_AUTO_PUSH_WITHOUT_MARKER=1` | off | marker 없을 때 silent skip 대신 현재 HEAD branch 로 `git push -u origin` 자동 시도 |
 | `GIT_PUSH_CMD=<cmd>` | `git push` | finish-plan-dev.sh 의 push 명령 override (테스트용) |

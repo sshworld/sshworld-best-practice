@@ -71,15 +71,9 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/plan-dev-session.sh start
 
 Slice 정의 시 **type 도 같이 결정**: `feat|fix|refactor|test|docs|chore`. (commit type. **branch prefix 는 `feat`→`feature/`, 그 외 type 그대로** — dispatch 가 자동 매핑. commit 메시지엔 scope 안 씀: `feat: …` 형식.)
 
-#### Goal Statement — plan-dev 자체 loop 의 gate
+#### Goal Statement — 측정가능 완료 기준
 
-**목적**: plan-dev workflow 가 native `/goal` 처럼 자체 loop 하는 mechanism. Stop hook (`enforce-plan-dev-goal.sh`) 가 매 model turn 종료 시점에 **dual gate** 평가:
-1. **bash layer (mechanical)** — plan 파일의 `<!-- machine-checks -->` bash block 실행. exit 0 = PASS.
-2. **agent layer (semantic)** — bash layer 전부 PASS 후 `goal-checker` agent (Haiku) 호출. plan 의 Semantic goal + `start_ref..HEAD` diff 보고 JSON `{pass, missing}` 응답.
-
-두 layer 다 PASS → Stop 허용. 하나라도 fail → exit 2 + stderr reason → 모델 자동 다음 turn. 사용자 `/goal` 입력 0.
-
-agent layer 는 bash 의 false-positive (단어 매치만으로 PASS) / false-negative (네이밍 mismatch) 를 보완. `claude -p` headless 호출, timeout 30s. claude binary 부재 / JSON 파싱 실패 시 bash 만 PASS 으로 conservative fallback.
+**목적**: Phase 1-1 의 Acceptance criteria 를 측정 가능한 form 으로 transform 한 체크리스트. **Phase 3 Verify 에서 모델이 직접 실행**해 슬라이스 완료를 판정한다 (자동 loop 아님 — 모델이 매 verify 때 스스로 돌려보고 결과를 확인).
 
 **출처**: Phase 1-1 의 Acceptance criteria 를 측정 가능 form 으로 transform.
 
@@ -94,18 +88,14 @@ test -x scripts/foo.sh
 ~~~
 <!-- /machine-checks -->
 
-**Semantic goal**: 한 문장 자연어 — commit-advisor 메시지 + 사람 가독성. hook 평가 대상 X.
+**Semantic goal**: 한 문장 자연어 — commit-advisor 메시지 + 사람 가독성.
 ~~~
 
 **제약**:
 - machine-checks 라인 = bash one-liner (exit 0 = PASS)
 - **측정 가능** 만 — `grep` / `test` / `jq` / shell command 결과 기반
 - 추상 표현 금지 (e.g. "품질 향상" ✗, `grep -c "X" file` ≥ 3 ✓)
-- 전체 길이 ≤4000 chars (native /goal condition 한도 호환)
-
-**우회** (예외):
-- Hook 전체: `SKIP_PLAN_DEV_GOAL=1` (1회) / `DISABLE_PLAN_DEV_GOAL_HOOK=1` (영구)
-- agent layer 만: `SKIP_GOAL_AGENT=1` (1회, bash 만 평가) / `DISABLE_GOAL_AGENT=1` (영구, bash 만 평가)
+- 전체 길이 ≤4000 chars
 
 ### 1-3. Plan Review (강력 권장, 단 1회)
 `Agent(subagent_type="Plan")` 으로 staff engineer 비평 수령. 5분 이내.
@@ -145,6 +135,7 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/plan-dev-progress.sh start --total=<N>
 **verifier 루프:**
 - rebase 완료 후 `verifier` 에이전트 호출.
 - 실패 시 원인 + 수정안 적용 → 재호출. 최대 5회.
+- plan 의 **Goal Statement** `<!-- machine-checks -->` 체크리스트를 모델이 직접 실행해 PASS 확인 (fail 항목 있으면 fix 후 재실행).
 
 > 🔬 **통합 테스트 의무** (격리 dispatch 사용 시): rebase 후 verifier 는 **슬라이스별 격리 테스트** (각 worktree 안에서 PASS 확인된 것) + **전체 통합 테스트** (rebase 머지 후 부모 branch 에서 BUILD + TEST 전체 실행) 둘 다 실행. 격리 PASS 인데 통합 FAIL = 슬라이스 간 숨은 의존성 노출 — root cause 분석 후 fix 슬라이스 추가 또는 슬라이스 재분해. 격리만 보고 PASS 처리 금지.
 
