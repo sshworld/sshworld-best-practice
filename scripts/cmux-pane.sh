@@ -30,6 +30,9 @@
 #                                CBP_DISABLE_WARMUP=1 이면 검증 루프 자체를 스킵 (기존 동작 보존).
 #   CBP_WARMUP_SLEEP           — _do_launch_grid 검증 루프 내 각 슬립 초 (디폴트 0.5).
 #   CBP_REAP_ORPHANS_DRY_RUN   — reap-orphans dry-run 모드. 1 이면 close 없이 "would reap <ref>" 출력만.
+#   CBP_REAP_ORPHANS_GRACE_SEC — reap-orphans 신생 surface grace 초 (디폴트 30). ts= 가 now 기준 이
+#                                초 이내면 liveness 검사 자체를 skip 하고 보존 (launch PTY warmup 중
+#                                오살 방지). ts 비수치/결측 → grace 미적용(기존 liveness 검사).
 
 set -uo pipefail
 
@@ -892,18 +895,30 @@ do_set_status() {
 # 부모 세션이 finish 없이 종료해 영구 잔존하는 dead surface 를 모든 state file 에 걸쳐
 # 안전하게 회수. 살아있는(alive) surface 는 건드리지 않음.
 #
-# 알고리즘:
+# 알고리즘 (2-phase lock — 병렬 launch append 유실 방지):
 #   1. state dir(CBP_STATE_DIR, 디폴트 ~/.cache/cbp) 의 children-*.json 전체 스캔.
-#   2. 각 줄 "surface=<ref>|...|ws=<WS>" 파싱:
-#      - self surface (CMUX_SURFACE_ID 일치) → skip.
-#      - read-screen --surface <ref> --workspace <WS> rc0 → alive → 건드리지 않음, 줄 유지.
-#        (ws_ref 있으면 --workspace 포함 — cross-workspace surface 오판 방지)
-#      - rc 비0 → dead:
-#          dry-run(CBP_REAP_ORPHANS_DRY_RUN=1) → "would reap <ref>" 출력, 줄 유지.
-#          아니면 → close-surface --surface <ref> --workspace <WS> (best-effort) + 줄 제거.
-#   3. 처리 후 빈 state file → rm.
-#   4. CMUX_BIN 미존재/실패 시 conservative exit 0.
-#   5. 요약: "reaped N, kept M[, dry-run]" stdout.
+#   2. state file 별:
+#      a. [lock 하] snapshot read (파일 내용 복사).
+#      b. [lock 밖] snapshot 의 각 줄 "surface=<ref>|...|ts=<epoch>|ws=<WS>" 파싱해 liveness 판정:
+#         - self surface (CMUX_SURFACE_ID 일치) → skip(보존).
+#         - ts 가 수치이고 now 기준 CBP_REAP_ORPHANS_GRACE_SEC(디폴트 30) 이내
+#           → liveness 검사 자체 skip, 보존 (launch PTY warmup 오살 방지).
+#           ts 비수치/결측 → grace 미적용(기존 liveness 검사).
+#           주의: CBP_LAUNCH_VERIFY_TRIES/CBP_WARMUP_SLEEP 확대 시 warmup 이 grace 초를
+#           넘을 수 있음 — 그 경우 grace 상향 필요.
+#         - read-screen --surface <ref> [--workspace <WS>] rc0 → alive → 건드리지 않음.
+#           (ws_ref 있으면 --workspace 포함 — cross-workspace surface 오판 방지)
+#         - rc 비0 → dead:
+#             dry-run(CBP_REAP_ORPHANS_DRY_RUN=1) → "would reap <ref>" 출력, 줄 유지(rewrite 없음).
+#             아니면 → close-surface --surface <ref> [--workspace <WS>] (ws_ref 비면 생략,
+#             best-effort) + dead-line 목록에 추가.
+#         이 구간은 cmux CLI 왕복(느림/hang 가능)이라 lock 밖에서 수행 — lock 쥔 채 돌리면
+#         `_cbp_lock_acquire` 가 timeout 없는 spin 이라 병렬 launch 가 정지함(금지).
+#      c. [lock 하, dead-line 있고 !dry-run 시만] 파일 재-read → dead-line 과 정확히 일치하는
+#         줄만 제거하고 rewrite. b 단계 동안 다른 프로세스가 append 한 새 줄은 매칭되지 않으므로
+#         그대로 보존됨. 빈 파일 되면 rm.
+#   3. CMUX_BIN 미존재/실패 시 conservative exit 0.
+#   4. 요약: "reaped N, kept M[, dry-run]" stdout.
 # ----------------------------------------------------------------
 do_reap_orphans() {
   # CMUX_BIN 존재 확인 — 미존재 시 no-op exit 0
@@ -915,6 +930,7 @@ do_reap_orphans() {
   local state_dir="${CBP_STATE_DIR:-${HOME}/.cache/cbp}"
   local dry_run="${CBP_REAP_ORPHANS_DRY_RUN:-0}"
   local self_surface="${CMUX_SURFACE_ID:-}"
+  local grace_sec="${CBP_REAP_ORPHANS_GRACE_SEC:-30}"
 
   # state dir 없으면 no-op
   if [ ! -d "$state_dir" ]; then
@@ -924,13 +940,24 @@ do_reap_orphans() {
 
   local total_reaped=0
   local total_kept=0
+  local now
+  now=$(date +%s)
 
   # children-*.json 全스캔
   local sf
   for sf in "$state_dir"/children-*.json; do
     [ -f "$sf" ] || continue   # glob 불일치(no match) 시 스킵
 
-    local kept_lines=""
+    local lockpath="${sf}.lock"
+
+    # ── phase a: lock 하 snapshot read ──────────────────────────────────
+    _cbp_lock_acquire "$lockpath"
+    local snapshot
+    snapshot=$(cat "$sf" 2>/dev/null || true)
+    _cbp_lock_release "${lockpath}.d"
+
+    # ── phase b: lock 밖 liveness 판정 ──────────────────────────────────
+    local dead_lines=""
     local sf_reaped=0
     local sf_kept=0
 
@@ -943,22 +970,35 @@ do_reap_orphans() {
       # ws=<WS> 추출
       local ws_ref
       ws_ref=$(printf '%s' "$line" | grep -o 'ws=[^|]*' | sed 's/ws=//')
+      # ts=<epoch> 추출
+      local ts_ref
+      ts_ref=$(printf '%s' "$line" | grep -o 'ts=[^|]*' | sed 's/ts=//')
 
-      [ -z "$surface_ref" ] && {
+      if [ -z "$surface_ref" ]; then
         # 파싱 불가 줄 → 보존 (conservative)
-        kept_lines="${kept_lines}${line}
-"
-        sf_kept=$((sf_kept + 1))
-        continue
-      }
-
-      # self surface → skip (보존)
-      if [ -n "$self_surface" ] && [ "$surface_ref" = "$self_surface" ]; then
-        kept_lines="${kept_lines}${line}
-"
         sf_kept=$((sf_kept + 1))
         continue
       fi
+
+      # self surface → skip (보존)
+      if [ -n "$self_surface" ] && [ "$surface_ref" = "$self_surface" ]; then
+        sf_kept=$((sf_kept + 1))
+        continue
+      fi
+
+      # 신생 grace: ts 가 수치이고 grace 이내면 liveness 검사 자체 skip.
+      # 비수치/결측(빈 문자열 포함) → 이 case 에 안 걸려 기존 동작(liveness 검사)으로 폴백.
+      case "$ts_ref" in
+        *[!0-9]*|'')
+          ;;
+        *)
+          local age=$((now - ts_ref))
+          if [ "$age" -lt "$grace_sec" ]; then
+            sf_kept=$((sf_kept + 1))
+            continue
+          fi
+          ;;
+      esac
 
       # 생존 확인: read-screen rc0=alive, 비0=dead.
       # cross-workspace surface 는 --workspace 없이 조회 시 "not found" 로 dead 오판 위험.
@@ -967,35 +1007,54 @@ do_reap_orphans() {
       [ -n "$ws_ref" ] && _liveness_cmd+=(--workspace "$ws_ref")
       if "${_liveness_cmd[@]}" >/dev/null 2>&1; then
         # alive → 보존
-        kept_lines="${kept_lines}${line}
-"
         sf_kept=$((sf_kept + 1))
       else
         # dead
         if [ "$dry_run" = "1" ]; then
           echo "would reap $surface_ref"
-          kept_lines="${kept_lines}${line}
-"
           sf_kept=$((sf_kept + 1))
         else
-          # best-effort close-surface (실패 무시)
-          "$CMUX_BIN" close-surface --surface "$surface_ref" --workspace "$ws_ref" >/dev/null 2>&1 || true
+          # best-effort close-surface (실패 무시). ws_ref 비면 --workspace 생략 (liveness 와 동일 패턴).
+          local _close_cmd=("$CMUX_BIN" close-surface --surface "$surface_ref")
+          [ -n "$ws_ref" ] && _close_cmd+=(--workspace "$ws_ref")
+          "${_close_cmd[@]}" >/dev/null 2>&1 || true
+          dead_lines="${dead_lines}${line}
+"
           sf_reaped=$((sf_reaped + 1))
         fi
       fi
-    done < "$sf"
+    done <<EOF
+$snapshot
+EOF
 
     total_reaped=$((total_reaped + sf_reaped))
     total_kept=$((total_kept + sf_kept))
 
-    if [ "$dry_run" != "1" ]; then
-      if [ -z "$(printf '%s' "$kept_lines" | tr -d '[:space:]')" ]; then
-        # 남은 줄 없음 → state file rm
+    # ── phase c: lock 하 재-read → dead-line 만 제거하고 rewrite ────────────
+    # dry-run 은 rewrite 자체가 없으므로 이 단계 불필요. dead-line 없으면(전부 alive/grace/self)
+    # rewrite 할 것도 없으므로 lock 재획득 자체를 skip.
+    if [ "$dry_run" != "1" ] && [ -n "$dead_lines" ]; then
+      _cbp_lock_acquire "$lockpath"
+      local current
+      current=$(cat "$sf" 2>/dev/null || true)
+      local remaining=""
+      while IFS= read -r cur_line; do
+        [ -z "$cur_line" ] && continue
+        if printf '%s\n' "$dead_lines" | grep -qxF "$cur_line"; then
+          continue
+        fi
+        remaining="${remaining}${cur_line}
+"
+      done <<EOF2
+$current
+EOF2
+
+      if [ -z "$(printf '%s' "$remaining" | tr -d '[:space:]')" ]; then
         rm -f "$sf"
       else
-        # 살아있는 줄만 덮어쓰기
-        printf '%s' "$kept_lines" > "$sf"
+        printf '%s' "$remaining" > "$sf"
       fi
+      _cbp_lock_release "${lockpath}.d"
     fi
   done
 
