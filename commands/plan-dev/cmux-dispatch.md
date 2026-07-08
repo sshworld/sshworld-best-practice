@@ -49,7 +49,7 @@
 
 #### Dispatch wrapper 가용성 검증 (회복력 룰)
 
-- (a) wrapper PWD-relative path (`${CLAUDE_PLUGIN_ROOT}/scripts/dispatch-slice-pane.sh`) 가 안 보이면 → **알려진 절대경로** (`~/scripts/dispatch-slice-pane.sh` 글로벌 설치 결과, 또는 SessionStart system-reminder 가 노출한 driver 경로) 로 직접 호출 시도. 검색 결과 부재 ≠ 실행 불가.
+- (a) wrapper PWD-relative path (`${CLAUDE_PLUGIN_ROOT}/scripts/dispatch-slice-pane.sh`) 가 안 보이면 → SessionStart system-reminder 가 노출한 driver 경로로 직접 호출 시도. 검색 결과 부재 ≠ 실행 불가.
 - (b) 검색 권한 거부 (find/glob/grep 막힘) ≠ 실행 권한 거부. 검색 막혔다고 실행도 막혔다고 단정 금지 — 절대경로 호출 자체는 별도 권한.
 - (c) classifier/sandbox 가 권한 거부 메시지에 "사용자에게 설명/확인" 안내를 포함하면 그대로 따른다. 자동 fallback 금지.
 - (d) 사용자가 명시 선택한 mode 의 **핵심 가치** (cmux=시각화, subagent=토큰 추적, pane=tmux 격리) 를 날리는 fallback 결정은 **AskUserQuestion 으로 확인**. 자동 결정 금지.
@@ -136,14 +136,14 @@ cleanup(`git branch -D` / `worktree remove`)은 **머지 성공 확인 후**. `r
 # 1. worktree 먼저 제거 (브랜치 점유 해제)
 git worktree remove --force .worktrees/<slug-a>
 # 2. rebase (점유 해제 후에만 가능)
-git rebase feat/<slug-a>
+git rebase feature/<slug-a>
 # 3. 머지 성공 확인 후 브랜치 삭제
-git branch -D feat/<slug-a>
+git branch -D feature/<slug-a>
 
 # 다음 슬라이스도 동일 패턴 반복
 git worktree remove --force .worktrees/<slug-b>
-git rebase feat/<slug-b>
-git branch -D feat/<slug-b>
+git rebase feature/<slug-b>
+git branch -D feature/<slug-b>
 ```
 
 ### disjoint 슬라이스는 cherry-pick 권장
@@ -152,11 +152,11 @@ git branch -D feat/<slug-b>
 
 ```bash
 # disjoint 슬라이스 통합 (파일 영역 안 겹칠 때) — main 에서 바로
-git cherry-pick feat/<slug-a>       # 해당 커밋만 main 에 얹기
-git cherry-pick feat/<slug-b>
+git cherry-pick feature/<slug-a>       # 해당 커밋만 main 에 얹기
+git cherry-pick feature/<slug-b>
 # 확인 후 정리
-git worktree remove --force .worktrees/<slug-a> && git branch -D feat/<slug-a>
-git worktree remove --force .worktrees/<slug-b> && git branch -D feat/<slug-b>
+git worktree remove --force .worktrees/<slug-a> && git branch -D feature/<slug-a>
+git worktree remove --force .worktrees/<slug-b> && git branch -D feature/<slug-b>
 ```
 
 rebase(fast-forward)는 슬라이스가 **같은 파일 영역**을 건드려 순서가 중요할 때만 사용한다. 판단 기준 = Slice File Map 의 Files 교집합 여부.

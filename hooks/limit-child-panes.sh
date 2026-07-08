@@ -3,7 +3,7 @@
 # 자식 tmux pane spawn 명령 (`tmux-cli launch`, `${CLAUDE_PLUGIN_ROOT}/scripts/tmux-pane.sh launch`,
 # `${CLAUDE_PLUGIN_ROOT}/scripts/cmux-pane.sh launch`, `${CLAUDE_PLUGIN_ROOT}/scripts/dispatch-slice-pane.sh`) 가 호출될 때,
 # 현재 자식 (tmux pane + cmux workspace) 합산 수가
-# CLAUDE_MAX_CHILD_PANES (기본 5) 이상이면 차단.
+# CLAUDE_MAX_CHILD_PANES (기본 99) 이상이면 차단.
 #
 # stdin: {"tool_name":"Bash","tool_input":{"command":"..."}, ...}
 # exit 0: 통과 / exit 2: 차단 (stderr 에 사유 + 우회법)

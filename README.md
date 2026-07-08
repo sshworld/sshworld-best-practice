@@ -10,7 +10,7 @@
 
 ```
 .claude-plugin/
-├── plugin.json               # 플러그인 manifest (name: plan-dev)
+├── plugin.json               # 플러그인 manifest (name: sshworld)
 └── marketplace.json          # marketplace 배포 메타데이터
 commands/
 │   ├── plan-dev.md           # Phase 0~6 워크플로 (Session Start → Plan → TDD → Verify → Commit → Branch & Push → Context 정리)
@@ -33,6 +33,7 @@ hooks/
 │   ├── enforce-cmux-context.sh # cmux 안에서 tmux 계열 명령 시도 시 advisory warning
 │   ├── track-cmux-edit-burst.sh # cmux env Edit/Write 누적 advisory (dispatch-first 유도). 자식 worktree 감지 시 skip
 │   ├── enforce-plan-mode.sh  # PreToolUse Write|Edit — /sshworld:plan-dev plan mode 미진입 시 차단. 비-plan-dev 세션 no-op
+│   ├── enforce-cmux-dispatch.sh # PreToolUse ExitPlanMode — cmux env plan direct-edit 차단
 │   ├── cmux-dispatch-hint.sh # SessionStart — cmux env 면 "dispatch 기본" advisory inject (비-cmux 무출력)
 │   ├── enforce-dispatch-gate.sh # PreToolUse Bash — plan mode 미진입 시 dispatch-slice-pane.sh 실행 차단
 │   ├── statusline-tokens.sh  # (opt-in) 하단 status bar 모드 — 기본은 token-stats.sh 사용
@@ -47,7 +48,10 @@ scripts/
 ├── plan-dev-session.sh       # plan-dev 세션 marker 관리 (start/query/clear)
 ├── plan-dev-progress.sh      # plan-dev 진행률 cmux push 헬퍼 (start/tick/show)
 ├── finish-plan-dev.sh        # develop/main 분기 push 자동화 + marker clear
-└── trust-dir.sh              # 자식 worktree trust 자동 시딩 — cross-machine bypass (hasTrustDialogAccepted)
+├── trust-dir.sh              # 자식 worktree trust 자동 시딩 — cross-machine bypass (hasTrustDialogAccepted)
+├── release.sh                # 릴리즈 자동화 — draft/publish/backfill (버전 bump+태그+push+gh release)
+├── merge-settings.sh         # settings.json 병합 헬퍼 — allow/deny union + hooks dedup (idempotent install)
+└── cmux-title-chpwd.sh       # zsh chpwd hook — cd 마다 cmux tab/workspace 제목 자동 갱신
 ```
 
 ---
@@ -121,7 +125,7 @@ claude plugin prune                        # 고아 플러그인 일괄 정리
       "Bash(cmux rename-tab*)", "Bash(cmux workspace-action*)",
       "Bash(*/scripts/tmux-pane.sh*)", "Bash(*/scripts/cmux-pane.sh*)",
       "Bash(*/scripts/detect-pane-env.sh*)", "Bash(*/scripts/dispatch-slice-pane.sh*)",
-      "Bash(*/scripts/finish-plan-dev.sh*)", "Bash(*/scripts/sshworld:plan-dev-progress.sh*)"
+      "Bash(*/scripts/finish-plan-dev.sh*)", "Bash(*/scripts/plan-dev-progress.sh*)"
     ],
     "deny": [
       "Bash(rm -rf*)", "Bash(git push --force*)", "Bash(git push -f*)",
@@ -218,7 +222,7 @@ Workflow agent 는 **cmux surface 가 아니다** — 다른 런타임이라 한
 
 | 규칙 | 설명 |
 |---|---|
-| 브랜치명 형식 | `<type>/<slug>` — `feat/user-signup`, `fix/auth-token`, `test/session-marker` 등 |
+| 브랜치명 형식 | `<type>/<slug>` — `feature/user-signup`(type=feat→branch prefix feature/), `fix/auth-token`, `test/session-marker` 등 |
 | type 결정 시점 | plan 파일의 Vertical Slices 섹션에서 각 slice 별로 결정 |
 | 머지 방식 | **rebase fast-forward** — `git rebase <type>/<slug>` + `git branch -D` (merge commit 없음). `git merge` 금지 — merge 커밋이 S라벨·잡음을 협업 히스토리에 누출. |
 | `slice/` prefix | 폐기됨 — `<type>/<slug>` 로 전환 (기존 `slice/` 브랜치는 dispatch 가 재사용 가능) |
@@ -318,13 +322,13 @@ cmux read-screen --surface surface:<N> --lines 30 | grep -E '^[[:space:]]*(⏺[[
 
 ```bash
 # 세션 시작 + status pill 초기화 (총 슬라이스 수 지정)
-scripts/sshworld:plan-dev-progress.sh start --total=3
+scripts/plan-dev-progress.sh start --total=3
 
 # 슬라이스 완료 시 카운트 +1 + pill / 알림 갱신
-scripts/sshworld:plan-dev-progress.sh tick --slug=user-signup
+scripts/plan-dev-progress.sh tick --slug=user-signup
 
 # 현재 진행률 표 + 최근 알림 출력
-scripts/sshworld:plan-dev-progress.sh show
+scripts/plan-dev-progress.sh show
 ```
 
 `plan-dev --mode=cmux` 흐름에서 각 implementor slice 완료 후 자동 호출됨 — 사용자는 cmux 사이드바에서 `✨ 1/3` → `✨ 2/3` → `✨ 3/3` 으로 진행률 추적 가능.
@@ -407,31 +411,47 @@ export DISABLE_PANE_LIMIT_HOOK=1
 
 ### 5) enforce-cmux-context.sh (PreToolUse: Bash)
 
-cmux 앱 안에서 실행 중일 때(`CMUX_WORKSPACE_ID` set), 부모 Claude 가 `tmux` / `tmux-cli` / `tmux-pane.sh` 계열 명령을 호출하면 차단/경고.
+cmux 앱 안에서 실행 중일 때(`CMUX_WORKSPACE_ID` set), 부모 Claude 가 `tmux` / `tmux-cli` / `tmux-pane.sh` 계열 명령을 호출하면 advisory 경고.
 
-- **hook 자체의 디폴트**: advisory (경고만, 통과). `CMUX_CONTEXT_HOOK_STRICT=1` 설정 시 차단(exit 2).
-- **본 repo 의 settings.json (project + user)**: `CMUX_CONTEXT_HOOK_STRICT=1` 을 hook command 에 **inline 으로 강제** — 즉 본 repo 환경에서는 기본이 strict.
-- 다른 프로젝트에서 이 hook 만 가져다 쓰면 advisory 가 디폴트.
+- **디폴트: advisory only** (경고만 출력, exit 0 통과). 본 repo 의 `hooks/hooks.json` 및 `.claude/settings.json` 모두 hook command 에 `CMUX_CONTEXT_HOOK_STRICT=1` 을 **inline 으로 강제하지 않는다** — 프로젝트/플러그인 설치 환경 전부 advisory 가 기본.
+- 차단(exit 2) 을 원하면 **사용자가 자신의 환경에** `CMUX_CONTEXT_HOOK_STRICT=1` 을 명시적으로 export 해야 한다 (opt-in strict).
+- `*/cmux-pane.sh` 는 권장 도구라 매치 대상이 아님 — cmux 환경에서 이 wrapper 를 쓰면 애초에 advisory 도 뜨지 않는다.
 
 ```bash
 # advisory (기본) — 경고만 출력, 실행은 통과
 CMUX_WORKSPACE_ID=ws:1 bash scripts/tmux-pane.sh launch zsh
-# stderr: ⚠️ cmux 안에서 tmux 계열 명령 시도 ...
+# stderr: ⚠️  cmux 안에서 tmux 계열 명령 시도 — cmux 환경에선 ${CLAUDE_PLUGIN_ROOT}/scripts/cmux-pane.sh 사용 권장.
 
-# strict 모드 — 차단
-CMUX_CONTEXT_HOOK_STRICT=1 bash scripts/tmux-pane.sh launch zsh
+# strict 모드 opt-in — 차단
+CMUX_CONTEXT_HOOK_STRICT=1 CMUX_WORKSPACE_ID=ws:1 bash scripts/tmux-pane.sh launch zsh
 # exit 2
 
-# 1회 우회
+# 1회 우회 (advisory 자체를 억제)
 SKIP_CMUX_CONTEXT_HOOK=1 bash scripts/tmux-pane.sh launch zsh
 
 # 영구 비활성화
 export DISABLE_CMUX_CONTEXT_HOOK=1
 ```
 
+#### skip-once marker-file escape (enforce-plan-mode / enforce-cmux-dispatch / enforce-dispatch-gate 공통)
+
+`enforce-cmux-context.sh` 와 달리, plan-dev 게이트 3종(`enforce-plan-mode.sh`, `enforce-cmux-dispatch.sh`, `enforce-dispatch-gate.sh`)은 env 우회 외에 **1회용 marker 파일**로도 escape 가능. 파일이 존재하면 hook 이 검사 시점에 그 파일을 `rm` 하며 통과(자동 1회 소모):
+
+| hook | marker 파일명 |
+|---|---|
+| `enforce-plan-mode.sh` | `cbp-skip-once-plan-mode` |
+| `enforce-cmux-dispatch.sh` | `cbp-skip-once-cmux-dispatch` |
+| `enforce-dispatch-gate.sh` | `cbp-skip-once-dispatch-gate` |
+
+경로: git repo 면 `<git-common-dir>/<marker 파일명>`, 비-git cmux 폴백은 `$HOME/.cache/cbp/<marker 파일명>-<sanitized CMUX_WORKSPACE_ID>` (`enforce-cmux-dispatch.sh` 한정, 나머지 두 hook 은 git-common-dir 만 지원).
+
+```bash
+touch "$(git rev-parse --git-common-dir 2>/dev/null || echo "$HOME/.cache/cbp")/cbp-skip-once-plan-mode"
+```
+
 ### 6) track-cmux-edit-burst.sh (PreToolUse: Write|Edit) — **자식 worktree 자동 skip**
 
-cmux 환경에서 Edit/Write 누적 횟수를 카운트해 임계치(기본 2회) 도달 시 `dispatch-slice-pane.sh --mode=cmux` 사용을 안내하는 advisory 출력. 5분 idle 시 자동 리셋. `dispatch-slice-pane.sh` launch 시 명시 리셋.
+cmux 환경에서 Edit/Write 누적 횟수를 카운트해 임계치(기본 50회) 도달 시 `dispatch-slice-pane.sh --mode=cmux` 사용을 안내하는 advisory 출력. 5분 idle 시 자동 리셋. `dispatch-slice-pane.sh` launch 시 명시 리셋.
 
 ```bash
 CMUX_EDIT_BURST_STRICT=1       # 차단 모드 (exit 2, 디폴트 unset)
@@ -440,7 +460,7 @@ SKIP_CMUX_EDIT_BURST=1         # 1회 우회
 DISABLE_CMUX_EDIT_BURST_HOOK=1 # 영구 비활성화
 ```
 
-- **본 repo 의 settings.json**: inline `CMUX_EDIT_BURST_STRICT=1` 은 제거됨 → 디폴트 **advisory only** (임계치 5). 6번째부터 stderr 메시지만, 차단 X. 강제 차단 원하면 사용자 환경에 `export CMUX_EDIT_BURST_STRICT=1` 명시.
+- **본 repo 의 settings.json**: inline `CMUX_EDIT_BURST_STRICT=1` 은 제거됨 → 디폴트 **advisory only** (임계치 50). 51번째부터 stderr 메시지만, 차단 X. 강제 차단 원하면 사용자 환경에 `export CMUX_EDIT_BURST_STRICT=1` 명시.
 
 ### 7) cmux-dispatch-hint.sh (SessionStart)
 
@@ -462,7 +482,7 @@ cmux 환경(`CMUX_WORKSPACE_ID` set) 세션 시작 시 **dispatch-first advisory
 
 `/sshworld:plan-dev` 는 plan mode 진입(EnterPlanMode → plan 파일 작성 → ExitPlanMode 승인)이 필수다. 콘텐츠 가이드만으로는 모델이 `plan-dev-session.sh start` 만 돌리고 plan mode 를 건너뛴 채 바로 Edit/Write 로 직행할 수 있어, 이를 하네스로 차단한다.
 
-- plan-dev 세션 마커(`<git-common-dir>/sshworld:plan-dev-session.json`)가 **없으면 no-op** — 비-plan-dev 세션은 전혀 영향 없음.
+- plan-dev 세션 마커(`<git-common-dir>/plan-dev-session.json`)가 **없으면 no-op** — 비-plan-dev 세션은 전혀 영향 없음.
 - "plan mode 거침" 판정 = **marker 의 `start_ts` 이후 작성된 plan 파일(`~/.claude/plans/*.md`)이 존재** (plan mode 진입 = plan 파일 작성). 존재 → 통과.
   - `permission_mode==plan`(plan mode 중) / `==bypassPermissions`(dispatch 자식·명시 우회) → 통과.
   - 자식 worktree(git-dir≠git-common-dir) → skip.
@@ -513,10 +533,10 @@ DISABLE_DISPATCH_GATE_HOOK=1   # 영구 비활성
 |---|---|---|
 | `CLAUDE_TDD_STRICT=1` | off | TDD 위반 시 Write/Edit 차단 |
 | `DOC_IMPACT=none|updated` | (미지정 시 차단) | commit 시 DOC 영향 명시 |
-| `SKIP_DOC_SYNC=1` | off | doc-sync hook 1회 우회 (deprecated — DOC_IMPACT 사용) |
+| `SKIP_DOC_SYNC=1` | off | doc-sync hook 1회 우회 |
 | `DISABLE_DOC_SYNC_HOOK=1` | off | doc-sync hook 영구 비활성화 |
 | `DISABLE_TOKEN_STATS=1` | off | token-stats hook 비활성화 |
-| `CLAUDE_MAX_CHILD_PANES=N` | 5 | 자식 tmux pane 상한 (limit-child-panes hook) |
+| `CLAUDE_MAX_CHILD_PANES=N` | 99 | 자식 tmux+cmux pane 합산 상한 (limit-child-panes hook, 사실상 무제한) |
 | `DISABLE_PANE_LIMIT_HOOK=1` | off | limit-child-panes hook 비활성화 |
 | `FORCE_SELF_KILL=1` | off | tmux-pane.sh kill 의 자기 pane 거부 우회 |
 | `TMUX_PANE_NO_LAYOUT=1` | off | tmux-pane.sh launch 의 main-vertical layout 자동 적용 끄기 |
@@ -545,7 +565,7 @@ DISABLE_DISPATCH_GATE_HOOK=1   # 영구 비활성
 | `DISABLE_PLAN_DEV_FINISH=1` | off | Phase 5 영구 비활성화 |
 | `FINISH_AUTO_PUSH_WITHOUT_MARKER=1` | off | marker 없을 때 silent skip 대신 현재 HEAD branch 로 `git push -u origin` 자동 시도 |
 | `GIT_PUSH_CMD=<cmd>` | `git push` | finish-plan-dev.sh 의 push 명령 override (테스트용) |
-| `PLAN_DEV_SESSION_BIN=<path>` | `scripts/sshworld:plan-dev-session.sh` | 세션 헬퍼 경로 override (`finish-plan-dev.sh` / `plan-dev-progress.sh` 공용, 테스트용) |
+| `PLAN_DEV_SESSION_BIN=<path>` | `scripts/plan-dev-session.sh` | 세션 헬퍼 경로 override (`finish-plan-dev.sh` / `plan-dev-progress.sh` 공용, 테스트용) |
 | `CMUX_PANE_BIN=<path>` | `scripts/cmux-pane.sh` | `plan-dev-progress.sh` 가 cmux push 에 사용할 wrapper 경로 override (테스트용) |
 | `PROGRESS_DRY_RUN=1` | off | `plan-dev-progress.sh` 의 notify/set-status 단계 dry-run (`cmux-pane.sh` 가 처리) |
 | `CMUX_BIN=<path>` | `cmux` | cmux-pane.sh / detect-pane-env.sh 가 사용할 cmux 바이너리 경로 (테스트 mock 에 사용) |
@@ -569,7 +589,7 @@ DISABLE_DISPATCH_GATE_HOOK=1   # 영구 비활성
 - tmux 좁힌 패턴: `tmux new-window*`, `tmux send-keys*`, `tmux capture-pane*`, `tmux display-message*`, `tmux list-panes*`, `tmux kill-pane*`, `tmux-cli*`
 - cmux 관리: `cmux new-workspace*`, `cmux new-pane*`, `cmux new-split*`, `cmux rename-tab*`, `cmux workspace-action*`, `cmux send *`, `cmux send-key*`, `cmux read-screen*`, `cmux capture-pane*`, `cmux list-workspaces*`, `cmux list-panes*`, `cmux list-pane-surfaces*`, `cmux close-surface*`, `cmux close-workspace*`, `cmux tree*`, `cmux ping*`, `cmux identify*`
 - cmux 사이드바 UX: `cmux notify*`, `cmux set-status*`, `cmux set-progress*`, `cmux clear-status*`, `cmux clear-progress*` (plan-dev 진행률 push 용)
-- scripts: `*/scripts/tmux-pane.sh*`, `*/scripts/cmux-pane.sh*`, `*/scripts/detect-pane-env.sh*`, `*/scripts/dispatch-slice-pane.sh*`, `*/scripts/finish-plan-dev.sh*`, `*/scripts/sshworld:plan-dev-progress.sh*`
+- scripts: `*/scripts/tmux-pane.sh*`, `*/scripts/cmux-pane.sh*`, `*/scripts/detect-pane-env.sh*`, `*/scripts/dispatch-slice-pane.sh*`, `*/scripts/finish-plan-dev.sh*`, `*/scripts/plan-dev-progress.sh*`
 
 기본 deny:
 - `rm -rf*`, `git push --force*`, `git push -f*`, `git commit --no-verify*`, `git reset --hard*`, `tmux kill-server*`
