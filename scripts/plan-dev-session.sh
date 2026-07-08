@@ -41,11 +41,11 @@ json_get() {
   if command -v jq >/dev/null 2>&1; then
     jq -r ".$key // empty" "$file"
   else
-    python3 -c "
-import json, sys
+    JSON_GET_FILE="$file" JSON_GET_KEY="$key" python3 -c "
+import json, os, sys
 try:
-    d = json.load(open('$file'))
-    v = d.get('$key', '')
+    d = json.load(open(os.environ['JSON_GET_FILE']))
+    v = d.get(os.environ['JSON_GET_KEY'], '')
     print(v if v is not None else '')
 except Exception as e:
     print('', file=sys.stderr)
@@ -200,23 +200,44 @@ do_start() {
   start_ts="$(iso_ts)"
   [ -n "$preserve_ts" ] && start_ts="$preserve_ts"
 
-  # JSON 작성 (python3 사용 — sh 에서 JSON 직접 쓰면 escape 문제)
+  # JSON 작성 (python3 사용 — sh 에서 JSON 직접 쓰면 escape 문제).
+  # 값은 shell 변수 raw 보간이 아니라 env 경유로 전달 — 브랜치명/경로에 '나 특수문자가
+  # 있어도 SyntaxError 없이 안전 (enforce-plan-mode.sh 의 env 패턴과 동일).
+  MARKER_START_REF="$start_ref" \
+  MARKER_BASE_BRANCH="$base_branch" \
+  MARKER_WORK_BRANCH="$cur_branch" \
+  MARKER_START_TS="$start_ts" \
+  MARKER_START_PID="$$" \
+  MARKER_AUTO_BRANCH="$auto_branch" \
+  MARKER_TOTAL="$total" \
+  MARKER_FILE="$marker" \
   python3 -c "
-import json
+import json, os
 d = {
-    'start_ref':    '$start_ref',
-    'base_branch':  '$base_branch',
-    'work_branch':  '$cur_branch',
-    'start_ts':     '$start_ts',
-    'start_pid':    $$,
-    'auto_branch':  $( [ "$auto_branch" = "true" ] && echo "True" || echo "False" ),
-    'total_slices': $total,
+    'start_ref':    os.environ['MARKER_START_REF'],
+    'base_branch':  os.environ['MARKER_BASE_BRANCH'],
+    'work_branch':  os.environ['MARKER_WORK_BRANCH'],
+    'start_ts':     os.environ['MARKER_START_TS'],
+    'start_pid':    int(os.environ['MARKER_START_PID']),
+    'auto_branch':  os.environ['MARKER_AUTO_BRANCH'] == 'true',
+    'total_slices': int(os.environ['MARKER_TOTAL']),
     'done_slices':  0,
 }
-with open('$marker', 'w') as f:
+with open(os.environ['MARKER_FILE'], 'w') as f:
     json.dump(d, f, indent=2)
     f.write('\n')
 "
+  WRITE_RC=$?
+
+  if [ "$WRITE_RC" != "0" ]; then
+    if [ -f "${marker}.bak" ]; then
+      mv "${marker}.bak" "$marker"
+      echo "plan-dev-session: marker 기록 실패 (python3 rc=$WRITE_RC) — 기존 marker 원복함" >&2
+    else
+      echo "plan-dev-session: marker 기록 실패 (python3 rc=$WRITE_RC)" >&2
+    fi
+    exit 2
+  fi
 
   if [ "$quiet" = "0" ]; then
     echo "$marker"

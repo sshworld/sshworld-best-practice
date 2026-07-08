@@ -297,5 +297,122 @@ step G "push 실패 → exit 2 + marker 보존"
   echo "  Case G OK"
 }
 
+# ── Case H: start_ref 무효 (SHA 존재하지 않음) → exit 2 + marker 보존 (S3 R2) ──
+step H "start_ref 무효 (SHA 존재하지 않음) → exit 2 + marker 보존"
+{
+  read -r SRC BARE <<< "$(setup_repo)"
+  add_develop_to_origin "$SRC"
+
+  git -C "$SRC" switch -c feat/badref -q
+  echo "w1" >> "$SRC/README"; git -C "$SRC" add README
+  git -C "$SRC" -c commit.gpgsign=false commit -m "w1" -q
+
+  MARKER="$(marker_abs_path "$SRC")"
+  FAKE_SHA="0123456789abcdef0123456789abcdef01234567"
+  write_marker "$MARKER" "$FAKE_SHA" "develop" "feat/badref" "false"
+
+  set +e
+  ERR=$(cd "$SRC" && PLAN_DEV_SESSION_BIN=/bin/false "$FINISH" 2>&1 >/dev/null)
+  RC=$?
+  set -e
+  assert_eq "exit code" "2" "$RC"
+  echo "$ERR" | grep -qi "start_ref" \
+    || fail "Case H: expected 'start_ref' mention in stderr, got: $ERR"
+
+  [ -f "$MARKER" ] || fail "Case H: marker should be preserved when start_ref invalid"
+
+  rm -rf "$SRC" "$BARE"
+  echo "  Case H OK"
+}
+
+# ── Case I: 커밋 없음 경로 → marker + MARKER_ADVISED 모두 삭제 (S3 R3) ──
+step I "커밋 없음 경로 → marker + MARKER_ADVISED 모두 삭제"
+{
+  read -r SRC BARE <<< "$(setup_repo)"
+  add_develop_to_origin "$SRC"
+
+  git -C "$SRC" switch -c feat/nochg -q
+
+  MARKER="$(marker_abs_path "$SRC")"
+  CUR_HEAD=$(git -C "$SRC" rev-parse HEAD)
+  write_marker "$MARKER" "$CUR_HEAD" "develop" "feat/nochg" "false"
+  MARKER_ADVISED="$(dirname "$MARKER")/plan-dev-commit-advised"
+  [ -f "$MARKER_ADVISED" ] || fail "Case I: precondition — advised marker should exist from write_marker"
+
+  OUT=$(cd "$SRC" && PLAN_DEV_SESSION_BIN=/bin/false "$FINISH" 2>/dev/null)
+  RC=$?
+  assert_eq "exit code" "0" "$RC"
+  echo "$OUT" | grep -qi "no new commits" \
+    || fail "Case I: expected 'no new commits' message, got: $OUT"
+
+  [ ! -f "$MARKER" ] || fail "Case I: marker should be removed"
+  [ ! -f "$MARKER_ADVISED" ] || fail "Case I: MARKER_ADVISED should also be removed"
+
+  rm -rf "$SRC" "$BARE"
+  echo "  Case I OK"
+}
+
+# ── Case J: FINAL_BRANCH 로컬 선점 → suffix 재검사 + rename 안전 (S3 R4) ──
+step J "FINAL_BRANCH 로컬 선점 → suffix 재검사 + rename 안전 (stale 브랜치 push 없음)"
+{
+  read -r SRC BARE <<< "$(setup_repo)"
+  add_develop_to_origin "$SRC"
+
+  # feat/dup 을 원격에 미리 push (충돌 유발용)
+  git -C "$SRC" switch -c feat/dup -q
+  echo "remote-dup" >> "$SRC/README"; git -C "$SRC" add README
+  git -C "$SRC" -c commit.gpgsign=false commit -m "remote-dup" -q
+  git -C "$SRC" push origin feat/dup -q 2>/dev/null
+
+  # feat/dup-2 를 로컬에만 만들어 둠 (첫 suffix 후보를 로컬에서 선점 — 버그 재현 조건)
+  git -C "$SRC" switch main -q
+  git -C "$SRC" switch -c feat/dup-2 -q
+  echo "stale-local" >> "$SRC/README"; git -C "$SRC" add README
+  git -C "$SRC" -c commit.gpgsign=false commit -m "stale-local" -q
+  STALE_SHA=$(git -C "$SRC" rev-parse HEAD)
+
+  # 실제 작업은 feat/dup 위에서 (원격과 이름 충돌)
+  git -C "$SRC" switch feat/dup -q
+  echo "work1" >> "$SRC/README"; git -C "$SRC" add README
+  git -C "$SRC" -c commit.gpgsign=false commit -m "work1" -q
+  SRC_HEAD=$(git -C "$SRC" rev-parse HEAD)
+
+  MARKER="$(marker_abs_path "$SRC")"
+  OLD_REF=$(git -C "$SRC" rev-parse origin/main)
+  write_marker "$MARKER" "$OLD_REF" "develop" "feat/dup" "false"
+
+  OUT=$(cd "$SRC" && PLAN_DEV_SESSION_BIN=/bin/false "$FINISH" 2>/dev/null)
+  RC=$?
+  assert_eq "exit code" "0" "$RC"
+
+  # 로컬 feat/dup-2 는 그대로 (rename 대상이 되면 안 됨)
+  CUR_LOCAL_DUP2=$(git -C "$SRC" rev-parse refs/heads/feat/dup-2)
+  assert_eq "local feat/dup-2 unchanged" "$STALE_SHA" "$CUR_LOCAL_DUP2"
+
+  # bare 에는 실제 작업 커밋(SRC_HEAD)이 어떤 후보 이름으로든 push 되어 있어야
+  PUSHED_REF=""
+  for cand in feat/dup-2 feat/dup-3 feat/dup-4 feat/dup-5; do
+    if git -C "$BARE" rev-parse "refs/heads/$cand" >/dev/null 2>&1; then
+      CAND_SHA=$(git -C "$BARE" rev-parse "refs/heads/$cand")
+      if [ "$CAND_SHA" = "$SRC_HEAD" ]; then
+        PUSHED_REF="$cand"
+        break
+      fi
+    fi
+  done
+  [ -n "$PUSHED_REF" ] || fail "Case J: 실제 작업 커밋이 bare 에 push 되지 않음. stdout: $OUT"
+
+  # feat/dup-2 가 bare 에 push 됐다면 stale 내용이면 안 됨
+  if git -C "$BARE" rev-parse refs/heads/feat/dup-2 >/dev/null 2>&1; then
+    BARE_DUP2=$(git -C "$BARE" rev-parse refs/heads/feat/dup-2)
+    [ "$BARE_DUP2" != "$STALE_SHA" ] || fail "Case J: stale 로컬 브랜치(feat/dup-2)가 그대로 push 됨"
+  fi
+
+  [ ! -f "$MARKER" ] || fail "Case J: marker should be cleared after success"
+
+  rm -rf "$SRC" "$BARE"
+  echo "  Case J OK"
+}
+
 echo ""
 echo "PASS"

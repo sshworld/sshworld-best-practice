@@ -292,5 +292,83 @@ trap - EXIT
 cleanup_tmp "$TMPDIR7"
 rm -rf "${TMPDIR7}_wt2" 2>/dev/null || true
 
+# ─────────────────────────────────────────
+# TC8: 브랜치명에 홑따옴표 포함 → marker 정상 기록 (S3 R1)
+# ─────────────────────────────────────────
+step 8 "브랜치명에 홑따옴표 포함 → marker 정상 기록"
+TMPDIR8="$(setup_tmp_repo)"
+trap 'cleanup_tmp "$TMPDIR8"' EXIT
+
+git -C "$TMPDIR8" checkout -b "feat/it's-fine" -q
+
+(
+  cd "$TMPDIR8"
+  "$SCRIPT" start --quiet 2>/dev/null || true
+)
+
+MARKER8="$TMPDIR8/.git/plan-dev-session.json"
+[ -f "$MARKER8" ] || fail "TC8: marker 파일 없음"
+
+WORK_BRANCH=$(python3 -c "import json; print(json.load(open('$MARKER8'))['work_branch'])") \
+  || fail "TC8: marker JSON 파싱 실패 (SyntaxError 가능성)"
+[ "$WORK_BRANCH" = "feat/it's-fine" ] || fail "TC8: work_branch 불일치. 실제='$WORK_BRANCH'"
+echo "  TC8 OK"
+trap - EXIT
+cleanup_tmp "$TMPDIR8"
+
+# ─────────────────────────────────────────
+# TC9: python3 강제 실패 → exit 2 + .bak 원복 (S3 R1)
+# ─────────────────────────────────────────
+step 9 "python3 강제 실패 → exit 2 + .bak 원복"
+TMPDIR9="$(setup_tmp_repo)"
+trap 'cleanup_tmp "$TMPDIR9"' EXIT
+
+(
+  cd "$TMPDIR9"
+  "$SCRIPT" start --quiet 2>/dev/null || true
+)
+
+MARKER9="$TMPDIR9/.git/plan-dev-session.json"
+[ -f "$MARKER9" ] || fail "TC9: 첫 start 후 marker 없음"
+
+# stale 하게 만들어 재진입(→ mv .bak) 유도
+python3 -c "
+import json
+from datetime import datetime, timezone, timedelta
+f = '$MARKER9'
+d = json.load(open(f))
+d['start_pid'] = 9999999
+d['start_ts'] = (datetime.now(timezone.utc) - timedelta(hours=25)).strftime('%Y-%m-%dT%H:%M:%SZ')
+open(f, 'w').write(json.dumps(d))
+"
+ORIG_CONTENT=$(cat "$MARKER9")
+
+# python3 를 강제로 실패시키는 fake bin 준비 (PATH 최우선)
+FAKEBIN="$(mktemp -d)"
+cat > "$FAKEBIN/python3" <<'EOF'
+#!/usr/bin/env bash
+exit 1
+EOF
+chmod +x "$FAKEBIN/python3"
+
+set +e
+STDERR9=$(
+  cd "$TMPDIR9"
+  PATH="$FAKEBIN:$PATH" "$SCRIPT" start 2>&1
+)
+RC9=$?
+set -e
+rm -rf "$FAKEBIN"
+
+[ "$RC9" = "2" ] || fail "TC9: exit 2 기대, 실제 $RC9. 출력: $STDERR9"
+[ -f "$MARKER9" ] || fail "TC9: 원복된 marker 없음"
+[ ! -f "${MARKER9}.bak" ] || fail "TC9: .bak 이 원복 후에도 남아있음"
+
+RESTORED_CONTENT=$(cat "$MARKER9")
+[ "$RESTORED_CONTENT" = "$ORIG_CONTENT" ] || fail "TC9: 원복된 marker 내용 불일치"
+echo "  TC9 OK"
+trap - EXIT
+cleanup_tmp "$TMPDIR9"
+
 echo ""
 echo "PASS"

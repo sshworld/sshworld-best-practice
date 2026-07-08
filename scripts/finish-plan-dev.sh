@@ -129,6 +129,13 @@ if [ -z "$START_REF" ] || [ -z "$BASE_BRANCH" ]; then
   exit 2
 fi
 
+# ── clear marker 헬퍼 ─────────────────────────────────────────────
+
+clear_marker() {
+  rm -f "$MARKER"
+  rm -f "$MARKER_ADVISED"
+}
+
 # ── 현재 HEAD branch 확인 ──────────────────────────────────────────
 
 CUR_BRANCH="$(git symbolic-ref --short HEAD 2>/dev/null)" || {
@@ -138,11 +145,19 @@ CUR_BRANCH="$(git symbolic-ref --short HEAD 2>/dev/null)" || {
 
 # ── Range 검증 ─────────────────────────────────────────────────────
 
-NEW_COMMITS="$(git rev-list --count "${START_REF}..HEAD" 2>/dev/null)" || NEW_COMMITS="0"
+REV_LIST_ERR=""
+if ! NEW_COMMITS="$(git rev-list --count "${START_REF}..HEAD" 2>&1)"; then
+  REV_LIST_ERR="$NEW_COMMITS"
+  echo "finish-plan-dev: start_ref 무효 (rebase/GC?) — '${START_REF}' 를 rev-list 로 해석 불가." >&2
+  echo "  git error: ${REV_LIST_ERR}" >&2
+  echo "  복구: plan-dev-session.sh start 를 재실행해 marker 를 갱신하거나," >&2
+  echo "        marker 의 start_ref 를 유효한 SHA 로 직접 수정할 것." >&2
+  exit 2
+fi
 
 if [ "$NEW_COMMITS" = "0" ]; then
   echo "no new commits since marker — skip"
-  rm -f "$MARKER"
+  clear_marker
   exit 0
 fi
 
@@ -186,13 +201,6 @@ do_cmux_cleanup() {
   fi
 }
 
-# ── clear marker 헬퍼 ─────────────────────────────────────────────
-
-clear_marker() {
-  rm -f "$MARKER"
-  rm -f "$MARKER_ADVISED"
-}
-
 # ── develop 또는 main-only 분기 ────────────────────────────────────
 
 # base_branch 의 local part (origin/develop → develop, develop → develop)
@@ -222,26 +230,32 @@ if [ "$USE_DEVELOP_CASE" = "1" ]; then
   # push 할 branch 이름 결정 (현재 branch 명 그대로 사용)
   PUSH_BRANCH="$CUR_BRANCH"
 
-  # 충돌 검사 & suffix 자동 부여
+  # 충돌 검사 & suffix 자동 부여 (remote 존재 + 로컬 브랜치 존재 모두 검사)
   FINAL_BRANCH="$PUSH_BRANCH"
   if git ls-remote --heads "$REMOTE" "$FINAL_BRANCH" 2>/dev/null | grep -q .; then
-    # 충돌 → suffix
+    # 충돌 → suffix. 후보는 remote 뿐 아니라 로컬 브랜치 선점도 피해야 stale 로컬을
+    # rename 대상으로 잘못 골라 그 내용을 push 하는 사고를 막는다.
     local_suffix=2
     while [ "$local_suffix" -le 5 ]; do
       CANDIDATE="${PUSH_BRANCH}-${local_suffix}"
-      if ! git ls-remote --heads "$REMOTE" "$CANDIDATE" 2>/dev/null | grep -q .; then
+      if ! git ls-remote --heads "$REMOTE" "$CANDIDATE" 2>/dev/null | grep -q . \
+        && ! git show-ref --verify --quiet "refs/heads/$CANDIDATE"; then
         FINAL_BRANCH="$CANDIDATE"
         break
       fi
       local_suffix=$(( local_suffix + 1 ))
     done
     if [ "$FINAL_BRANCH" = "$PUSH_BRANCH" ]; then
-      echo "finish-plan-dev: branch 이름 충돌 — suffix -2 ~ -5 모두 사용 중 ($PUSH_BRANCH)" >&2
+      echo "finish-plan-dev: branch 이름 충돌 — suffix -2 ~ -5 모두 사용 중 (remote 또는 로컬 선점, $PUSH_BRANCH)" >&2
       exit 2
     fi
-    # branch rename (현재 branch → FINAL_BRANCH)
+    # branch rename (현재 branch → FINAL_BRANCH). 실패 시 stale 브랜치 push 방지 위해 exit 2.
     if [ "$DRY_RUN" = "0" ]; then
-      git branch -m "$PUSH_BRANCH" "$FINAL_BRANCH" 2>/dev/null || true
+      if ! git branch -m "$PUSH_BRANCH" "$FINAL_BRANCH" 2>&1; then
+        echo "finish-plan-dev: branch rename 실패 ('$PUSH_BRANCH' → '$FINAL_BRANCH') — push 중단 (stale 브랜치 push 방지)" >&2
+        exit 2
+      fi
+      CUR_BRANCH="$FINAL_BRANCH"
     fi
   fi
 
