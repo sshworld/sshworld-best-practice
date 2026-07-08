@@ -82,19 +82,22 @@ format_pane() {
 do_launch() {
   require_tmux
   local cmd="${1:-zsh}"
+  local pane
   if [ -n "${TMUX:-}" ]; then
     # 좌우 split (-h) + main-vertical layout 자동 적용
     # 첫 launch 는 좌우 분할, 두 번째부터는 main-vertical 이 오른쪽 stack 으로 정렬
-    local pane
     pane=$(tmux split-window -P -h -F '#{session_name}:#{window_index}.#{pane_index}' "$cmd")
     if [ "${TMUX_PANE_NO_LAYOUT:-0}" != "1" ]; then
       tmux select-layout main-vertical >/dev/null 2>&1 || true
     fi
-    printf '%s\n' "$pane"
   else
     ensure_mgr_session
-    tmux new-window -t "$MGR_SESSION" -P -F '#{session_name}:#{window_index}.#{pane_index}' "$cmd"
+    pane=$(tmux new-window -t "$MGR_SESSION" -P -F '#{session_name}:#{window_index}.#{pane_index}' "$cmd")
   fi
+  # pane user option 태깅 — do_cleanup 이 이 pane 을 "우리가 띄운 자식" 으로 식별하는 유일한 근거.
+  # title(OSC 0/2, select-pane -T) 은 자식 shell/claude 가 즉시 덮어써 무력화되므로 금지.
+  tmux set-option -p -t "$pane" @cbp_child 1 >/dev/null 2>&1 || true
+  printf '%s\n' "$pane"
 }
 
 do_send() {
@@ -198,26 +201,25 @@ do_cleanup() {
     count=$((count + mgr_count))
   fi
 
-  # (2) attached client 의 active pane 이 속한 window 의 다른 pane 정리.
-  # active pane 과 wrapper 가 도는 self pane 은 보존 — 사용자 인터랙션 중일 수 있음.
-  local active_pane self_pane target_window
-  active_pane=$(tmux list-panes -a -F '#{?pane_active,#{pane_id},}' 2>/dev/null | grep -v '^$' | head -1)
-  self_pane=$(tmux display-message -p '#{pane_id}' 2>/dev/null || true)
-
-  if [ -n "$active_pane" ]; then
-    target_window=$(tmux display-message -p '#{session_name}:#{window_index}' -t "$active_pane" 2>/dev/null)
+  # (2) self window(스크립트가 돌고 있는 pane 이 속한 window) 안의, 우리가 launch 로
+  # 태깅한(@cbp_child=1) pane 만 정리. $TMUX_PANE (tmux 가 pane 안에서 실행 시 set) 이
+  # 없으면 스코프를 판단할 수 없으니 이 블록 전체를 skip.
+  # 구 버전은 `list-panes -a ... | head -1` 로 서버 전체의 첫 active pane 을 기준 삼아
+  # 사용자가 다른 세션에서 dispatch 하면 무관한 window 의 수동 pane 을 몰살했음 — 이 스코프
+  # 축소가 그 결함의 수정.
+  if [ -n "${TMUX_PANE:-}" ]; then
+    local target_window
+    target_window=$(tmux display-message -p -t "$TMUX_PANE" '#{session_name}:#{window_index}' 2>/dev/null)
     if [ -n "$target_window" ]; then
-      local in_tmux_count=0
-      while read -r pid; do
+      local win_count=0
+      while IFS=' ' read -r pid tag; do
         [ -z "$pid" ] && continue
-        if [ "$pid" = "$active_pane" ] || [ "$pid" = "$self_pane" ]; then
-          continue  # preserve active + self
-        fi
+        [ "$tag" = "1" ] || continue
         if tmux kill-pane -t "$pid" 2>/dev/null; then
-          in_tmux_count=$((in_tmux_count + 1))
+          win_count=$((win_count + 1))
         fi
-      done < <(tmux list-panes -t "$target_window" -F '#{pane_id}' 2>/dev/null)
-      count=$((count + in_tmux_count))
+      done < <(tmux list-panes -t "$target_window" -F '#{pane_id} #{@cbp_child}' 2>/dev/null)
+      count=$((count + win_count))
     fi
   fi
 

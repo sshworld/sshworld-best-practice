@@ -44,4 +44,10 @@ RC=$?
 [ "$RC" = "0" ] || fail "빈 cleanup exit 비정상: $RC"
 echo "$OUT" | grep -E "cleaning 0 child pane|no child panes" > /dev/null || fail "빈 cleanup 보고 누락: $OUT"
 
+step 5 "launch 이 spawn 한 pane 에 @cbp_child=1 태깅됨 (R1) — do_cleanup 의 self-window 스코프 필터 근거"
+PANE4=$("$WRAPPER" launch zsh)
+TAG=$(tmux show-options -p -t "$PANE4" -v @cbp_child 2>/dev/null || true)
+[ "$TAG" = "1" ] || fail "@cbp_child 태깅 안 됨 (pane=$PANE4, tag='$TAG')"
+tmux kill-session -t tmux-pane-mgr 2>/dev/null || true
+
 echo "OK"

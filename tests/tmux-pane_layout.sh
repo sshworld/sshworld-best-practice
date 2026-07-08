@@ -29,6 +29,7 @@ echo "ARGS: \$*" >> "$trace"
 case "\$1" in
   split-window)         echo "fake:1.0" ;;
   select-layout)        : ;;
+  set-option)           : ;;
   *)                    "$REAL_TMUX" "\$@" ;;
 esac
 EOF

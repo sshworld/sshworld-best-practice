@@ -82,5 +82,41 @@ fi
 (cd "$tmpdir" && git worktree remove --force .worktrees/auto-cleanup-test-2 2>/dev/null || true)
 rm -f /tmp/disp-err-$$
 
+step 5 "plan-dev marker 존재 + 동일 start_ts 2회 dispatch — stamp 로 cleanup 1회만"
+GITCOMMON_REL=$(cd "$tmpdir" && git rev-parse --git-common-dir)
+case "$GITCOMMON_REL" in
+  /*) GITCOMMON_ABS="$GITCOMMON_REL" ;;
+  *)  GITCOMMON_ABS="$tmpdir/$GITCOMMON_REL" ;;
+esac
+MARKER="$GITCOMMON_ABS/plan-dev-session.json"
+STAMP="$GITCOMMON_ABS/plan-dev-dispatch-cleaned"
+rm -f "$STAMP"
+cat > "$MARKER" <<'JSON'
+{"start_ts":"2024-01-01T00:00:00Z","start_ref":"deadbeef","base_branch":"main","work_branch":"main","start_pid":99999,"auto_branch":"false"}
+JSON
+
+"$WRAPPER" launch zsh > /dev/null
+
+(cd "$tmpdir" && DISPATCH_CHILD_CMD=zsh "$DISPATCH" \
+  --slice=auto-cleanup-test-3 --spec-file="$tmpdir/spec.md" \
+  --worktree="$tmpdir/.worktrees/auto-cleanup-test-3" \
+  --mode=tmux 2> /tmp/disp-err3-$$) > /dev/null || fail "dispatcher 3 fail"
+grep -E "cleaning [0-9]+ child pane" /tmp/disp-err3-$$ > /dev/null || { cat /tmp/disp-err3-$$; fail "1차 dispatch(stamp 최초 생성) 인데 cleanup 미발동"; }
+[ -f "$STAMP" ] || fail "stamp 파일 생성 안 됨: $STAMP"
+[ "$(cat "$STAMP")" = "2024-01-01T00:00:00Z" ] || fail "stamp 내용 mismatch: $(cat "$STAMP")"
+
+(cd "$tmpdir" && DISPATCH_CHILD_CMD=zsh "$DISPATCH" \
+  --slice=auto-cleanup-test-4 --spec-file="$tmpdir/spec.md" \
+  --worktree="$tmpdir/.worktrees/auto-cleanup-test-4" \
+  --mode=tmux 2> /tmp/disp-err4-$$) > /dev/null || fail "dispatcher 4 fail"
+if grep -E "cleaning [0-9]+ child pane" /tmp/disp-err4-$$ > /dev/null; then
+  cat /tmp/disp-err4-$$
+  fail "2차 dispatch (동일 start_ts) 인데 cleanup 재발동 — stamp 1회성 위반"
+fi
+
+(cd "$tmpdir" && git worktree remove --force .worktrees/auto-cleanup-test-3 2>/dev/null || true)
+(cd "$tmpdir" && git worktree remove --force .worktrees/auto-cleanup-test-4 2>/dev/null || true)
+rm -f "$MARKER" "$STAMP" /tmp/disp-err3-$$ /tmp/disp-err4-$$
+
 echo ""
 echo "OK"

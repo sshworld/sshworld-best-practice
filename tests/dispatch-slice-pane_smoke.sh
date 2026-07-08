@@ -90,5 +90,52 @@ OUT=$("$WRAPPER" capture --pane="$PANE") || fail "capture failed"
 # 디렉토리명 또는 spec 내용 일부 grep
 echo "$OUT" | grep -E "test-slice|spec\.md|\\\$" > /dev/null || fail "pane shows no expected trace: $OUT"
 
+step 8 "공백 포함 worktree 경로 — cd 전송 인자가 shell-quote 됨 (mock wrapper 로 수신 문자열 검증)"
+FAKE_DIR2=$(mktemp -d)
+TRACE2="$FAKE_DIR2/trace.txt"
+cat > "$FAKE_DIR2/tmux-cli" <<EOF
+#!/usr/bin/env bash
+case "\$1" in
+  launch) echo "fake:1.0" ;;
+  send)
+    shift
+    text="\$1"
+    printf 'SEND-TEXT:%s\n' "\$text" >> "$TRACE2"
+    ;;
+  wait-idle) exit 0 ;;
+  capture)  echo "" ;;
+  kill)     exit 0 ;;
+  *)        exit 0 ;;
+esac
+EOF
+chmod +x "$FAKE_DIR2/tmux-cli"
+
+tmpdir2=$(mktemp -d)
+cleanup2() {
+  (cd "$tmpdir2" && git worktree remove --force "$tmpdir2/.worktrees/space test-slice" 2>/dev/null || true)
+  rm -rf "$FAKE_DIR2" "$tmpdir2"
+}
+trap 'cleanup2; cleanup' EXIT
+(
+  cd "$tmpdir2"
+  git init -b main -q
+  git config user.email t@e.local
+  git config user.name tester
+  echo dummy > README
+  git add README
+  git -c commit.gpgsign=false commit -m base -q
+) || fail "git init 2 failed"
+echo spec > "$tmpdir2/spec.md"
+
+WT2="$tmpdir2/.worktrees/space test-slice"
+(cd "$tmpdir2" && PATH="$FAKE_DIR2:$PATH" CBP_CLAUDE_CONFIG="$tmpdir2/claude.json" DISPATCH_CHILD_CMD=zsh "$DISPATCH" \
+  --slice=space-test-slice --spec-file="$tmpdir2/spec.md" \
+  --worktree="$WT2" \
+  --mode=tmux > /dev/null) || fail "quoting dispatcher failed"
+
+WT2_ABS=$(cd "$WT2" && pwd)
+EXPECTED_Q=$(printf '%q' "$WT2_ABS")
+grep -Fq "SEND-TEXT:cd $EXPECTED_Q" "$TRACE2" || { echo "--- trace ---"; cat "$TRACE2"; fail "cd 전송이 quote 안 됨 (expected: cd $EXPECTED_Q)"; }
+
 echo ""
 echo "OK"

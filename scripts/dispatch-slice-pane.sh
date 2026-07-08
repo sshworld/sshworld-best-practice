@@ -145,6 +145,64 @@ build_spec_prompt() {
     "$spec_path" "$slice" "$slice"
 }
 
+# plan-dev 세션 marker 의 start_ts 필드 읽기 (jq 우선, python3 폴백). 실패 시 빈 문자열.
+_dispatch_marker_start_ts() {
+  local marker="$1"
+  if command -v jq >/dev/null 2>&1; then
+    jq -r '.start_ts // empty' "$marker" 2>/dev/null
+  else
+    python3 -c "
+import json
+try:
+    d = json.load(open('$marker'))
+    print(d.get('start_ts', '') or '')
+except Exception:
+    print('')
+" 2>/dev/null
+  fi
+}
+
+# plan-dev 세션당 자동 cleanup 을 1회로 원자화.
+# stamp 파일(<git-common-dir>/plan-dev-dispatch-cleaned) 에 현재 marker 의 start_ts 를 기록해
+# 같은 세션의 후속/병렬 dispatch 가 방금 뜬 자식을 다시 죽이는 걸 방지.
+# marker 부재(비-plan-dev 단독 dispatch) → 기존대로 매회 cleanup (한계 known).
+# ⚠️ 순서 엄수: stamp 원자 생성 → cleanup. 반대면 병렬 dispatch race 로 방금 뜬 자식을 죽인다.
+_dispatch_maybe_cleanup() {
+  local wrapper="$1"
+  local git_common
+  git_common=$(git rev-parse --git-common-dir 2>/dev/null) || { "$wrapper" cleanup || true; return 0; }
+
+  local marker="${git_common}/plan-dev-session.json"
+  if [ ! -f "$marker" ]; then
+    "$wrapper" cleanup || true
+    return 0
+  fi
+
+  local start_ts
+  start_ts=$(_dispatch_marker_start_ts "$marker")
+  if [ -z "$start_ts" ]; then
+    "$wrapper" cleanup || true
+    return 0
+  fi
+
+  local stamp="${git_common}/plan-dev-dispatch-cleaned"
+  if [ -f "$stamp" ]; then
+    local stamp_content
+    stamp_content=$(cat "$stamp" 2>/dev/null || true)
+    if [ "$stamp_content" = "$start_ts" ]; then
+      return 0  # 이 세션에서 이미 cleanup 완료 — skip
+    fi
+    rm -f "$stamp"
+  fi
+
+  # noclobber 서브셸로 stamp 원자 생성 — 생성에 성공한 프로세스만 cleanup 실행.
+  # 동시 dispatch 가 먼저 생성했으면(경쟁 패배) cleanup skip.
+  if (set -o noclobber; echo "$start_ts" > "$stamp") 2>/dev/null; then
+    "$wrapper" cleanup || true
+  fi
+  return 0
+}
+
 # launch 시작 시 cmux edit-burst 카운터 리셋 (track-cmux-edit-burst hook 과 연동)
 _cmux_burst_reset() {
   [ -z "${CMUX_WORKSPACE_ID:-}" ] && return 0
@@ -292,9 +350,10 @@ main() {
 
   # 새 작업 시작 시 기존 자식 pane 일괄 정리 (tmux 전용, tmux-pane.sh wrapper 사용 시)
   # in-tmux 환경에서 spawn 한 split pane 은 사용자가 attach 중일 수 있어 보존.
+  # plan-dev 세션 활성 시 세션당 1회만 (병렬/연속 dispatch 가 서로의 작업 중 자식을 죽이는 것 방지).
   # 우회: DISPATCH_SKIP_CLEANUP=1
   if [ "${DISPATCH_SKIP_CLEANUP:-0}" != "1" ] && [ "$DRIVER" = "tmux" ] && [ "$WRAPPER" = "$SCRIPT_DIR/tmux-pane.sh" ]; then
-    "$WRAPPER" cleanup || true
+    _dispatch_maybe_cleanup "$WRAPPER"
   fi
 
   # worktree 결정 / 생성
@@ -337,7 +396,7 @@ main() {
     [ -z "$PANE" ] && die "wrapper launch 실패: pane ref 가 비어있음"
   fi
 
-  "$WRAPPER" send "cd $WORKTREE_ABS" --pane="$PANE" --delay=0.3 >/dev/null || die "send cd 실패"
+  "$WRAPPER" send "cd $(printf '%q' "$WORKTREE_ABS")" --pane="$PANE" --delay=0.3 >/dev/null || die "send cd 실패"
   "$WRAPPER" wait-idle --pane="$PANE" --idle=1 --timeout=10 >/dev/null 2>&1 || true
 
   "$WRAPPER" send "$CHILD_CMD" --pane="$PANE" --delay=0.3 >/dev/null || die "send child 실패"
