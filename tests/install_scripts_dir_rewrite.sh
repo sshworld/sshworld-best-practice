@@ -21,7 +21,7 @@ grep -q 'CLAUDE_PLUGIN_ROOT' "$REPO/hooks/cmux-dispatch-hint.sh" \
   || fail "CLAUDE_PLUGIN_ROOT not found in cmux-dispatch-hint.sh"
 
 step 3 "enforce-cmux-context.sh case matcher 보존"
-grep -q 'scripts/tmux-pane\.sh)' "$REPO/hooks/enforce-cmux-context.sh" \
-  || fail "case matcher 'scripts/tmux-pane.sh)' not preserved in enforce-cmux-context.sh"
+grep -q 'scripts/tmux-pane\.sh[|)]' "$REPO/hooks/enforce-cmux-context.sh" \
+  || fail "case matcher 'scripts/tmux-pane.sh' not preserved in enforce-cmux-context.sh"
 
 echo "OK"
