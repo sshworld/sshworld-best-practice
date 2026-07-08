@@ -17,6 +17,9 @@
 #       → 차단. stderr 에 git diff 요약 + 판단 요청 메시지 출력.
 #         AI/사용자가 보고 둘 중 하나로 결정 후 재커밋.
 #
+# 1회 우회 (command 문자열에 포함):
+#   SKIP_DOC_SYNC=1 git commit -m "..."
+#
 # 가드 자체 비활성화:
 #   export DISABLE_DOC_SYNC_HOOK=1
 
@@ -34,6 +37,11 @@ if ! printf '%s' "$command" | grep -qE '(^|[[:space:];|&])git[[:space:]]+commit(
 fi
 
 git rev-parse --git-dir > /dev/null 2>&1 || exit 0
+
+# R6: command 문자열에 SKIP_DOC_SYNC=1 포함 시 1회 통과 (README 광고 우회 구현)
+if printf '%s' "$command" | grep -qE '(^|[[:space:]])SKIP_DOC_SYNC=1([[:space:]]|$)'; then
+  exit 0
+fi
 
 # command 문자열에서 DOC_IMPACT 추출 (prefix 형태 권장)
 doc_impact=$(printf '%s' "$command" | grep -oE 'DOC_IMPACT=[a-zA-Z_-]+' | head -1 | cut -d= -f2)

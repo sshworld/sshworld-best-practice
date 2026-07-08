@@ -57,12 +57,24 @@ MATCHED=0
 # 구분자로 split: ; && || |
 # sed 로 구분자를 newline 으로 치환 후 첫 토큰 추출
 while IFS= read -r segment; do
-  # leading whitespace 제거
-  token=$(echo "$segment" | sed 's/^[[:space:]]*//' | awk '{print $1}')
+  # leading whitespace 제거 후 토큰화, 선행 env 할당 토큰(FOO=bar) 은 skip 하고 실제 명령 토큰 탐색
+  clean=$(echo "$segment" | sed 's/^[[:space:]]*//')
+  set -- $clean
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      *=*) shift ;;
+      *) break ;;
+    esac
+  done
+  token="${1:-}"
   case "$token" in
-    tmux|tmux-cli|tmux-pane.sh|./scripts/tmux-pane.sh|scripts/tmux-pane.sh)
+    tmux|tmux-cli|tmux-pane.sh|./scripts/tmux-pane.sh|scripts/tmux-pane.sh|*/tmux-pane.sh)
       MATCHED=1
       break
+      ;;
+    */cmux-pane.sh)
+      # cmux-pane.sh 는 권장 도구 — 풀패스여도 매치 안 함 (advisory 대상 아님).
+      # quote-blind FP(문자열 리터럴 내 tmux 명령)는 이번 범위 밖 — 수정 금지.
       ;;
   esac
 done < <(echo "$CMD" | sed 's/;/\n/g; s/&&/\n/g; s/||/\n/g; s/|/\n/g')

@@ -79,6 +79,35 @@ t_h_prose_direct_edit_allows() {
   [ "$?" = "0" ]
 }
 
+# (i) skip-once: git-common-dir 에 cbp-skip-once-cmux-dispatch 존재 → 1회 소비+allow, 2번째는 다시 block
+t_i_skip_once_git_common_consumed_once() {
+  local tmp; tmp=$(mktemp -d)
+  local repo="$tmp/repo"; mkdir -p "$repo"
+  git -C "$repo" init -q; git -C "$repo" commit --allow-empty -q -m init 2>/dev/null
+  touch "$repo/.git/cbp-skip-once-cmux-dispatch"
+  local p; p=$(mk_payload "ExitPlanMode" "$DIRECT_EDIT_PLAN")
+  local ec1=0 ec2=0
+  ( cd "$repo" && CMUX_WORKSPACE_ID="ws:1" bash "$HOOK" <<<"$p" ); ec1=$?
+  ( cd "$repo" && CMUX_WORKSPACE_ID="ws:1" bash "$HOOK" <<<"$p" ); ec2=$?
+  rm -rf "$tmp"
+  [ "$ec1" = "0" ] && [ "$ec2" = "2" ]
+}
+
+# (j) 비-git cwd 폴백: $HOME/.cache/cbp/cbp-skip-once-cmux-dispatch-<sanitized> 사용
+t_j_skip_once_non_git_fallback() {
+  local tmp; tmp=$(mktemp -d)
+  local nongit="$tmp/nogit"; mkdir -p "$nongit"
+  local fakehome="$tmp/home"; mkdir -p "$fakehome/.cache/cbp"
+  touch "$fakehome/.cache/cbp/cbp-skip-once-cmux-dispatch-ws_1"
+  local p; p=$(mk_payload "ExitPlanMode" "$DIRECT_EDIT_PLAN")
+  local ec=0
+  ( cd "$nongit" && HOME="$fakehome" CMUX_WORKSPACE_ID="ws:1" bash "$HOOK" <<<"$p" )
+  ec=$?
+  local left; left=$( [ -f "$fakehome/.cache/cbp/cbp-skip-once-cmux-dispatch-ws_1" ] && echo yes || echo no )
+  rm -rf "$tmp"
+  [ "$ec" = "0" ] && [ "$left" = "no" ]
+}
+
 run "(a) cmux + direct-edit 표셀 → block(2)"         t_a_cmux_direct_edit_blocks
 run "(b) CMUX_DIRECT_EDIT_OK=1 → allow(0)"           t_b_ok_env_allows
 run "(c) 비-cmux + direct-edit → allow(0)"            t_c_non_cmux_allows
@@ -88,6 +117,8 @@ run "(e2) DISABLE_CMUX_DISPATCH_GATE_HOOK=1 → allow(0)" t_e2_disable_env_allow
 run "(f) tool=Write(비-ExitPlanMode) → allow(0)"     t_f_non_exitplanmode_allows
 run "(g) tool_input 비어있음 → allow(0) conservative" t_g_empty_plan_allows
 run "(h) 산문 direct-edit(표셀 아님) → allow(0)"      t_h_prose_direct_edit_allows
+run "(i) skip-once(git-common-dir) 1회 소비"         t_i_skip_once_git_common_consumed_once
+run "(j) skip-once 비-git cwd 폴백"                   t_j_skip_once_non_git_fallback
 
 echo "PASS=$PASS FAIL=$FAIL"
 [ "$FAIL" -eq 0 ] && echo "✅ all pass" || { echo "❌ FAILED: ${FAILED[*]}"; exit 1; }

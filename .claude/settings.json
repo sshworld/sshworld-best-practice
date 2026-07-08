@@ -12,7 +12,6 @@
       "Bash(git add*)",
       "Bash(git commit*)",
       "Bash(git stash*)",
-      "Bash(git merge --no-ff slice/*)",
       "Bash(git merge*)",
       "Bash(git rebase*)",
       "Bash(git remote*)",
@@ -108,7 +107,7 @@
           },
           {
             "type": "command",
-            "command": "CMUX_CONTEXT_HOOK_STRICT=1 $CLAUDE_PROJECT_DIR/hooks/enforce-cmux-context.sh"
+            "command": "$CLAUDE_PROJECT_DIR/hooks/enforce-cmux-context.sh"
           },
           {
             "type": "command",

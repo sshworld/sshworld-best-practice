@@ -245,5 +245,64 @@ step C7 "SKIP_DISPATCH_GATE=1 + 차단 조건 → exit 0 (1회 우회)"
   echo "  C7 OK"
 }
 
+# ── C8: stale 24h(start_ts now-25h) + --slice + plan 없음 → exit 0 ─────
+
+step C8 "stale marker(start_ts now-25h) + --slice + plan 없음 → exit 0"
+{
+  TMP=$(mktemp -d)
+  REPO_DIR="$TMP/repo"
+  mkdir -p "$REPO_DIR"
+  git_init_main "$REPO_DIR"
+  git -C "$REPO_DIR" config user.email "t@e.local"
+  git -C "$REPO_DIR" config user.name "tester"
+  git -C "$REPO_DIR" -c commit.gpgsign=false commit --allow-empty -q -m "init"
+  SESSION_FILE="$REPO_DIR/.git/plan-dev-session.json"
+  OLD_TS=$(python3 -c "from datetime import datetime,timezone,timedelta; print((datetime.now(timezone.utc)-timedelta(hours=25)).strftime('%Y-%m-%dT%H:%M:%SZ'))")
+  cat > "$SESSION_FILE" <<JEOF
+{"start_ts": "$OLD_TS"}
+JEOF
+  PLANS_DIR="$TMP/plans"
+  mkdir -p "$PLANS_DIR"
+
+  PAYLOAD=$(make_payload "Bash" "/path/to/dispatch-slice-pane.sh --slice=feat-x --mode=cmux" "sess-008")
+
+  RC=$(echo "$PAYLOAD" | \
+    DISPATCH_GATE_SESSION_FILE="$SESSION_FILE" \
+    PLAN_MODE_PLANS_DIR="$PLANS_DIR" \
+    sh -c "cd \"$REPO_DIR\" && \"$ENFORCE_HOOK\"" 2>/dev/null; echo $?)
+
+  [ "$RC" = "0" ] || fail "C8: exit code should be 0, got $RC"
+  rm -rf "$TMP"
+  echo "  C8 OK"
+}
+
+# ── C9: skip-once marker-file — git-common-dir 에 cbp-skip-once-dispatch-gate → 1회 소비, 2번째는 block ──
+
+step C9 "skip-once(git-common-dir) 1회 소비 — 2번째는 다시 block"
+{
+  TMP=$(setup_fixture)
+  REPO_DIR="$TMP/repo"
+  SESSION_FILE="$REPO_DIR/.git/plan-dev-session.json"
+  PLANS_DIR="$TMP/plans"
+  mkdir -p "$PLANS_DIR"
+  touch "$REPO_DIR/.git/cbp-skip-once-dispatch-gate"
+
+  PAYLOAD=$(make_payload "Bash" "/path/to/dispatch-slice-pane.sh --slice=feat-x --mode=cmux" "sess-009")
+
+  RC1=$(echo "$PAYLOAD" | \
+    DISPATCH_GATE_SESSION_FILE="$SESSION_FILE" \
+    PLAN_MODE_PLANS_DIR="$PLANS_DIR" \
+    sh -c "cd \"$REPO_DIR\" && \"$ENFORCE_HOOK\"" 2>/dev/null; echo $?)
+  RC2=$(echo "$PAYLOAD" | \
+    DISPATCH_GATE_SESSION_FILE="$SESSION_FILE" \
+    PLAN_MODE_PLANS_DIR="$PLANS_DIR" \
+    sh -c "cd \"$REPO_DIR\" && \"$ENFORCE_HOOK\"" 2>/dev/null; echo $?)
+
+  [ "$RC1" = "0" ] || fail "C9: first call exit code should be 0, got $RC1"
+  [ "$RC2" = "2" ] || fail "C9: second call exit code should be 2, got $RC2"
+  rm -rf "$TMP"
+  echo "  C9 OK"
+}
+
 echo ""
 echo "PASS"

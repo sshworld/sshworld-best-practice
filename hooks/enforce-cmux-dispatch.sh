@@ -25,6 +25,20 @@ set -uo pipefail
 # 비-cmux 환경 → direct-edit 기본, no-op
 [ -z "${CMUX_WORKSPACE_ID:-}" ] && exit 0
 
+# skip-once marker-file escape (R1). git-dir 있으면 <git-common-dir>/cbp-skip-once-cmux-dispatch,
+# 이 훅은 git 무관하게 발화하므로 git-common-dir 확보 실패 시 비-git cwd 폴백:
+#   $HOME/.cache/cbp/cbp-skip-once-cmux-dispatch-<sanitized CMUX_WORKSPACE_ID>
+_GIT_COMMON=$(git rev-parse --git-common-dir 2>/dev/null || true)
+if [ -n "$_GIT_COMMON" ]; then
+  _SKIP_ONCE_FILE="${_GIT_COMMON}/cbp-skip-once-cmux-dispatch"
+else
+  _SANITIZED_WS="${CMUX_WORKSPACE_ID//[:\/]/_}"
+  _SKIP_ONCE_FILE="$HOME/.cache/cbp/cbp-skip-once-cmux-dispatch-${_SANITIZED_WS}"
+fi
+if rm "$_SKIP_ONCE_FILE" 2>/dev/null; then
+  exit 0
+fi
+
 PAYLOAD=$(cat)
 
 TOOL=$(printf '%s' "$PAYLOAD" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('tool_name',''))" 2>/dev/null || echo "")
@@ -40,6 +54,8 @@ if printf '%s' "$PLAN" | grep -Eq '\|[^|]*direct-edit[^|]*\|'; then
    cmux 는 dispatch(cmux) 기본 — 슬라이스를 dispatch-slice-pane.sh --mode=cmux 로 돌려라.
    정말 direct-edit 가 맞으면(정책/문서/하네스 파일 자체 편집 등) 의식적으로 선언:
      CMUX_DIRECT_EDIT_OK=1 <명령>   — 이번 plan 1회 통과
+   또는 skip-once marker-file (git repo 면 git-common-dir, 아니면 $HOME/.cache/cbp 폴백):
+     touch "$(git rev-parse --git-common-dir 2>/dev/null || echo "$HOME/.cache/cbp")/cbp-skip-once-cmux-dispatch"
    우회:
      SKIP_CMUX_DISPATCH_GATE=1          — 1회 우회
      DISABLE_CMUX_DISPATCH_GATE_HOOK=1  — 영구 비활성

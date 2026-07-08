@@ -12,7 +12,7 @@ HOOK="$REPO/hooks/enforce-cmux-context.sh"
 
 pass=0
 fail_count=0
-total=8
+total=11
 
 check() {
   local desc="$1" expected="$2" actual="$3"
@@ -145,6 +145,38 @@ make_payload "./scripts/tmux-pane.sh launch zsh" | \
   bash "$HOOK" 2>/dev/null; ec8=$?
 check "case8: ./scripts/tmux-pane.sh in cmux → exit 0" "0" "$ec8"
 check_contains "case8: ./scripts/tmux-pane.sh in cmux → stderr advisory" "cmux 안에서 tmux" "$stderr_out8"
+
+# ----------------------------------------------------------------
+# 9. cmux 안 + "DUMMY=1 tmux -V" (선행 env 할당 토큰) → exit 0 + stderr advisory (FN 수정)
+stderr_out9=$(make_payload "DUMMY=1 tmux -V" | \
+  env -i CMUX_WORKSPACE_ID="ws:1" PATH="$PATH" HOME="${HOME:-/tmp}" \
+  bash "$HOOK" 2>&1 >/dev/null) || true
+ec9=0
+make_payload "DUMMY=1 tmux -V" | \
+  env -i CMUX_WORKSPACE_ID="ws:1" PATH="$PATH" HOME="${HOME:-/tmp}" \
+  bash "$HOOK" 2>/dev/null; ec9=$?
+check "case9: DUMMY=1 tmux -V in cmux → exit 0" "0" "$ec9"
+check_contains "case9: DUMMY=1 tmux -V in cmux → stderr advisory" "cmux 안에서 tmux" "$stderr_out9"
+
+# ----------------------------------------------------------------
+# 10. cmux 안 + 절대 풀패스 "/abs/path/scripts/tmux-pane.sh status" → exit 0 + stderr advisory (FN 수정)
+stderr_out10=$(make_payload "/abs/path/scripts/tmux-pane.sh status" | \
+  env -i CMUX_WORKSPACE_ID="ws:1" PATH="$PATH" HOME="${HOME:-/tmp}" \
+  bash "$HOOK" 2>&1 >/dev/null) || true
+ec10=0
+make_payload "/abs/path/scripts/tmux-pane.sh status" | \
+  env -i CMUX_WORKSPACE_ID="ws:1" PATH="$PATH" HOME="${HOME:-/tmp}" \
+  bash "$HOOK" 2>/dev/null; ec10=$?
+check "case10: 절대 풀패스 tmux-pane.sh in cmux → exit 0" "0" "$ec10"
+check_contains "case10: 절대 풀패스 tmux-pane.sh in cmux → stderr advisory" "cmux 안에서 tmux" "$stderr_out10"
+
+# ----------------------------------------------------------------
+# 11. strict 미설정 시 기본 exit 0 유지 (hooks.json/settings.json 의 inline STRICT=1 제거 회귀가드)
+ec11=0
+make_payload "tmux send-keys -t pane1 'ls' Enter" | \
+  env -i CMUX_WORKSPACE_ID="ws:1" PATH="$PATH" HOME="${HOME:-/tmp}" \
+  bash "$HOOK" 2>/dev/null; ec11=$?
+check "case11: CMUX_CONTEXT_HOOK_STRICT 미설정 → exit 0 (advisory only)" "0" "$ec11"
 
 echo ""
 echo "ok: $pass/$total passed"

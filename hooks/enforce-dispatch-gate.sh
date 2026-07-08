@@ -80,6 +80,12 @@ fi
 # 세션 marker 없음 → 비-plan-dev → exit 0
 [ -f "$SESSION_FILE" ] || exit 0
 
+# skip-once marker-file escape (R1): <git-common-dir>/cbp-skip-once-dispatch-gate.
+# 원자적 소비(rm, -f 금지)에 성공한 1개 프로세스만 allow.
+if [ -n "$GIT_COMMON" ] && rm "${GIT_COMMON}/cbp-skip-once-dispatch-gate" 2>/dev/null; then
+  exit 0
+fi
+
 # 자식 worktree 감지 (git-dir != git-common-dir) → exit 0
 GIT_DIR=$(git rev-parse --git-dir 2>/dev/null || echo "")
 if [ -n "$GIT_DIR" ] && [ -n "$GIT_COMMON" ] && [ "$GIT_DIR" != "$GIT_COMMON" ]; then
@@ -111,11 +117,16 @@ import json, os, glob, datetime
 sf = os.environ["SF"]; pd = os.environ["PD"]
 try:
     ts = json.load(open(sf)).get("start_ts", "")
-    st = datetime.datetime.fromisoformat(ts.replace("Z", "+00:00")).timestamp()
+    st = datetime.datetime.fromisoformat(ts.replace("Z", "+00:00"))
+    now = datetime.datetime.now(datetime.timezone.utc)
+    if (now - st).total_seconds() >= 24 * 3600:
+        print("stale"); raise SystemExit
+except SystemExit:
+    raise
 except Exception:
     print("unknown"); raise SystemExit
 try:
-    fresh = any(os.path.getmtime(p) >= st for p in glob.glob(os.path.join(pd, "*.md")))
+    fresh = any(os.path.getmtime(p) >= st.timestamp() for p in glob.glob(os.path.join(pd, "*.md")))
 except Exception:
     print("unknown"); raise SystemExit
 print("1" if fresh else "0")
@@ -123,11 +134,19 @@ PY
 )
 [ "$FRESH" = "1" ] && exit 0
 [ "$FRESH" = "unknown" ] && exit 0
+if [ "$FRESH" = "stale" ]; then
+  cat >&2 <<EOF
+⚠️  [enforce-dispatch-gate] plan-dev 세션 marker 가 24시간 넘게 stale — 이전 세션 잔재로 판단해 allow.
+   정리: rm "$SESSION_FILE" (또는 scripts/plan-dev-session.sh clear)
+EOF
+  exit 0
+fi
 
 # 마커 활성 + plan mode 미진입 → 차단
-cat >&2 <<'EOF'
+cat >&2 <<EOF
 [enforce-dispatch-gate] plan-dev 세션인데 plan mode 미진입 상태에서 dispatch 시도.
    EnterPlanMode → plan 작성 → ExitPlanMode 로 사용자 승인 후 dispatch 할 것.
-   우회: SKIP_DISPATCH_GATE=1 (1회) / DISABLE_DISPATCH_GATE_HOOK=1 (영구).
+   1회 우회: touch "\$(git rev-parse --git-common-dir)/cbp-skip-once-dispatch-gate"
+   그 외: SKIP_DISPATCH_GATE=1 (1회) / DISABLE_DISPATCH_GATE_HOOK=1 (영구).
 EOF
 exit 2

@@ -37,6 +37,13 @@ set -uo pipefail
 [ "${DISABLE_PLAN_MODE_ENFORCE_HOOK:-0}" = "1" ] && exit 0
 [ "${SKIP_PLAN_MODE_ENFORCE:-0}" = "1" ] && exit 0
 
+# skip-once marker-file escape (R1): <git-common-dir>/cbp-skip-once-plan-mode 존재하면
+# 원자적 소비(rm, -f 금지)에 성공한 1개 프로세스만 allow.
+_GIT_COMMON_EARLY=$(git rev-parse --git-common-dir 2>/dev/null || true)
+if [ -n "$_GIT_COMMON_EARLY" ] && rm "${_GIT_COMMON_EARLY}/cbp-skip-once-plan-mode" 2>/dev/null; then
+  exit 0
+fi
+
 PAYLOAD=$(cat)
 
 PROJECT_DIR="${CLAUDE_PROJECT_DIR:-$(pwd)}"
@@ -55,6 +62,25 @@ fi
 TOOL=$(printf '%s' "$PAYLOAD" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('tool_name',''))" 2>/dev/null || echo "")
 case "$TOOL" in Write|Edit) ;; *) exit 0 ;; esac
 
+# R2: tool_input.file_path 가 PROJECT_DIR 밖 → allow. 상대경로는 cwd 기준 정규화.
+# 추출/정규화 실패 → conservative(기존 로직 계속 — 아래 판정으로 fall through).
+FILE_PATH=$(printf '%s' "$PAYLOAD" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('tool_input',{}).get('file_path',''))" 2>/dev/null || echo "")
+if [ -n "$FILE_PATH" ]; then
+  IN_SCOPE=$(FP="$FILE_PATH" PD="$PROJECT_DIR" python3 - <<'PY' 2>/dev/null || echo unknown
+import os
+fp = os.environ["FP"]; pd = os.environ["PD"]
+try:
+    abs_fp = fp if os.path.isabs(fp) else os.path.normpath(os.path.join(os.getcwd(), fp))
+    abs_fp = os.path.normpath(abs_fp)
+    abs_pd = os.path.normpath(pd)
+    print("1" if (abs_fp == abs_pd or abs_fp.startswith(abs_pd + os.sep)) else "0")
+except Exception:
+    print("unknown")
+PY
+)
+  [ "$IN_SCOPE" = "0" ] && exit 0
+fi
+
 PMODE=$(printf '%s' "$PAYLOAD" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('permission_mode',''))" 2>/dev/null || echo "")
 
 # plan mode 중 / dispatch 자식·명시 우회 모드 → allow
@@ -69,11 +95,16 @@ import json, os, glob, datetime
 sf = os.environ["SF"]; pd = os.environ["PD"]
 try:
     ts = json.load(open(sf)).get("start_ts", "")
-    st = datetime.datetime.fromisoformat(ts.replace("Z", "+00:00")).timestamp()
+    st = datetime.datetime.fromisoformat(ts.replace("Z", "+00:00"))
+    now = datetime.datetime.now(datetime.timezone.utc)
+    if (now - st).total_seconds() >= 24 * 3600:
+        print("stale"); raise SystemExit
+except SystemExit:
+    raise
 except Exception:
     print("unknown"); raise SystemExit
 try:
-    fresh = any(os.path.getmtime(p) >= st for p in glob.glob(os.path.join(pd, "*.md")))
+    fresh = any(os.path.getmtime(p) >= st.timestamp() for p in glob.glob(os.path.join(pd, "*.md")))
 except Exception:
     print("unknown"); raise SystemExit
 print("1" if fresh else "0")
@@ -81,12 +112,20 @@ PY
 )
 [ "$FRESH" = "1" ] && exit 0
 [ "$FRESH" = "unknown" ] && exit 0
+if [ "$FRESH" = "stale" ]; then
+  cat >&2 <<EOF
+⚠️  [enforce-plan-mode] plan-dev 세션 marker 가 24시간 넘게 stale — 이전 세션 잔재로 판단해 allow.
+   정리: rm "$SESSION_FILE" (또는 scripts/plan-dev-session.sh clear)
+EOF
+  exit 0
+fi
 
 # 마커 활성 + plan mode 미진입 → 차단
 cat >&2 <<EOF
 🛑 [enforce-plan-mode] /plan-dev 세션 활성인데 plan mode 미진입 상태에서 ${TOOL} 시도.
    /plan-dev 는 plan mode 진입이 필수 — 먼저 EnterPlanMode 호출 → plan 파일 작성 →
    ExitPlanMode 로 사용자 승인 후 편집할 것.
-   우회: SKIP_PLAN_MODE_ENFORCE=1 (1회) / DISABLE_PLAN_MODE_ENFORCE_HOOK=1 (영구).
+   1회 우회: touch "\$(git rev-parse --git-common-dir)/cbp-skip-once-plan-mode"
+   그 외: SKIP_PLAN_MODE_ENFORCE=1 (1회, env 채널 도달 가능한 경우) / DISABLE_PLAN_MODE_ENFORCE_HOOK=1 (영구).
 EOF
 exit 2

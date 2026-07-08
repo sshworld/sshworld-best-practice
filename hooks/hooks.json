@@ -40,7 +40,7 @@
           },
           {
             "type": "command",
-            "command": "CMUX_CONTEXT_HOOK_STRICT=1 \"${CLAUDE_PLUGIN_ROOT}\"/hooks/enforce-cmux-context.sh"
+            "command": "\"${CLAUDE_PLUGIN_ROOT}\"/hooks/enforce-cmux-context.sh"
           },
           {
             "type": "command",
