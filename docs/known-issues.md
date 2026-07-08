@@ -22,3 +22,4 @@
 | 16 | `.claude-plugin/marketplace.json` | `allowCrossMarketplaceDependenciesOn: ["caveman"]` — 용도 불명 죽은 설정 의심 | 하 |
 | 17 | `scripts/cmux-pane.sh` (reap-orphans grace) | `CBP_LAUNCH_VERIFY_TRIES` / `CBP_WARMUP_SLEEP` 를 확대하면 warmup 시간이 reap-orphans grace(기본 30초)를 초과할 수 있음 — 그 경우 정상 launch 중인 surface 가 오살될 위험 | 중 |
 | 18 | cmux dispatch 전반 (2026-07-08 관측) | cmux 자식 세션 4/4 회 crash 관측 — 비결정적 자식 사망 빈도가 높음. subagent 폴백 경로는 검증됨 | 상 |
+| 19 | `hooks/enforce-doc-sync.sh` (worktree cwd) | subagent 가 worktree 안에서 커밋해도 hook 프로세스가 main repo cwd 에서 `git diff --cached` 를 실행 — staged 없음으로 오탐 차단 (2026-07-08 실측). 우회는 `SKIP_DOC_SYNC=1`. hook 이 `git -C` 로 대상 repo 를 명령에서 유추하거나 `CLAUDE_PROJECT_DIR` 대신 명령 cwd 를 써야 함 | 중 |
