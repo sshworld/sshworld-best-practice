@@ -33,6 +33,10 @@
 #   CBP_REAP_ORPHANS_GRACE_SEC — reap-orphans 신생 surface grace 초 (디폴트 30). ts= 가 now 기준 이
 #                                초 이내면 liveness 검사 자체를 skip 하고 보존 (launch PTY warmup 중
 #                                오살 방지). ts 비수치/결측 → grace 미적용(기존 liveness 검사).
+#                                reap --all/argless 의 신생 자식 grace skip 에도 동일 변수 재사용.
+#   CBP_LAUNCH_DEBUG           — 1 이면 _do_launch_grid 의 생성 경로(new-pane/new-split raw_out),
+#                                prev_surface, verify 루프 각 시도의 read-screen 출력을 stderr 로
+#                                dump. 디폴트(0/unset) 시 동작·출력 완전 불변(추가 read-screen 호출 없음).
 
 set -uo pipefail
 
@@ -69,6 +73,16 @@ commands:
   set-status <key> <value> [--icon=<name>] [--color=<#hex>] [--workspace=<ref>]
                                                 workspace 사이드바 탭 status pill 갱신 (key 별로 관리).
                                                 예: set-status plan-dev "2/3 (66%)" --icon sparkle
+  reap [--pane=<ref>] [--all] [--idle=<sec>] [--timeout=<sec>]
+                                                --pane 지정: 단일 surface wait-idle→capture→완료(✅/❌)
+                                                  감지 시 자동 close, 미완료면 보존.
+                                                --pane 생략 또는 --all: state 의 모든 자식 순회
+                                                  (fast-probe 기본 --idle=2 --timeout=10, 옵션 명시 시
+                                                  override). 자식마다 subshell 실행 — 개별 실패가 루프
+                                                  전체를 안 죽임. ts 기준 age < CBP_REAP_ORPHANS_GRACE_SEC
+                                                  (기본 30)인 신생 자식은 probe 없이 "grace — kept".
+                                                  마지막 줄 "reaped N / kept M" 요약. exit 0.
+                                                CBP_REAP_DRY_RUN=1 dry-run.
   reap-orphans                                  모든 state file(CBP_STATE_DIR, 디폴트 ~/.cache/cbp) 스캔.
                                                 dead surface(read-screen rc≠0) → close-surface + state 제거.
                                                 alive / self(CMUX_SURFACE_ID) surface 보호.
@@ -100,6 +114,7 @@ parse_long_opts() {
       --timeout)   TIMEOUT="$2"; shift 2 ;;
       --done-pattern=*) DONE_PATTERN="${1#*=}"; shift ;;
       --done-pattern)   DONE_PATTERN="$2"; shift 2 ;;
+      --all)       ALL="1"; shift ;;
       --)          shift; break ;;
       *)           shift ;;
     esac
@@ -274,6 +289,20 @@ _cbp_surface_is_terminal() {
   "$CMUX_BIN" read-screen --surface "$surface_ref" >/dev/null 2>&1
 }
 
+# CBP_LAUNCH_DEBUG=1 이면 진단 메시지를 stderr 로 dump. 디폴트(off) 시 완전 무동작(추가 호출 없음).
+_cbp_debug() {
+  [ "${CBP_LAUNCH_DEBUG:-0}" = "1" ] && echo "[CBP_LAUNCH_DEBUG] $*" >&2
+  return 0
+}
+
+# 좀비 surface 방지 — _do_launch_grid 실패 종료(die exit) 시 trap 으로 호출.
+# best-effort close-surface + state 제거. exit code 는 호출부(trap 문자열)에서 별도 보존.
+_cbp_launch_trap_cleanup() {
+  local ref="$1"
+  "$CMUX_BIN" close-surface --surface "$ref" >/dev/null 2>&1 || true
+  cbp_state_remove "$ref"
+}
+
 # do_launch 의 grid split 내부 구현 (CMUX_WORKSPACE_ID 가 set 인 경우).
 # 라운드로빈 방향: count=0 → right (첫 자식), count=1 → down, count=2 → right, count=3 → down, ...
 # CBP_SPLIT_POLICY env 로 방향 override 가능 (Slice A3 에서 확장 예정).
@@ -286,6 +315,7 @@ _do_launch_grid() {
   lockpath="${sf}.lock"
 
   local surface_ref raw_out
+  local _creation_path="unknown"
 
   # ── CRITICAL SECTION: count read → cmux 생성 → state 기록 원자화 ──────────
   # 병렬 dispatch race 방지. 이 구간이 비원자적이면 동시 호출이 같은 count/prev_surface
@@ -311,6 +341,8 @@ _do_launch_grid() {
       --direction right \
       --workspace "$CMUX_WORKSPACE_ID" 2>/dev/null || true)
     surface_ref=$(printf '%s' "$raw_out" | awk '/^OK / {print $2; exit}')
+    _creation_path="new-pane(first child)"
+    _cbp_debug "creation path=$_creation_path raw_out=[$raw_out]"
   else
     # 후속 자식: 마지막→처음 순으로 살아있는 첫 번째 surface 를 prev_surface 로 선택.
     # 살아있는 게 없으면 count=0 과 동일하게 new-pane 폴백.
@@ -334,6 +366,8 @@ _do_launch_grid() {
 $_reversed
 _REVEOF
 
+    _cbp_debug "prev_surface=[$prev_surface]"
+
     if [ -z "$prev_surface" ]; then
       # 살아있는 prev 없음 → new-pane 폴백 (첫 자식 경로 재사용)
       raw_out=$("$CMUX_BIN" new-pane \
@@ -341,6 +375,8 @@ _REVEOF
         --direction right \
         --workspace "$CMUX_WORKSPACE_ID" 2>/dev/null || true)
       surface_ref=$(printf '%s' "$raw_out" | awk '/^OK / {print $2; exit}')
+      _creation_path="new-pane(fallback, no live prev)"
+      _cbp_debug "creation path=$_creation_path raw_out=[$raw_out]"
     else
       # 라운드로빈 방향: count 홀수 → down, 짝수 → right
       local dir
@@ -355,12 +391,20 @@ _REVEOF
       raw_out=$("$CMUX_BIN" new-split "$dir" \
         --surface "$prev_surface" 2>/dev/null || true)
       surface_ref=$(printf '%s' "$raw_out" | awk '/^OK / {print $2; exit}')
+      _creation_path="new-split($dir, prev=$prev_surface)"
+      _cbp_debug "creation path=$_creation_path raw_out=[$raw_out]"
     fi
   fi
 
   # surface ref 공백 trim + fallback
   surface_ref=$(printf '%s' "$surface_ref" | tr -d '[:space:]')
   [ -z "$surface_ref" ] && surface_ref="surface:unknown"
+
+  # 좀비 surface 방지 trap: surface 생성 성공 직후 ~ launch 정상 완료까지 유효.
+  # 이후 실패 종료(verify-fail die + 이후 do_send die 포함) 시 best-effort close-surface
+  # + state 제거. 정상 완료 시 두 성공 경로(warmup 스킵/검증 통과) 에서 trap 해제.
+  # exit code 는 trap 안에서 즉시 $? 캡처 후 명시 재-exit 로 보존 (die 의 exit 3 등 덮어쓰기 방지).
+  trap '_cbp_launch_trap_rc=$?; _cbp_launch_trap_cleanup "$surface_ref"; exit "$_cbp_launch_trap_rc"' EXIT
 
   # state file 기록 (lock 보유 중 — unlocked 직접 호출로 재진입 회피)
   _cbp_state_append_unlocked "$sf" "$surface_ref" "$name"
@@ -383,6 +427,7 @@ _REVEOF
     if [ -n "$_cmd" ]; then
       do_send "$_cmd" --pane="$surface_ref" >/dev/null
     fi
+    trap - EXIT
     printf '%s\n' "$surface_ref"
     return 0
   fi
@@ -394,6 +439,11 @@ _REVEOF
   while [ "$_vt" -lt "$verify_tries" ]; do
     "$CMUX_BIN" send-key --surface "$surface_ref" Enter >/dev/null 2>&1 || true
     sleep "$warmup_sleep"
+    if [ "${CBP_LAUNCH_DEBUG:-0}" = "1" ]; then
+      local _debug_screen
+      _debug_screen=$("$CMUX_BIN" read-screen --surface "$surface_ref" 2>&1)
+      _cbp_debug "verify try $((_vt + 1))/${verify_tries} read-screen=[$_debug_screen]"
+    fi
     if _cbp_surface_is_terminal "$surface_ref"; then
       verified=1
       break
@@ -402,7 +452,7 @@ _REVEOF
   done
 
   if [ "$verified" = "0" ]; then
-    die "launch: surface '$surface_ref' PTY 미기동 (not a terminal) — ${verify_tries}회 검증 실패. cmux 불안정 가능, --mode=subagent 폴백 고려." 3
+    die "launch: surface '$surface_ref' PTY 미기동 (not a terminal) — ${verify_tries}회 검증 실패. creation path=${_creation_path}. cmux 불안정 가능, --mode=subagent 폴백 고려." 3
   fi
 
   # PTY 검증 통과 후 cmd 전달 (cmd 있을 때만)
@@ -410,6 +460,7 @@ _REVEOF
     do_send "$_cmd" --pane="$surface_ref" >/dev/null
   fi
 
+  trap - EXIT
   printf '%s\n' "$surface_ref"
 }
 
@@ -605,9 +656,11 @@ EOF
   esac
 }
 
-do_reap() {
+# --pane=<ref> 단일 자식 회수 (기존 do_reap 로직 그대로 — 이름만 분리).
+# --all/argless 는 do_reap 이 이 함수를 자식마다 subshell 로 반복 호출한다.
+_do_reap_one() {
   # (⏺ prefix 허용) Claude TUI 가 완료 마커를 "⏺ ✅" 또는 들여쓰기로 렌더하는 경우 대응
-  local PANE="" IDLE="15" TIMEOUT="900" DONE_PATTERN='^[[:space:]]*(⏺[[:space:]]*)?(✅|❌)'
+  local PANE="" IDLE="15" TIMEOUT="900" DONE_PATTERN='^[[:space:]]*(⏺[[:space:]]*)?(✅|❌)' ALL=""
   parse_long_opts "$@"
   [ -z "$PANE" ] && die "reap: --pane=<ref> 필요" 2
 
@@ -634,6 +687,80 @@ do_reap() {
   else
     echo "not done — kept $PANE"
   fi
+}
+
+# --pane 생략 또는 --all: state 의 모든 자식을 fast-probe 로 순회.
+# 각 자식은 subshell 에서 _do_reap_one 실행 — do_wait_idle 의 exit4(timeout)나 do_kill
+# die 가 루프 전체를 죽이지 않도록 rc 만 수집(무시), stdout 으로 완료 여부만 판별.
+# 신생 자식(ts 기준 age < CBP_REAP_ORPHANS_GRACE_SEC)은 probe 자체를 skip — launch
+# PTY warmup 중 오살 방지 (state 는 verify 전에 선기록되므로).
+_do_reap_all() {
+  local PANE="" IDLE="" TIMEOUT="" ALL=""
+  parse_long_opts "$@"
+  local idle="${IDLE:-2}"
+  local timeout="${TIMEOUT:-10}"
+  local grace_sec="${CBP_REAP_ORPHANS_GRACE_SEC:-30}"
+
+  local sf
+  sf=$(cbp_state_path)
+  local snapshot=""
+  [ -f "$sf" ] && snapshot=$(cat "$sf")
+
+  local now
+  now=$(date +%s)
+  local reaped=0
+  local kept=0
+
+  while IFS= read -r line; do
+    [ -z "$line" ] && continue
+
+    local surface_ref ts_ref
+    surface_ref=$(printf '%s' "$line" | grep -o 'surface=[^|]*' | sed 's/surface=//')
+    ts_ref=$(printf '%s' "$line" | grep -o 'ts=[^|]*' | sed 's/ts=//')
+    [ -z "$surface_ref" ] && continue
+
+    # grace: ts 가 수치이고 age < grace_sec 이면 probe 자체 skip.
+    # ts 비수치/결측 → 이 case 미매치 → 아래 probe 로 폴백(conservative).
+    case "$ts_ref" in
+      *[!0-9]*|'')
+        ;;
+      *)
+        local age=$((now - ts_ref))
+        if [ "$age" -lt "$grace_sec" ]; then
+          echo "grace — kept $surface_ref"
+          kept=$((kept + 1))
+          continue
+        fi
+        ;;
+    esac
+
+    local out
+    out=$( ( _do_reap_one --pane="$surface_ref" --idle="$idle" --timeout="$timeout" ) 2>&1 )
+    printf '%s\n' "$out"
+
+    if printf '%s\n' "$out" | grep -q '^reaped '; then
+      reaped=$((reaped + 1))
+    else
+      kept=$((kept + 1))
+    fi
+  done <<EOF
+$snapshot
+EOF
+
+  echo "reaped $reaped / kept $kept"
+  return 0
+}
+
+do_reap() {
+  local PANE="" IDLE="15" TIMEOUT="900" ALL=""
+  parse_long_opts "$@"
+
+  if [ -z "$PANE" ] || [ "$ALL" = "1" ]; then
+    _do_reap_all "$@"
+    return $?
+  fi
+
+  _do_reap_one "$@"
 }
 
 do_list() {

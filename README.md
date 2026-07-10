@@ -42,7 +42,7 @@ hooks/
 └── settings.json             # permissions(allow/deny) + hooks (project-scope dogfooding)
 scripts/
 ├── tmux-pane.sh              # 얇은 tmux wrapper — launch/send/capture/wait-idle/kill/list/status
-├── cmux-pane.sh              # 얇은 cmux wrapper — launch/send/capture/kill/list/cleanup/status + state file 헬퍼
+├── cmux-pane.sh              # 얇은 cmux wrapper — launch/send/capture/kill/reap/list/cleanup/status + state file 헬퍼
 ├── detect-pane-env.sh        # 터미널 환경 감지 — tmux | cmux | default
 ├── dispatch-slice-pane.sh    # implementor 슬라이스를 tmux/cmux pane 으로 dispatch (plan-dev --mode=pane)
 ├── plan-dev-session.sh       # plan-dev 세션 marker 관리 (start/query/clear)
@@ -271,6 +271,7 @@ cmux 앱 안에서 실행 중일 때 (`CMUX_WORKSPACE_ID` set) `scripts/cmux-pan
 - 각 자식의 surface ref 는 `CBP_STATE_FILE` (기본 `~/.cache/cbp/children-<ws>.json`) 에 누적 기록.
 - `cmux-pane.sh kill --pane=surface:N` 으로 개별 surface close + state 제거.
 - `cmux-pane.sh reap --pane=surface:N` 으로 완료(✅/❌) 자식 자동 회수 — wait-idle → capture → done 감지 시 자동 close, 미완료면 보존. `CBP_REAP_DRY_RUN=1` dry-run 지원.
+- `cmux-pane.sh reap` (`--pane` 생략) 또는 `cmux-pane.sh reap --all` → state 의 모든 자식을 fast-probe(기본 `--idle=2 --timeout=10`)로 순회, 자식마다 subshell 실행(개별 실패가 루프 전체를 안 죽임). ts 기준 age < `CBP_REAP_ORPHANS_GRACE_SEC`(기본 30) 인 신생 자식은 probe 없이 "grace — kept". 마지막 줄 `reaped N / kept M` 요약, exit 0. 부모 감시 루프가 `--pane` 없이 반복 폴링해도 더 이상 exit 2 헛돌지 않음.
 - `cmux-pane.sh send/capture/wait-idle --pane=surface:N` → `--surface` flag 자동 dispatch. `workspace:N` ref 는 기존 `--workspace` (회귀 zero).
 - `cmux-pane.sh list` → state file 의 자식 surface 우선, 폴백으로 cbp- workspace 목록. cmux tree 와 lazy reconcile (mock 환경 자동 감지).
 - `cmux-pane.sh cleanup` → state file 의 surface 일괄 `close-surface` + state 제거 후, 기존 cbp- workspace cleanup 도 실행 (호환).
@@ -283,8 +284,9 @@ cmux 앱 안에서 실행 중일 때 (`CMUX_WORKSPACE_ID` set) `scripts/cmux-pan
 #### cmux dispatch 진단 가이드 (자식이 진행 안 하는 듯할 때)
 
 `scripts/dispatch-slice-pane.sh --mode=cmux` 는 **launch·자식 기동 검증으로 silent 실패를 방지**한다:
-- surface PTY 가 terminal 상태인지 검증(`CBP_LAUNCH_VERIFY_TRIES`, 기본 5회 재시도) — 실패 시 exit 3.
+- surface PTY 가 terminal 상태인지 검증(`CBP_LAUNCH_VERIFY_TRIES`, 기본 5회 재시도) — 실패 시 exit 3. 실패 종료 시 (verify-fail die 및 이후 send die 포함) trap 이 best-effort `close-surface` + state 제거를 수행 — 좀비 surface(생성만 되고 state/실surface 로 영구 잔존) 방지.
 - 자식 claude TUI 기동 신호 검증(`DISPATCH_VERIFY_TRIES`, 기본 3회 재시도) — 실패 시 exit 비0. 끝내 실패 시 `--mode=subagent` 폴백 권장.
+- `CBP_LAUNCH_DEBUG=1` 로 launch 진단 로깅 활성화 — verify 각 시도의 read-screen 출력, 생성 경로(new-pane/new-split), prev_surface 를 stderr 로 dump. 기본(off) 시 동작·출력 완전 불변(추가 read-screen 호출 없음).
 
 spec prompt 송신은 **자동 `--enter-count=2`** 적용 — Claude TUI paste mode 끝의 첫 Enter 가 newline 으로 처리되어 자식이 spec 받고도 명령 실행 안 하던 이슈 해소.
 
@@ -307,8 +309,10 @@ cmux read-screen --surface surface:<N> --lines 30
 
 부모 회수 패턴:
 ```bash
-# 완료 자동 감지 + 탭 종료 (reap — 권장)
+# 완료 자동 감지 + 탭 종료 (reap — 권장, 단일 자식)
 scripts/cmux-pane.sh reap --pane=surface:<N> --idle=15 --timeout=900
+# 부모 감시 루프: --pane 생략(argless) 또는 --all → state 의 모든 자식 fast-probe 일괄 회수
+scripts/cmux-pane.sh reap --all
 # 수동 회수 (tmux/기타 모드)
 scripts/cmux-pane.sh wait-idle --pane=surface:<N> --idle=15 --timeout=900
 cmux read-screen --surface surface:<N> --lines 30 | grep -E '^[[:space:]]*(⏺[[:space:]]*)?(✅|❌)'  # ⏺/들여쓰기 prefix 허용
@@ -575,6 +579,7 @@ DISABLE_DISPATCH_GATE_HOOK=1   # 영구 비활성
 | `CLAUDE_FAKE_SELF_CMUX_WS=<ref>` | unset | cmux-pane.sh kill/cleanup 의 자기 workspace ref mock (테스트용) |
 | `CBP_SPLIT_POLICY=<dir>` | unset (라운드로빈) | cmux-pane.sh grid split 방향 고정 (`down` 또는 `right`). unset 시 라운드로빈 (홀수→down, 짝수→right) |
 | `CBP_LAUNCH_VERIFY_TRIES=<n>` | 5 | cmux-pane.sh launch 후 PTY terminal 검증 루프 최대 시도 횟수. 끝내 실패 시 die(exit 3). `CBP_DISABLE_WARMUP=1` 시 스킵. |
+| `CBP_LAUNCH_DEBUG=1` | off | cmux-pane.sh launch 진단 로깅 — 생성 경로(new-pane/new-split raw_out), prev_surface, verify 루프 각 시도의 read-screen 출력을 stderr 로 dump. off 시 동작·출력 완전 불변. |
 | `CMUX_CONTEXT_HOOK_STRICT=1` | off | enforce-cmux-context.sh strict 모드 — cmux 안 tmux 계열 명령 차단(exit 2) |
 | `SKIP_CMUX_CONTEXT_HOOK=1` | off | enforce-cmux-context.sh 1회 우회 (advisory 억제) |
 | `DISABLE_CMUX_CONTEXT_HOOK=1` | off | enforce-cmux-context.sh 영구 비활성화 |

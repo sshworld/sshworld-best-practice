@@ -46,7 +46,7 @@ check_not_contains() {
 
 [ -f "$SCRIPT" ] || { echo "FAIL: $SCRIPT 없음" >&2; exit 1; }
 
-total=22
+total=35
 
 # fake cmux: read-screen → CMUX_SCREEN_FILE 출력, 그 외 → CMUX_CALLS_LOG 에 append
 cat > "$TMP/cmux" << 'EOF'
@@ -208,6 +208,109 @@ check "TC-f: died → surface:9 state 에서 제거" "0" "$state_has_9"
 # surface:10 은 보존돼야 함
 state_has_10=$(grep 'surface=surface:10|' "$STATE_FILE_F" 2>/dev/null | wc -l | tr -d ' ')
 check "TC-f: died → surface:10 는 state 보존" "1" "$state_has_10"
+
+# ----------------------------------------------------------------
+# --all / argless 용 mock cmux: read-screen 은 --surface 인자별 screen 파일을
+# CMUX_SCREEN_DIR 에서 찾아 출력 (surface:101 → surface_101.screen). 그 외 명령은
+# CMUX_CALLS_LOG 에 (read-screen 포함) 전부 기록 — grace 자식이 probe 안 됐는지 검증용.
+cat > "$TMP/cmux-all" << 'ALLEOF'
+#!/usr/bin/env bash
+cmd="$1"; shift
+if [ "$cmd" = "read-screen" ]; then
+  echo "read-screen $*" >> "${CMUX_CALLS_LOG:-/dev/null}"
+  surface=""
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --surface) surface="$2"; shift 2 ;;
+      *) shift ;;
+    esac
+  done
+  sanitized=$(printf '%s' "$surface" | tr ':' '_')
+  cat "${CMUX_SCREEN_DIR:-/tmp}/${sanitized}.screen" 2>/dev/null || true
+else
+  echo "$cmd $*" >> "${CMUX_CALLS_LOG:-/dev/null}"
+fi
+ALLEOF
+chmod +x "$TMP/cmux-all"
+
+SCREEN_DIR="$TMP/screens"
+mkdir -p "$SCREEN_DIR"
+
+# ----------------------------------------------------------------
+# TC (g): --all — 자식 2 완료(✅/❌) + 1 진행중 → "reaped 2 / kept 1" + state 반영
+printf '✅ done\n' > "$SCREEN_DIR/surface_101.screen"
+printf '❌ failed\n' > "$SCREEN_DIR/surface_102.screen"
+printf '❯\nstill working\n' > "$SCREEN_DIR/surface_103.screen"
+
+STATE_ALL="$TMP/reap-all.state"
+old_ts_g=$(( $(date +%s) - 1000 ))
+printf 'surface=surface:101|name=cbp-a|ts=%s|ws=ws1\n' "$old_ts_g" > "$STATE_ALL"
+printf 'surface=surface:102|name=cbp-b|ts=%s|ws=ws1\n' "$old_ts_g" >> "$STATE_ALL"
+printf 'surface=surface:103|name=cbp-c|ts=%s|ws=ws1\n' "$old_ts_g" >> "$STATE_ALL"
+
+> "$TMP/calls-all.log"
+exit_code=99
+stdout_out=$(CMUX_BIN="$TMP/cmux-all" \
+  CMUX_SCREEN_DIR="$SCREEN_DIR" \
+  CMUX_CALLS_LOG="$TMP/calls-all.log" \
+  CBP_STATE_FILE="$STATE_ALL" \
+  bash "$SCRIPT" reap --all --idle=0 --timeout=5 2>/dev/null) && exit_code=0 || exit_code=$?
+check "TC-g: --all → exit 0" "0" "$exit_code"
+check_contains "TC-g: --all → 'reaped 2 / kept 1' 요약" "reaped 2 / kept 1" "$stdout_out"
+state_remaining_g=$(grep -c 'surface=' "$STATE_ALL" 2>/dev/null || true)
+check "TC-g: --all → state 에 진행중 자식 1개만 남음" "1" "$state_remaining_g"
+check_contains "TC-g: --all → state 에 surface:103(진행중) 잔존" "surface=surface:103|" "$(cat "$STATE_ALL")"
+
+# ----------------------------------------------------------------
+# TC (h): argless == --all 동일 동작
+printf '✅ done\n' > "$SCREEN_DIR/surface_201.screen"
+printf '✅ done\n' > "$SCREEN_DIR/surface_202.screen"
+
+STATE_ARGLESS="$TMP/reap-argless.state"
+old_ts_h=$(( $(date +%s) - 1000 ))
+printf 'surface=surface:201|name=cbp-d|ts=%s|ws=ws1\n' "$old_ts_h" > "$STATE_ARGLESS"
+printf 'surface=surface:202|name=cbp-e|ts=%s|ws=ws1\n' "$old_ts_h" >> "$STATE_ARGLESS"
+
+> "$TMP/calls-argless.log"
+exit_code=99
+stdout_out=$(CMUX_BIN="$TMP/cmux-all" \
+  CMUX_SCREEN_DIR="$SCREEN_DIR" \
+  CMUX_CALLS_LOG="$TMP/calls-argless.log" \
+  CBP_STATE_FILE="$STATE_ARGLESS" \
+  bash "$SCRIPT" reap 2>/dev/null) && exit_code=0 || exit_code=$?
+check "TC-h: argless → exit 0" "0" "$exit_code"
+check_contains "TC-h: argless → 'reaped 2 / kept 0' 요약 (argless==--all)" "reaped 2 / kept 0" "$stdout_out"
+state_remaining_h=$(grep -c 'surface=' "$STATE_ARGLESS" 2>/dev/null || true)
+check "TC-h: argless → state 완전 비워짐" "0" "$state_remaining_h"
+
+# ----------------------------------------------------------------
+# TC (i): grace skip — ts 가 방금(now)인 자식은 probe 없이 "grace — kept"
+printf '✅ done\n' > "$SCREEN_DIR/surface_301.screen"
+
+STATE_GRACE="$TMP/reap-grace.state"
+old_ts_i=$(( $(date +%s) - 1000 ))
+now_ts_i=$(date +%s)
+printf 'surface=surface:301|name=cbp-f|ts=%s|ws=ws1\n' "$old_ts_i" > "$STATE_GRACE"
+printf 'surface=surface:302|name=cbp-g|ts=%s|ws=ws1\n' "$now_ts_i" >> "$STATE_GRACE"
+
+> "$TMP/calls-grace.log"
+exit_code=99
+stdout_out=$(CMUX_BIN="$TMP/cmux-all" \
+  CMUX_SCREEN_DIR="$SCREEN_DIR" \
+  CMUX_CALLS_LOG="$TMP/calls-grace.log" \
+  CBP_STATE_FILE="$STATE_GRACE" \
+  bash "$SCRIPT" reap --all --idle=0 --timeout=5 2>/dev/null) && exit_code=0 || exit_code=$?
+check "TC-i: grace → exit 0" "0" "$exit_code"
+check_contains "TC-i: grace → 'reaped 1 / kept 1' 요약" "reaped 1 / kept 1" "$stdout_out"
+check_contains "TC-i: grace → 'grace — kept' 메시지 포함" "grace — kept" "$stdout_out"
+grace_probed=$(grep -c "surface:302" "$TMP/calls-grace.log" 2>/dev/null || true)
+check "TC-i: grace 자식은 probe 없음 (calls-log 에 surface:302 없음)" "0" "$grace_probed"
+# surface:301(완료, non-grace)은 여전히 probe 되어 reap 돼야 함 — state 에서 제거 확인
+state_has_301=$(grep -c 'surface=surface:301|' "$STATE_GRACE" 2>/dev/null || true)
+check "TC-i: grace → surface:301(완료, probe 대상) state 에서 제거" "0" "$state_has_301"
+# surface:302(grace, kept) 는 state 에 보존
+state_has_302=$(grep -c 'surface=surface:302|' "$STATE_GRACE" 2>/dev/null || true)
+check "TC-i: grace → surface:302(grace, kept) state 보존" "1" "$state_has_302"
 
 echo ""
 echo "ok: $pass/$total passed"
