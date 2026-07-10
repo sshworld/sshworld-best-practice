@@ -89,6 +89,32 @@ $wrapper wait-idle --pane=$pane --idle=10 --timeout=1800
 $wrapper capture   --pane=$pane | tail -50 | grep -E '^[[:space:]]*(⏺[[:space:]]*)?(✅|❌)'
 ```
 
+**여러 자식을 한 번에 회수** — `reap --all` (argless 도 동일): 전 자식 순회, 완료(✅/❌)분만 회수하고 미완료는 "not done — kept" 로 보존, 신규 자식은 grace 로 skip. 마지막 줄에 `reaped N / kept M` 요약, exit 0.
+```bash
+$wrapper reap --all
+# 또는 인자 없이 (argless 도 --all 과 동일 동작)
+$wrapper reap
+```
+
+#### 표준 감시 루프 (박제 — 이 형태 그대로 사용)
+
+부모 감시 루프가 reap 의 에러 출력(exit 2, `--pane=<ref> 필요`)을 무시하고 무한 헛폴링한 실사례가 있었다. 콘텐츠 가드로 아래 형태를 항상 사용할 것 — reap 출력에 `필요|error` 매치 = 호출 방식/환경 문제이므로 폴링 반복은 무의미하고 즉시 abort + 사용자 보고해야 한다.
+
+```bash
+# 표준 감시 루프 — reap --all + 에러 가드. 에러 무시 무한폴링 금지.
+while :; do
+  out="$($wrapper reap --all 2>&1)"; rc=$?
+  echo "$out"
+  # 가드: 에러 신호 감지 시 즉시 중단 + 사용자 보고 (헛폴링 방지)
+  if [ $rc -ge 2 ] || echo "$out" | grep -qE '필요|error'; then
+    echo "reap 에러 감지 — 루프 중단, 사용자 보고" >&2; break
+  fi
+  # 전원 회수 완료 시 종료
+  echo "$out" | grep -q "kept 0" && break
+  sleep 30
+done
+```
+
 #### cross-WS dead orphan 자동 정리 (reap-orphans)
 
 `cmux-pane.sh reap-orphans` 는 **현재 workspace 뿐 아니라 모든 workspace** 의 잔존 dead surface 를 회수한다. 이전 plan-dev 세션이 `finish-plan-dev.sh` 없이 종료됐거나 crash 로 cleanup 을 못 한 경우에도 다음 plan-dev 시작 시 자동으로 dead orphan 을 정리한다.
