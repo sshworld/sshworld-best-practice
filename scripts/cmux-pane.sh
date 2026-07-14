@@ -678,6 +678,20 @@ _do_reap_one() {
   printf '%s\n' "$screen" | tail -20
 
   if printf '%s\n' "$screen" | grep -qE "$DONE_PATTERN"; then
+    # 완료 마커는 떴지만 input box 에 미제출 사용자 텍스트가 남아있으면 회수 보류
+    # (그 텍스트는 부모에게 아직 전달 안 된 후속 지시일 수 있음).
+    if [ "${CBP_REAP_IGNORE_PENDING:-0}" != "1" ]; then
+      local _pend_rc
+      _send_is_submitted "$screen"; _pend_rc=$?
+      if [ "$_pend_rc" -eq 1 ]; then
+        if [ "${CBP_REAP_DRY_RUN:-0}" = "1" ]; then
+          echo "would keep (input-pending) $PANE"
+          return 0
+        fi
+        echo "input-pending — kept $PANE (CBP_REAP_IGNORE_PENDING=1 로 강제 회수 가능)"
+        return 0
+      fi
+    fi
     if [ "${CBP_REAP_DRY_RUN:-0}" = "1" ]; then
       echo "would reap $PANE"
       return 0
@@ -710,6 +724,7 @@ _do_reap_all() {
   now=$(date +%s)
   local reaped=0
   local kept=0
+  local pending=0
 
   while IFS= read -r line; do
     [ -z "$line" ] && continue
@@ -740,6 +755,8 @@ _do_reap_all() {
 
     if printf '%s\n' "$out" | grep -q '^reaped '; then
       reaped=$((reaped + 1))
+    elif printf '%s\n' "$out" | grep -q 'input-pending'; then
+      pending=$((pending + 1))
     else
       kept=$((kept + 1))
     fi
@@ -747,7 +764,7 @@ _do_reap_all() {
 $snapshot
 EOF
 
-  echo "reaped $reaped / kept $kept"
+  echo "reaped $reaped / kept $kept / pending $pending"
   return 0
 }
 

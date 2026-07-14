@@ -270,8 +270,8 @@ cmux 앱 안에서 실행 중일 때 (`CMUX_WORKSPACE_ID` set) `scripts/cmux-pan
 - 이후 자식: 직전 자식 surface 기준으로 라운드로빈 방향 split (count 홀수 → `down`, 짝수 → `right`).
 - 각 자식의 surface ref 는 `CBP_STATE_FILE` (기본 `~/.cache/cbp/children-<ws>.json`) 에 누적 기록.
 - `cmux-pane.sh kill --pane=surface:N` 으로 개별 surface close + state 제거.
-- `cmux-pane.sh reap --pane=surface:N` 으로 완료(✅/❌) 자식 자동 회수 — wait-idle → capture → done 감지 시 자동 close, 미완료면 보존. `CBP_REAP_DRY_RUN=1` dry-run 지원.
-- `cmux-pane.sh reap` (`--pane` 생략) 또는 `cmux-pane.sh reap --all` → state 의 모든 자식을 fast-probe(기본 `--idle=2 --timeout=10`)로 순회, 자식마다 subshell 실행(개별 실패가 루프 전체를 안 죽임). ts 기준 age < `CBP_REAP_ORPHANS_GRACE_SEC`(기본 30) 인 신생 자식은 probe 없이 "grace — kept". 마지막 줄 `reaped N / kept M` 요약, exit 0. 부모 감시 루프가 `--pane` 없이 반복 폴링해도 더 이상 exit 2 헛돌지 않음.
+- `cmux-pane.sh reap --pane=surface:N` 으로 완료(✅/❌) 자식 자동 회수 — wait-idle → capture → done 감지 시 자동 close, 미완료면 보존. **완료 마커가 떴어도 자식 input box 에 미제출 사용자 텍스트(`❯ text`)가 남아있으면 `input-pending — kept` 로 회수 보류** — 강제 회수: `CBP_REAP_IGNORE_PENDING=1`. `CBP_REAP_DRY_RUN=1` dry-run 지원 (pending 시 "would keep (input-pending)").
+- `cmux-pane.sh reap` (`--pane` 생략) 또는 `cmux-pane.sh reap --all` → state 의 모든 자식을 fast-probe(기본 `--idle=2 --timeout=10`)로 순회, 자식마다 subshell 실행(개별 실패가 루프 전체를 안 죽임). ts 기준 age < `CBP_REAP_ORPHANS_GRACE_SEC`(기본 30) 인 신생 자식은 probe 없이 "grace — kept". 마지막 줄 `reaped N / kept M / pending P` 요약(pending 은 kept 로 흡수되지 않음), exit 0. 부모 감시 루프가 `--pane` 없이 반복 폴링해도 더 이상 exit 2 헛돌지 않음.
 - `cmux-pane.sh send/capture/wait-idle --pane=surface:N` → `--surface` flag 자동 dispatch. `workspace:N` ref 는 기존 `--workspace` (회귀 zero).
 - `cmux-pane.sh list` → state file 의 자식 surface 우선, 폴백으로 cbp- workspace 목록. cmux tree 와 lazy reconcile (mock 환경 자동 감지).
 - `cmux-pane.sh cleanup` → state file 의 surface 일괄 `close-surface` + state 제거 후, 기존 cbp- workspace cleanup 도 실행 (호환).
@@ -555,6 +555,7 @@ DISABLE_DISPATCH_GATE_HOOK=1   # 영구 비활성
 | `SKIP_PLAN_DEV_CMUX_CLEANUP=1` | off | finish-plan-dev.sh push 후 cmux 자식 surface cleanup 1회 우회. |
 | `DISABLE_PLAN_DEV_CMUX_CLEANUP=1` | off | cmux cleanup 영구 비활성. |
 | `SKIP_CMUX_REAP=1` | off | `plan-dev-session.sh start` 및 `finish-plan-dev.sh` 의 reap-orphans best-effort 호출 skip. |
+| `CBP_REAP_IGNORE_PENDING=1` | off | `cmux-pane.sh reap` 이 완료 마커는 떴지만 자식 input box 에 미제출 사용자 텍스트가 남은 pane 을 `input-pending — kept` 로 보존하는 기본 동작을 우회 — pending 무시하고 강제 회수(reaped). |
 | `CBP_REAP_ORPHANS_DRY_RUN=1` | off | `cmux-pane.sh reap-orphans` dry-run — close 없이 "would reap" 출력만 (state file 변경 없음). 실제 회수 전 미리보기용. |
 | `CBP_STATE_DIR=<path>` | `~/.cache/cbp` | `cmux-pane.sh reap-orphans` 가 스캔하는 state file 디렉토리 override (테스트 mock). |
 | `SKIP_COMMIT_ADVISOR_GATE=1` | off | finish-plan-dev.sh push 직전 commit-advisor 게이트 1회 우회. |

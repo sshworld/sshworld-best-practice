@@ -23,3 +23,5 @@
 | 17 | `scripts/cmux-pane.sh` (reap-orphans grace) | `CBP_LAUNCH_VERIFY_TRIES` / `CBP_WARMUP_SLEEP` 를 확대하면 warmup 시간이 reap-orphans grace(기본 30초)를 초과할 수 있음 — 그 경우 정상 launch 중인 surface 가 오살될 위험 | 중 |
 | 18 | cmux dispatch 전반 (2026-07-08 관측) | cmux 자식 세션 4/4 회 crash 관측 — 비결정적 자식 사망 빈도가 높음. subagent 폴백 경로는 검증됨 | 상 |
 | 19 | `hooks/enforce-doc-sync.sh` (worktree cwd) | subagent 가 worktree 안에서 커밋해도 hook 프로세스가 main repo cwd 에서 `git diff --cached` 를 실행 — staged 없음으로 오탐 차단 (2026-07-08 실측). 우회는 `SKIP_DOC_SYNC=1`. hook 이 `git -C` 로 대상 repo 를 명령에서 유추하거나 `CLAUDE_PROJECT_DIR` 대신 명령 cwd 를 써야 함 | 중 |
+| 20 | `scripts/cmux-pane.sh` (`_send_is_submitted`) | `LC_ALL=C` 환경에서 `[❯>]` bracket expression 이 byte 단위로 해석 — box-drawing 문자(0xE2 선두 바이트)가 오매치될 수 있어 rc1(false-keep)로 이어져 정상 완료 pane 이 안 닫히는 (누수) 케이스 가능 | 중 |
+| 21 | `scripts/cmux-pane.sh` (`_do_reap_one` DONE_PATTERN) | DONE_PATTERN 이 화면 전체를 grep — spec 본문이나 echo 출력에 `✅`/`❌` 리터럴이 우연히 포함되면 조기 reap 가능. pending 체크(`_send_is_submitted`)가 이를 막는 유일한 가드 | 중 |

@@ -43,7 +43,8 @@
   1. `cmux tree | grep surface:<N>` — surface 살아 있는지.
   2. `cmux read-screen --surface surface:<N>` — `Terminal surface not found` 이면 detached. `cmux send-key --surface surface:<N> Enter` 1~2회로 활성화.
   3. 활성화 후 자식이 spec prompt 받은 상태 (`✳ Forming…` / `Undulating…` 등 thinking) 이면 정상.
-- 부모가 회수: `${CLAUDE_PLUGIN_ROOT}/scripts/cmux-pane.sh reap --pane=surface:<N>` — 완료 감지 시 자동 탭 종료, 미완료면 보존. (내부적으로 wait-idle → capture → grep ✅/❌ → close-surface 흐름. finish-plan-dev 의 bulk cleanup 은 backstop 으로 남음.) reap 가 `died`(exit 5) 반환 시 = 자식 비정상 종료 → 재dispatch 또는 subagent 폴백.
+- 부모가 회수: `${CLAUDE_PLUGIN_ROOT}/scripts/cmux-pane.sh reap --pane=surface:<N>` — 완료 감지 시 자동 탭 종료, 미완료면 보존. **완료 마커는 떴지만 자식 input box 에 미제출 사용자 텍스트가 남아있으면 `input-pending — kept` 로 보존** (강제 회수: `CBP_REAP_IGNORE_PENDING=1`). (내부적으로 wait-idle → capture → grep ✅/❌ → close-surface 흐름. finish-plan-dev 의 bulk cleanup 은 backstop 으로 남음.) reap 가 `died`(exit 5) 반환 시 = 자식 비정상 종료 → 재dispatch 또는 subagent 폴백.
+- ⚠️ **Phase 5 `do_cmux_cleanup`(finish-plan-dev.sh push 후 자동 호출)은 pending 을 무시하고 닫는 destructive backstop** — input-pending 상태와 무관하게 자식 surface 를 일괄 close 한다. reap 표준 감시 루프로 pending 을 먼저 사용자에게 보고/처리한 뒤 Phase 5 로 넘어갈 것.
 - 사용자가 직접 자식 화면 보기: cmux 사이드바의 surface 탭 클릭.
 - **자식 worktree trust 자동 시딩** (`trust-dir.sh`, cross-machine): dispatch 는 worktree launch 직전 `hasTrustDialogAccepted` 를 자동 set — fresh 머신에서 trust 다이얼로그에 막혀 자식이 멈추는 케이스 회피. 우회: `SKIP_DISPATCH_TRUST=1`.
 
@@ -89,7 +90,7 @@ $wrapper wait-idle --pane=$pane --idle=10 --timeout=1800
 $wrapper capture   --pane=$pane | tail -50 | grep -E '^[[:space:]]*(⏺[[:space:]]*)?(✅|❌)'
 ```
 
-**여러 자식을 한 번에 회수** — `reap --all` (argless 도 동일): 전 자식 순회, 완료(✅/❌)분만 회수하고 미완료는 "not done — kept" 로 보존, 신규 자식은 grace 로 skip. 마지막 줄에 `reaped N / kept M` 요약, exit 0.
+**여러 자식을 한 번에 회수** — `reap --all` (argless 도 동일): 전 자식 순회, 완료(✅/❌)분만 회수하고 미완료는 "not done — kept" 로 보존, 신규 자식은 grace 로 skip. **완료 마커는 떴지만 자식 input box 에 미제출 사용자 텍스트(`❯ text` 프롬프트)가 남아있으면 `input-pending — kept` 로 별도 보존** — 아직 부모에게 전달 안 된 후속 지시일 수 있어 kept 로 흡수하지 않는다. 강제 회수는 `CBP_REAP_IGNORE_PENDING=1`. 마지막 줄에 `reaped N / kept M / pending P` 요약, exit 0.
 ```bash
 $wrapper reap --all
 # 또는 인자 없이 (argless 도 --all 과 동일 동작)
@@ -102,15 +103,28 @@ $wrapper reap
 
 ```bash
 # 표준 감시 루프 — reap --all + 에러 가드. 에러 무시 무한폴링 금지.
+# 최대 반복 상한 60회 — 그 이상은 사용자 보고 후 중단(무한폴링 방지).
+_iter=0
 while :; do
+  _iter=$((_iter + 1))
   out="$($wrapper reap --all 2>&1)"; rc=$?
   echo "$out"
   # 가드: 에러 신호 감지 시 즉시 중단 + 사용자 보고 (헛폴링 방지)
   if [ $rc -ge 2 ] || echo "$out" | grep -qE '필요|error'; then
     echo "reap 에러 감지 — 루프 중단, 사용자 보고" >&2; break
   fi
-  # 전원 회수 완료 시 종료
-  echo "$out" | grep -q "kept 0" && break
+  # input-pending 감지 시 즉시 중단 + 사용자 보고 — 폴링으로는 해소 안 됨
+  # (자식 input box 의 미제출 텍스트는 부모가 직접 확인/처리해야 함).
+  if echo "$out" | grep -q "input-pending"; then
+    echo "input-pending 감지 — 폴링으로 해소 불가, 루프 중단 + 사용자 보고" >&2; break
+  fi
+  # 전원 회수 완료 시 종료 (kept 0 && pending 0 기준 — pending 은 kept 로 흡수되지 않음)
+  if echo "$out" | grep -q "kept 0" && ! echo "$out" | grep -qE 'pending [1-9]'; then
+    break
+  fi
+  if [ "$_iter" -ge 60 ]; then
+    echo "감시 루프 60회 상한 도달 — 중단, 사용자 보고" >&2; break
+  fi
   sleep 30
 done
 ```
