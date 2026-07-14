@@ -50,7 +50,7 @@ do_start() {
     esac
   done
 
-  "$SESSION_BIN" start --total="$total"
+  "$SESSION_BIN" start --total="$total" || exit $?
   "$CMUX_PANE" set-status plan-dev "0/$total" --icon sparkle
 }
 
@@ -62,8 +62,22 @@ do_tick() {
     esac
   done
 
-  local status_value
-  status_value=$("$SESSION_BIN" progress --inc)
+  local tmp_err rc status_value
+  tmp_err="$(mktemp)"
+  trap 'rm -f "$tmp_err"' EXIT
+
+  status_value=$("$SESSION_BIN" progress --inc 2>"$tmp_err")
+  rc=$?
+
+  if [ "$rc" -ne 0 ] || [ -z "$status_value" ]; then
+    if grep -q '마커 없음' "$tmp_err"; then
+      echo "plan-dev-progress: 마커 없음 — tick skip" >&2
+    else
+      cat "$tmp_err" >&2
+      echo "plan-dev-progress: session progress 실패 — tick skip" >&2
+    fi
+    exit 0
+  fi
 
   "$CMUX_PANE" set-status plan-dev "$status_value" --icon sparkle
 

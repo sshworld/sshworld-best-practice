@@ -241,6 +241,130 @@ fi
 rm -rf "$TMPDIR7"
 
 # ──────────────────────────────────────────────
+# TC8: tick — marker 부재 (SESSION_BIN stub: 마커 없음 stderr + exit 1)
+# ──────────────────────────────────────────────
+echo "[TC8] tick marker 부재 → exit 0, skip"
+TMPDIR8="$(setup_tmp_repo)"
+STUB_LOG8="$TMPDIR8/cmux-calls.txt"
+STUB8="$TMPDIR8/cmux-stub.sh"
+cat > "$STUB8" <<EOF
+#!/usr/bin/env bash
+echo "\$@" >> "$STUB_LOG8"
+EOF
+chmod +x "$STUB8"
+
+SESSION_STUB8="$TMPDIR8/session-stub.sh"
+cat > "$SESSION_STUB8" <<'EOF'
+#!/usr/bin/env bash
+echo "plan-dev-session: 마커 없음" >&2
+exit 1
+EOF
+chmod +x "$SESSION_STUB8"
+
+RC8=0
+ERR8=$(cd "$TMPDIR8"
+  TMUX="" CMUX_WORKSPACE_ID=test-ws \
+  CMUX_BIN="$STUB8" \
+  PLAN_DEV_SESSION_BIN="$SESSION_STUB8" \
+  CMUX_PANE_BIN="$CMUX_PANE_BIN_PATH" \
+  "$SCRIPT" tick 2>&1 1>/dev/null
+) || RC8=$?
+
+check "TC8: tick exit 0" "0" "$RC8"
+check_contains "TC8: stderr 마커 없음 — tick skip" "마커 없음 — tick skip" "$ERR8"
+if [ -s "$STUB_LOG8" ]; then
+  echo "FAIL: TC8: cmux stub called (set-status/notify)" >&2
+  fail_count=$((fail_count + 1))
+else
+  echo "ok: TC8: cmux stub not called"
+  pass=$((pass + 1))
+fi
+rm -rf "$TMPDIR8"
+
+# ──────────────────────────────────────────────
+# TC9: tick — generic 실패 (SESSION_BIN stub: 다른 stderr + exit 1)
+# ──────────────────────────────────────────────
+echo "[TC9] tick generic 실패 → exit 0, skip"
+TMPDIR9="$(setup_tmp_repo)"
+STUB_LOG9="$TMPDIR9/cmux-calls.txt"
+STUB9="$TMPDIR9/cmux-stub.sh"
+cat > "$STUB9" <<EOF
+#!/usr/bin/env bash
+echo "\$@" >> "$STUB_LOG9"
+EOF
+chmod +x "$STUB9"
+
+SESSION_STUB9="$TMPDIR9/session-stub.sh"
+cat > "$SESSION_STUB9" <<'EOF'
+#!/usr/bin/env bash
+echo "plan-dev-session: json_get 파싱 실패" >&2
+exit 1
+EOF
+chmod +x "$SESSION_STUB9"
+
+RC9=0
+ERR9=$(cd "$TMPDIR9"
+  TMUX="" CMUX_WORKSPACE_ID=test-ws \
+  CMUX_BIN="$STUB9" \
+  PLAN_DEV_SESSION_BIN="$SESSION_STUB9" \
+  CMUX_PANE_BIN="$CMUX_PANE_BIN_PATH" \
+  "$SCRIPT" tick 2>&1 1>/dev/null
+) || RC9=$?
+
+check "TC9: tick exit 0" "0" "$RC9"
+check_contains "TC9: stderr session progress 실패 — tick skip" "session progress 실패 — tick skip" "$ERR9"
+check_contains "TC9: stderr 원본 SESSION_BIN 메시지 전달" "json_get 파싱 실패" "$ERR9"
+check_not_contains "TC9: 마커 없음 문구 아님" "마커 없음 — tick skip" "$ERR9"
+if [ -s "$STUB_LOG9" ]; then
+  echo "FAIL: TC9: cmux stub called (set-status/notify)" >&2
+  fail_count=$((fail_count + 1))
+else
+  echo "ok: TC9: cmux stub not called"
+  pass=$((pass + 1))
+fi
+rm -rf "$TMPDIR9"
+
+# ──────────────────────────────────────────────
+# TC10: start — SESSION_BIN start 실패(exit 2) → pill 미push, rc 전파
+# ──────────────────────────────────────────────
+echo "[TC10] start 실패 → rc 전파, pill 미push"
+TMPDIR10="$(setup_tmp_repo)"
+STUB_LOG10="$TMPDIR10/cmux-calls.txt"
+STUB10="$TMPDIR10/cmux-stub.sh"
+cat > "$STUB10" <<EOF
+#!/usr/bin/env bash
+echo "\$@" >> "$STUB_LOG10"
+EOF
+chmod +x "$STUB10"
+
+SESSION_STUB10="$TMPDIR10/session-stub.sh"
+cat > "$SESSION_STUB10" <<'EOF'
+#!/usr/bin/env bash
+echo "plan-dev-session: detached HEAD" >&2
+exit 2
+EOF
+chmod +x "$SESSION_STUB10"
+
+RC10=0
+(cd "$TMPDIR10"
+  TMUX="" CMUX_WORKSPACE_ID=test-ws \
+  CMUX_BIN="$STUB10" \
+  PLAN_DEV_SESSION_BIN="$SESSION_STUB10" \
+  CMUX_PANE_BIN="$CMUX_PANE_BIN_PATH" \
+  "$SCRIPT" start --total=3 2>/dev/null
+) || RC10=$?
+
+check "TC10: start exit 2 전파" "2" "$RC10"
+if [ -s "$STUB_LOG10" ]; then
+  echo "FAIL: TC10: cmux stub called (pill pushed despite start 실패)" >&2
+  fail_count=$((fail_count + 1))
+else
+  echo "ok: TC10: cmux stub not called"
+  pass=$((pass + 1))
+fi
+rm -rf "$TMPDIR10"
+
+# ──────────────────────────────────────────────
 echo ""
 total=$((pass + fail_count))
 echo "passed: $pass / $total"
