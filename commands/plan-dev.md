@@ -153,7 +153,11 @@ verifier PASS 후 commit 전 코드 리뷰를 원하면 `reviewer` 에이전트 
 - `start_ref..HEAD` 의 커밋 메시지 전체 분석 → 가장 비중 큰 type + 작업 요약 slug → `<type>/<slug>` 브랜치명 추천.
 - **한글 Conventional Commit** 메시지 + DOC_IMPACT 추천.
 - 세션에 내부 라벨/머지 잡음 커밋이 쌓였으면 commit-advisor 가 squash 추천 → 깨끗한 단일/소수 커밋. **S1/S2 라벨은 최종 히스토리에 남기지 않는다.**
-- 사용자 승인 후 `git add` + `git commit`.
+- 사용자 승인 후 `git add` + `git commit`. 커밋 명령은 marker touch 를 번들:
+  ```
+  DOC_IMPACT=<none|updated> git commit -m "..." && touch "$(git rev-parse --git-common-dir)/plan-dev-commit-advised"
+  ```
+  `record-commit-advised` hook(PostToolUse Task|Agent) 이 commit-advisor 호출을 감지해 이 marker 를 자동 기록하는 게 primary — 이 번들은 belt(hook 미배선/비-plugin 환경 대비).
 
 ## Phase 5 — Branch & Push
 

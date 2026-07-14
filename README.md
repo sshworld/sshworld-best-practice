@@ -36,6 +36,7 @@ hooks/
 │   ├── enforce-cmux-dispatch.sh # PreToolUse ExitPlanMode — cmux env plan direct-edit 차단
 │   ├── cmux-dispatch-hint.sh # SessionStart — cmux env 면 "dispatch 기본" advisory inject (비-cmux 무출력)
 │   ├── enforce-dispatch-gate.sh # PreToolUse Bash — plan mode 미진입 시 dispatch-slice-pane.sh 실행 차단
+│   ├── record-commit-advised.sh # PostToolUse Task|Agent — commit-advisor 호출 감지 시 plan-dev-commit-advised marker 자동 touch
 │   ├── statusline-tokens.sh  # (opt-in) 하단 status bar 모드 — 기본은 token-stats.sh 사용
 │   └── token-stats.sh        # Stop hook 으로 직전 응답 토큰 사용량 + 캐시 히트율 inline 노출
 .claude/
@@ -528,6 +529,15 @@ DISABLE_CMUX_DISPATCH_GATE_HOOK=1  # 영구 비활성
 SKIP_DISPATCH_GATE=1           # 1회 우회
 DISABLE_DISPATCH_GATE_HOOK=1   # 영구 비활성
 ```
+
+### 12) record-commit-advised.sh (PostToolUse: Task|Agent) — **commit-advised marker 자동 기록**
+
+Phase 4 의 `commit-advisor` agent 호출을 hook 이 직접 감지해 `plan-dev-commit-advised` marker 를 자동 touch — `finish-plan-dev.sh` push 게이트가 advisor agent 본인의 touch 이행에 의존하던 구조적 취약점(LLM 이 지시를 빼먹으면 게이트가 오차단) 을 보강한다.
+
+- `tool_name` 이 `Task` 또는 `Agent` **그리고** `tool_input.subagent_type` 에 `commit-advisor` substring 포함 시(플러그인 네임스페이스 `sshworld:commit-advisor` 대응) marker touch.
+- jq 미사용 — grep/sed 로 파싱.
+- 비-git cwd / 빈·깨진 stdin 등 모든 실패 경로에서 조용히 exit 0 — 세션을 절대 막지 않음.
+- `agents/commit-advisor.md` 의 agent 본인 touch 는 이제 belt(best-effort) — hook 이 primary.
 
 ---
 
