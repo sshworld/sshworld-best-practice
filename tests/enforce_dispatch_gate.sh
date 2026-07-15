@@ -12,6 +12,10 @@
 #   C5: 세션 marker 없음 → exit 0 (비-plan-dev)
 #   C6: permission_mode=bypassPermissions + --slice + plan 없음 → exit 0 (dispatch 자식 우회)
 #   C7: SKIP_DISPATCH_GATE=1 + 차단 조건 → exit 0 (1회 우회)
+#   C10: marker plan_file latch, mtime 이 start_ts 이전 이지만 GRACE(600s) 내 → exit 0
+#   C11: 동일하되 GRACE 밖 → exit 2 (음경계 고정 — GRACE=∞ 회귀 방지)
+#   C12: plan_file 지정인데 그 파일 삭제/부재 + 무관 전역 plan 만 fresh → 폴백 allow
+#   C13: plan_file 가 상대경로 → stat miss → 폴백
 
 set -uo pipefail
 
@@ -302,6 +306,139 @@ step C9 "skip-once(git-common-dir) 1회 소비 — 2번째는 다시 block"
   [ "$RC2" = "2" ] || fail "C9: second call exit code should be 2, got $RC2"
   rm -rf "$TMP"
   echo "  C9 OK"
+}
+
+# ── plan_file latch helpers ──────────────────────────────────────────
+
+# marker 에 plan_file 필드 주입
+inject_plan_file() {
+  local session_file="$1" plan_file="$2"
+  python3 -c "
+import json
+f = '$session_file'
+d = json.load(open(f))
+d['plan_file'] = '$plan_file'
+open(f, 'w').write(json.dumps(d, indent=2) + '\n')
+"
+}
+
+# 파일 mtime 을 start_ts 기준 offset(초) 으로 설정 (음수 = 과거)
+set_mtime_offset() {
+  local file="$1" start_ts="$2" offset_seconds="$3"
+  START_TS="$start_ts" OFFSET="$offset_seconds" FILE="$file" python3 -c "
+import os, datetime
+st = datetime.datetime.fromisoformat(os.environ['START_TS'].replace('Z', '+00:00'))
+target = st.timestamp() + float(os.environ['OFFSET'])
+os.utime(os.environ['FILE'], (target, target))
+"
+}
+
+# ── C10: plan_file latch, mtime start_ts 이전 + GRACE 내 → exit 0 ────
+
+step C10 "plan_file latch, mtime 이 start_ts 이전이지만 GRACE(600s) 내 → exit 0"
+{
+  TMP=$(setup_fixture)
+  REPO_DIR="$TMP/repo"
+  SESSION_FILE="$REPO_DIR/.git/plan-dev-session.json"
+  PLANS_DIR="$TMP/plans"
+  mkdir -p "$PLANS_DIR"
+  START_TS=$(python3 -c "import json; print(json.load(open('$SESSION_FILE'))['start_ts'])")
+
+  LATCHED="$PLANS_DIR/latched-plan.md"
+  touch "$LATCHED"
+  set_mtime_offset "$LATCHED" "$START_TS" "-300"
+  inject_plan_file "$SESSION_FILE" "$LATCHED"
+
+  PAYLOAD=$(make_payload "Bash" "/path/to/dispatch-slice-pane.sh --slice=feat-x --mode=cmux" "sess-010")
+
+  RC=$(echo "$PAYLOAD" | \
+    DISPATCH_GATE_SESSION_FILE="$SESSION_FILE" \
+    PLAN_MODE_PLANS_DIR="$PLANS_DIR" \
+    sh -c "cd \"$REPO_DIR\" && \"$ENFORCE_HOOK\"" 2>/dev/null; echo $?)
+
+  [ "$RC" = "0" ] || fail "C10: exit code should be 0, got $RC"
+  rm -rf "$TMP"
+  echo "  C10 OK"
+}
+
+# ── C11: 동일하되 GRACE 밖 → exit 2 ──────────────────────────────────
+
+step C11 "plan_file latch, mtime 이 start_ts 이전 + GRACE 밖 → exit 2"
+{
+  TMP=$(setup_fixture)
+  REPO_DIR="$TMP/repo"
+  SESSION_FILE="$REPO_DIR/.git/plan-dev-session.json"
+  PLANS_DIR="$TMP/plans"
+  mkdir -p "$PLANS_DIR"
+  START_TS=$(python3 -c "import json; print(json.load(open('$SESSION_FILE'))['start_ts'])")
+
+  LATCHED="$PLANS_DIR/latched-plan.md"
+  touch "$LATCHED"
+  set_mtime_offset "$LATCHED" "$START_TS" "-700"
+  inject_plan_file "$SESSION_FILE" "$LATCHED"
+
+  PAYLOAD=$(make_payload "Bash" "/path/to/dispatch-slice-pane.sh --slice=feat-x --mode=cmux" "sess-011")
+
+  RC=$(echo "$PAYLOAD" | \
+    DISPATCH_GATE_SESSION_FILE="$SESSION_FILE" \
+    PLAN_MODE_PLANS_DIR="$PLANS_DIR" \
+    sh -c "cd \"$REPO_DIR\" && \"$ENFORCE_HOOK\"" 2>/dev/null; echo $?)
+
+  [ "$RC" = "2" ] || fail "C11: exit code should be 2, got $RC"
+  rm -rf "$TMP"
+  echo "  C11 OK"
+}
+
+# ── C12: plan_file 삭제/부재 + 무관 전역 plan fresh → 폴백 allow ─────
+
+step C12 "plan_file 삭제/부재 + 무관 전역 plan 만 fresh → 폴백 allow"
+{
+  TMP=$(setup_fixture)
+  REPO_DIR="$TMP/repo"
+  SESSION_FILE="$REPO_DIR/.git/plan-dev-session.json"
+  PLANS_DIR="$TMP/plans"
+  mkdir -p "$PLANS_DIR"
+
+  # plan_file 필드는 존재하나 실제 파일 부재
+  inject_plan_file "$SESSION_FILE" "$PLANS_DIR/deleted-plan.md"
+  # 무관 전역 plan (fresh, mtime=now → start_ts(now-1h) 이후)
+  touch "$PLANS_DIR/other-fresh-plan.md"
+
+  PAYLOAD=$(make_payload "Bash" "/path/to/dispatch-slice-pane.sh --slice=feat-x --mode=cmux" "sess-012")
+
+  RC=$(echo "$PAYLOAD" | \
+    DISPATCH_GATE_SESSION_FILE="$SESSION_FILE" \
+    PLAN_MODE_PLANS_DIR="$PLANS_DIR" \
+    sh -c "cd \"$REPO_DIR\" && \"$ENFORCE_HOOK\"" 2>/dev/null; echo $?)
+
+  [ "$RC" = "0" ] || fail "C12: exit code should be 0, got $RC"
+  rm -rf "$TMP"
+  echo "  C12 OK"
+}
+
+# ── C13: plan_file 상대경로 → stat miss → 폴백 ───────────────────────
+
+step C13 "plan_file 가 상대경로 → stat miss → 폴백"
+{
+  TMP=$(setup_fixture)
+  REPO_DIR="$TMP/repo"
+  SESSION_FILE="$REPO_DIR/.git/plan-dev-session.json"
+  PLANS_DIR="$TMP/plans"
+  mkdir -p "$PLANS_DIR"
+
+  inject_plan_file "$SESSION_FILE" "nonexistent-relative-plan.md"
+  touch "$PLANS_DIR/other-fresh-plan.md"
+
+  PAYLOAD=$(make_payload "Bash" "/path/to/dispatch-slice-pane.sh --slice=feat-x --mode=cmux" "sess-013")
+
+  RC=$(echo "$PAYLOAD" | \
+    DISPATCH_GATE_SESSION_FILE="$SESSION_FILE" \
+    PLAN_MODE_PLANS_DIR="$PLANS_DIR" \
+    sh -c "cd \"$REPO_DIR\" && \"$ENFORCE_HOOK\"" 2>/dev/null; echo $?)
+
+  [ "$RC" = "0" ] || fail "C13: exit code should be 0, got $RC"
+  rm -rf "$TMP"
+  echo "  C13 OK"
 }
 
 echo ""

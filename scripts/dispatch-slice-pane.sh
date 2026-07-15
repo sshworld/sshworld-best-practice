@@ -203,6 +203,63 @@ _dispatch_maybe_cleanup() {
   return 0
 }
 
+# plan_file latch — 최초 dispatch 시 marker 의 plan_file 이 없거나(또는 stat 불가) 이면
+# PLAN_MODE_PLANS_DIR 에서 start_ts-GRACE 이후 mtime 최신 plan 1개를 골라 set-plan 으로 기록.
+# 세션격리를 LLM 의 set-plan 준수에 걸지 않기 위한 결정적 신호 (enforce-dispatch-gate.sh 가 소비).
+# best-effort — 실패해도 dispatch 자체를 막지 않음 (호출부에서 || true).
+_dispatch_latch_plan_file() {
+  local git_common
+  git_common=$(git rev-parse --git-common-dir 2>/dev/null) || return 0
+  local marker="${git_common}/plan-dev-session.json"
+  [ -f "$marker" ] || return 0
+
+  local existing_plan_file
+  existing_plan_file=$(python3 -c "
+import json
+try:
+    d = json.load(open('$marker'))
+    print(d.get('plan_file', '') or '')
+except Exception:
+    print('')
+" 2>/dev/null || echo "")
+  if [ -n "$existing_plan_file" ] && [ -f "$existing_plan_file" ]; then
+    return 0  # 이미 latch 됨 + 유효 — 재latch 안 함
+  fi
+
+  local start_ts
+  start_ts=$(_dispatch_marker_start_ts "$marker")
+  [ -z "$start_ts" ] && return 0
+
+  local plans_dir="${PLAN_MODE_PLANS_DIR:-$HOME/.claude/plans}"
+  [ -d "$plans_dir" ] || return 0
+
+  local grace=600
+  local candidate
+  candidate=$(START_TS="$start_ts" GRACE="$grace" PD="$plans_dir" python3 -c "
+import os, glob, datetime
+try:
+    st = datetime.datetime.fromisoformat(os.environ['START_TS'].replace('Z', '+00:00'))
+    threshold = st.timestamp() - float(os.environ['GRACE'])
+    cands = sorted(
+        (os.path.getmtime(p), p)
+        for p in glob.glob(os.path.join(os.environ['PD'], '*.md'))
+        if os.path.getmtime(p) >= threshold
+    )
+    if cands:
+        print(cands[-1][1])
+except Exception:
+    pass
+" 2>/dev/null || echo "")
+  [ -z "$candidate" ] && return 0
+
+  local script_dir
+  script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  local session_bin="$script_dir/plan-dev-session.sh"
+  [ -x "$session_bin" ] || return 0
+  "$session_bin" set-plan "$candidate" >/dev/null 2>&1 || true
+  return 0
+}
+
 # launch 시작 시 cmux edit-burst 카운터 리셋 (track-cmux-edit-burst hook 과 연동)
 _cmux_burst_reset() {
   [ -z "${CMUX_WORKSPACE_ID:-}" ] && return 0
@@ -377,6 +434,9 @@ main() {
   if [ "${SKIP_DISPATCH_TRUST:-0}" != "1" ]; then
     "$SCRIPT_DIR/trust-dir.sh" "$WORKTREE_ABS" >/dev/null 2>&1 || true
   fi
+
+  # plan_file latch — 세션격리, best-effort (실패해도 dispatch 는 계속)
+  _dispatch_latch_plan_file || true
 
   # 자식 명령 결정 (순수 함수 호출) — 내부 실행 모드는 항상 interactive
   local CHILD_CMD

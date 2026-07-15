@@ -16,9 +16,14 @@
 #   - permission_mode == plan → exit 0 (plan mode 중)
 #   - permission_mode == bypassPermissions → exit 0 (dispatch 자식/명시 우회)
 #   - 파싱 실패 등 → conservative exit 0 (false-block 회피)
-#   - marker start_ts 이후 mtime 인 plan 파일 존재 → exit 0 (plan mode 거침)
+#   - marker 가 24시간 넘게 stale → exit 0 (이전 세션 잔재)
 #   - start_ts 파싱 불가 → conservative exit 0
-#   - 그 외(마커 활성 + plan mode 미진입) → exit 2 차단
+#   - marker `plan_file` 있고 stat 가능 ∧ mtime ≥ (start_ts − GRACE) → exit 0 (세션격리 latch)
+#   - marker `plan_file` 있고 stat 가능 ∧ mtime < (start_ts − GRACE) → exit 2 (latch 확정 차단 — 폴백 안 함)
+#   - marker `plan_file` 없음/stat 불가 → 전역 glob 폴백: `$HOME/.claude/plans/*.md` 중
+#     mtime ≥ (start_ts − GRACE) 존재 → exit 0. 없으면 exit 2.
+#     (폴백=세션격리 약함 — plan_file 이 아직 latch 되지 않은 최초 1회에만 해당)
+#   - GRACE=600(초) — plan mode 를 Phase 0 세션 시작보다 먼저 써도(순서 무관) 판정 통과.
 #
 # 우회:
 #   SKIP_DISPATCH_GATE=1          — 1회 우회
@@ -28,6 +33,8 @@
 #   DISPATCH_GATE_SESSION_FILE — 세션 marker 경로 override
 #   PLAN_MODE_PLANS_DIR        — plan 파일 디렉토리 override (디폴트 $HOME/.claude/plans)
 set -uo pipefail
+
+GRACE=600
 
 [ "${DISABLE_DISPATCH_GATE_HOOK:-0}" = "1" ] && exit 0
 [ "${SKIP_DISPATCH_GATE:-0}" = "1" ] && exit 0
@@ -109,14 +116,16 @@ except Exception:
 [ "$PMODE" = "plan" ] && exit 0
 [ "$PMODE" = "bypassPermissions" ] && exit 0
 
-# plan mode 거침 판정: marker start_ts 이후 mtime 인 plan 파일 존재 → allow
-# (enforce-plan-mode.sh 의 FRESH 블록과 동일 로직)
+# plan mode 거침 판정 — read-only. 우선순위:
+#   1) marker plan_file latch (stat 가능 시 결정적 — GRACE 창 안이면 allow, 밖이면 확정 block)
+#   2) plan_file 없음/stat 불가 → 전역 glob 폴백 (GRACE 반영)
 PLANS_DIR="${PLAN_MODE_PLANS_DIR:-$HOME/.claude/plans}"
-FRESH=$(SF="$SESSION_FILE" PD="$PLANS_DIR" python3 - <<'PY' 2>/dev/null || echo unknown
+FRESH=$(SF="$SESSION_FILE" PD="$PLANS_DIR" GRACE="$GRACE" python3 - <<'PY' 2>/dev/null || echo unknown
 import json, os, glob, datetime
-sf = os.environ["SF"]; pd = os.environ["PD"]
+sf = os.environ["SF"]; pd = os.environ["PD"]; grace = float(os.environ["GRACE"])
 try:
-    ts = json.load(open(sf)).get("start_ts", "")
+    data = json.load(open(sf))
+    ts = data.get("start_ts", "")
     st = datetime.datetime.fromisoformat(ts.replace("Z", "+00:00"))
     now = datetime.datetime.now(datetime.timezone.utc)
     if (now - st).total_seconds() >= 24 * 3600:
@@ -125,14 +134,28 @@ except SystemExit:
     raise
 except Exception:
     print("unknown"); raise SystemExit
+
+threshold = st.timestamp() - grace
+plan_file = data.get("plan_file", "")
+
+if plan_file:
+    try:
+        mtime = os.path.getmtime(plan_file)
+        print("allow" if mtime >= threshold else "block")
+        raise SystemExit
+    except SystemExit:
+        raise
+    except Exception:
+        pass  # stat 불가 → absent 취급, 폴백으로
+
 try:
-    fresh = any(os.path.getmtime(p) >= st.timestamp() for p in glob.glob(os.path.join(pd, "*.md")))
+    fresh = any(os.path.getmtime(p) >= threshold for p in glob.glob(os.path.join(pd, "*.md")))
 except Exception:
     print("unknown"); raise SystemExit
-print("1" if fresh else "0")
+print("allow" if fresh else "block")
 PY
 )
-[ "$FRESH" = "1" ] && exit 0
+[ "$FRESH" = "allow" ] && exit 0
 [ "$FRESH" = "unknown" ] && exit 0
 if [ "$FRESH" = "stale" ]; then
   cat >&2 <<EOF
@@ -142,7 +165,7 @@ EOF
   exit 0
 fi
 
-# 마커 활성 + plan mode 미진입 → 차단
+# FRESH = "block": plan_file latch 확정 차단이거나 전역 폴백도 미탐지.
 cat >&2 <<EOF
 [enforce-dispatch-gate] plan-dev 세션인데 plan mode 미진입 상태에서 dispatch 시도.
    EnterPlanMode → plan 작성 → ExitPlanMode 로 사용자 승인 후 dispatch 할 것.

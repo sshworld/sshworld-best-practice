@@ -5,11 +5,12 @@
 #   plan-dev-session.sh start [--base=<branch>] [--total=<n>] [--quiet]
 #   plan-dev-session.sh query [--json|--key=<field>]
 #   plan-dev-session.sh progress [--inc] [--set-done=<n>] [--set-total=<n>]
+#   plan-dev-session.sh set-plan <절대경로>
 #   plan-dev-session.sh clear
 #
 # marker 경로: $(git rev-parse --git-common-dir)/plan-dev-session.json
 # 키: start_ref, base_branch, work_branch, start_ts, start_pid, auto_branch,
-#     total_slices, done_slices
+#     total_slices, done_slices, plan_file
 #
 # 환경변수:
 #   SKIP_CMUX_REAP=1   — start 시 reap-orphans best-effort 호출 skip
@@ -28,6 +29,7 @@ commands:
   start [--base=<branch>] [--total=<n>] [--quiet]          세션 marker 생성
   query [--json|--key=<field>]                              marker 내용 조회
   progress [--inc] [--set-done=<n>] [--set-total=<n>]      진행률 업데이트/조회
+  set-plan <절대경로>                                        plan_file 필드 기록 (세션격리 latch)
   clear                                                      marker 삭제
 USAGE
   exit 2
@@ -152,12 +154,13 @@ do_start() {
   marker="$(marker_path)"
 
   # 기존 marker 검사
-  local preserve_ts="" preserve_ref=""
+  local preserve_ts="" preserve_ref="" preserve_plan_file=""
   if [ -f "$marker" ]; then
-    local existing_pid existing_ts existing_ref
+    local existing_pid existing_ts existing_ref existing_plan_file
     existing_pid=$(json_get "$marker" "start_pid" 2>/dev/null) || existing_pid=""
     existing_ts=$(json_get "$marker" "start_ts" 2>/dev/null) || existing_ts=""
     existing_ref=$(json_get "$marker" "start_ref" 2>/dev/null) || existing_ref=""
+    existing_plan_file=$(json_get "$marker" "plan_file" 2>/dev/null) || existing_plan_file=""
 
     if [ -n "$existing_pid" ] && [ -n "$existing_ts" ]; then
       if pid_alive "$existing_pid" && within_24h "$existing_ts"; then
@@ -165,10 +168,11 @@ do_start() {
         exit 0
       fi
     fi
-    # 재진입(dead pid + within_24h): start_ts/start_ref 보존 — progress start 재호출이 clobber 하던 버그 fix
+    # 재진입(dead pid + within_24h): start_ts/start_ref/plan_file 보존 — progress start 재호출이 clobber 하던 버그 fix
     if [ -n "$existing_ts" ] && within_24h "$existing_ts"; then
       preserve_ts="$existing_ts"
       preserve_ref="$existing_ref"
+      preserve_plan_file="$existing_plan_file"
     fi
     # stale → .bak 으로 이동
     mv "$marker" "${marker}.bak"
@@ -210,6 +214,7 @@ do_start() {
   MARKER_START_PID="$$" \
   MARKER_AUTO_BRANCH="$auto_branch" \
   MARKER_TOTAL="$total" \
+  MARKER_PLAN_FILE="$preserve_plan_file" \
   MARKER_FILE="$marker" \
   python3 -c "
 import json, os
@@ -223,6 +228,9 @@ d = {
     'total_slices': int(os.environ['MARKER_TOTAL']),
     'done_slices':  0,
 }
+plan_file = os.environ.get('MARKER_PLAN_FILE', '')
+if plan_file:
+    d['plan_file'] = plan_file
 with open(os.environ['MARKER_FILE'], 'w') as f:
     json.dump(d, f, indent=2)
     f.write('\n')
@@ -342,6 +350,52 @@ else:
 }
 
 # ─────────────────────────────────────────
+# subcommand: set-plan
+# ─────────────────────────────────────────
+# marker 에 plan_file 필드 기록 (read-modify-write — 기존 필드 전부 보존).
+# 세션격리 latch: dispatch-slice-pane.sh 가 최초 dispatch 때, 또는 plan 작성 직후
+# 사용자/모델이 호출. 절대경로 권장 — 상대경로는 gate 에서 stat miss 됨.
+do_set_plan() {
+  local plan_file="${1:-}"
+
+  if [ -z "$plan_file" ]; then
+    echo "plan-dev-session: set-plan 사용법: set-plan <절대경로>" >&2
+    exit 2
+  fi
+
+  case "$plan_file" in
+    /*) ;;
+    *) echo "plan-dev-session: 경고 — plan_file 은 절대경로 권장 (상대경로는 gate 에서 stat miss 됨): $plan_file" >&2 ;;
+  esac
+
+  local marker
+  marker="$(marker_path)"
+
+  if [ ! -f "$marker" ]; then
+    echo "plan-dev-session: 마커 없음 — set-plan no-op" >&2
+    exit 0
+  fi
+
+  PLAN_FILE_ARG="$plan_file" MARKER_FILE="$marker" python3 -c "
+import json, os
+f = os.environ['MARKER_FILE']
+d = json.load(open(f))
+d['plan_file'] = os.environ['PLAN_FILE_ARG']
+with open(f, 'w') as fp:
+    json.dump(d, fp, indent=2)
+    fp.write('\n')
+"
+  WRITE_RC=$?
+
+  if [ "$WRITE_RC" != "0" ]; then
+    echo "plan-dev-session: set-plan 기록 실패 (python3 rc=$WRITE_RC)" >&2
+    exit 2
+  fi
+
+  echo "plan_file set: $plan_file"
+}
+
+# ─────────────────────────────────────────
 # subcommand: clear
 # ─────────────────────────────────────────
 do_clear() {
@@ -367,6 +421,7 @@ case "$CMD" in
   start)    do_start "$@" ;;
   query)    do_query "$@" ;;
   progress) do_progress "$@" ;;
+  set-plan) do_set_plan "$@" ;;
   clear)    do_clear "$@" ;;
   *)        usage ;;
 esac

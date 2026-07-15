@@ -97,6 +97,8 @@ test -x scripts/foo.sh
 - 추상 표현 금지 (e.g. "품질 향상" ✗, `grep -c "X" file` ≥ 3 ✓)
 - 전체 길이 ≤4000 chars
 
+> 💡 **세션격리 latch**: plan 파일 작성 후 `${CLAUDE_PLUGIN_ROOT}/scripts/plan-dev-session.sh set-plan <plan-mode 가 알려준 plan 파일 절대경로>` 실행 권장 — dispatch gate 가 이 세션의 plan 을 결정적으로 latch 해 다른 repo 의 동시 세션 plan 과 섞이지 않게 한다 (빠뜨려도 최초 dispatch 가 자동으로 latch 하니 필수는 아님).
+
 ### 1-3. Plan Review (강력 권장, 단 1회)
 `Agent(subagent_type="Plan")` 으로 staff engineer 비평 수령. 5분 이내.
 - **opt-in 시 judge panel 격상**: 사용자가 workflow 명시 / 대규모 plan 이면 단일 Plan 대신 `Workflow` 툴로 N개 독립 비평 → 합성 (➜ "Workflow 통합" A).
@@ -127,6 +129,15 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/plan-dev-progress.sh start --total=<N>
 2. 재시도도 `❌` → 슬라이스 중단 + 사용자 보고.
 
 > 📎 상세: [Phase 2 모드 선택 · cmux dispatch 가이드](./plan-dev/cmux-dispatch.md)
+
+### 애드혹 편집 (Slice File Map 밖 요청)
+
+plan 승인(1-4 ExitPlanMode) 후, 원래 Slice File Map 에 없던 편집 요청이 사용자로부터 올 수 있다 — 작은 단발 수정이라도:
+
+- **부모 세션에서 direct-edit 하지 말 것.** `dispatch-slice-pane.sh` 로 짧은 인라인 spec 을 만들어 새 슬라이스처럼 dispatch — maintainer(부모) 의 context 를 보존한다.
+- gate(`enforce-dispatch-gate.sh`) 는 plan 승인 후의 이런 애드혹 dispatch 를 이미 허용한다 (plan_file latch 로 세션이 격리돼 있으므로 추가 조치 불필요).
+- 규모가 작아 보여도 예외 없음 — "한 줄만 고치면 되는데" 라는 판단이 반복적 direct-edit 로 누적되면 부모 context 낭비가 커진다.
+- 📎 상세: [cmux dispatch 가이드 — 애드혹 dispatch](./plan-dev/cmux-dispatch.md)
 
 ## Phase 3 — Verify (loop)
 

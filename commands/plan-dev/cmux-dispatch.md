@@ -55,6 +55,10 @@
 - (c) classifier/sandbox 가 권한 거부 메시지에 "사용자에게 설명/확인" 안내를 포함하면 그대로 따른다. 자동 fallback 금지.
 - (d) 사용자가 명시 선택한 mode 의 **핵심 가치** (cmux=시각화, subagent=토큰 추적, pane=tmux 격리) 를 날리는 fallback 결정은 **AskUserQuestion 으로 확인**. 자동 결정 금지.
 
+#### 애드혹 dispatch (Slice File Map 밖 편집)
+
+plan 승인 후 원래 Slice 에 없던 편집 요청도 direct-edit 대신 위와 동일한 `dispatch-slice-pane.sh` 흐름으로 짧은 인라인 spec dispatch — 상세는 `commands/plan-dev.md` 의 "Phase 2 — 애드혹 편집" 참조.
+
 #### Spec 파일 위치 (컨벤션)
 
 - **위치**: `.claude/specs/<slug>.spec.md` (slug = `--slice=<slug>` 와 동일 kebab-case)
