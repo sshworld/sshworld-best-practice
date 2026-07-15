@@ -64,7 +64,7 @@ do_tick() {
 
   local tmp_err rc status_value
   tmp_err="$(mktemp)"
-  trap 'rm -f "$tmp_err"' EXIT
+  trap "rm -f $(printf '%q' "$tmp_err")" EXIT
 
   status_value=$("$SESSION_BIN" progress --inc 2>"$tmp_err")
   rc=$?

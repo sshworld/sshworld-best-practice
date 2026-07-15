@@ -365,6 +365,47 @@ fi
 rm -rf "$TMPDIR10"
 
 # ──────────────────────────────────────────────
+# TC11: tick — tmp_err EXIT-trap 스코프 버그 가드 (unbound variable 없음 + TMPDIR leak 없음)
+# ──────────────────────────────────────────────
+echo "[TC11] tick — tmp_err unbound/leak 가드"
+TMPDIR11="$(setup_tmp_repo)"
+STUB_LOG11="$TMPDIR11/cmux-calls.txt"
+STUB11="$TMPDIR11/cmux-stub.sh"
+cat > "$STUB11" <<EOF
+#!/usr/bin/env bash
+echo "\$@" >> "$STUB_LOG11"
+EOF
+chmod +x "$STUB11"
+
+(cd "$TMPDIR11"
+  TMUX="" CMUX_WORKSPACE_ID=test-ws \
+  CMUX_BIN="$STUB11" \
+  PLAN_DEV_SESSION_BIN="$SESSION_BIN_PATH" \
+  CMUX_PANE_BIN="$CMUX_PANE_BIN_PATH" \
+  "$SCRIPT" start --total=3 2>/dev/null
+)
+
+ISOLATED_TMPDIR11="$(mktemp -d)"
+ERR11=$(cd "$TMPDIR11"
+  TMUX="" CMUX_WORKSPACE_ID=test-ws \
+  CMUX_BIN="$STUB11" \
+  PLAN_DEV_SESSION_BIN="$SESSION_BIN_PATH" \
+  CMUX_PANE_BIN="$CMUX_PANE_BIN_PATH" \
+  TMPDIR="$ISOLATED_TMPDIR11" \
+  "$SCRIPT" tick --slug=tc11 2>&1 1>/dev/null
+)
+
+check_not_contains "TC11: stderr 에 unbound variable 없음" "unbound variable" "$ERR11"
+
+LEFTOVER11="$(find "$ISOLATED_TMPDIR11" -mindepth 1 2>/dev/null)"
+check "TC11: 전용 TMPDIR 에 잔여 파일 없음 (leak 가드)" "" "$LEFTOVER11"
+
+DONE11=$(cd "$TMPDIR11"; "$SESSION_BIN_PATH" query --key=done_slices 2>/dev/null)
+check "TC11: done_slices=1 (tick 정상 동작)" "1" "$DONE11"
+
+rm -rf "$ISOLATED_TMPDIR11" "$TMPDIR11"
+
+# ──────────────────────────────────────────────
 echo ""
 total=$((pass + fail_count))
 echo "passed: $pass / $total"
