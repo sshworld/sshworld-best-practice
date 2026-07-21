@@ -459,6 +459,13 @@ main() {
   "$WRAPPER" send "cd $(printf '%q' "$WORKTREE_ABS")" --pane="$PANE" --delay=0.3 >/dev/null || die "send cd 실패"
   "$WRAPPER" wait-idle --pane="$PANE" --idle=1 --timeout=10 >/dev/null 2>&1 || true
 
+  # 자식 셸에 정확한 surface:N ref 를 CBP_SELF_PANE 로 주입 — 자식 claude(및 Stop hook) 가
+  # env 상속 → notify-slice-done.sh 의 done-marker line1 이 UUID($CMUX_SURFACE_ID) 대신
+  # surface:N namespace 로 기록되어 reap fast-path/wrapper 라우팅과 정합.
+  # best-effort (send 유실 시에도 dispatch 계속 — wrapper 의 UUID --surface belt 가 커버).
+  "$WRAPPER" send "export CBP_SELF_PANE=$(printf '%q' "$PANE")" --pane="$PANE" --delay=0.3 >/dev/null || true
+  "$WRAPPER" wait-idle --pane="$PANE" --idle=1 --timeout=8 >/dev/null 2>&1 || true
+
   "$WRAPPER" send "$CHILD_CMD" --pane="$PANE" --delay=0.3 >/dev/null || die "send child 실패"
   "$WRAPPER" wait-idle --pane="$PANE" --idle=1 --timeout=15 >/dev/null 2>&1 || true
 

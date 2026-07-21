@@ -5,7 +5,9 @@
 #
 # done-marker 계약 (reap fast-path / reap-on-stop 과 공유 — 경로 변경 금지):
 #   경로: <git-common-dir>/cbp-slice-done-<branch sanitized: / → _>
-#   line1: $CMUX_SURFACE_ID (unset 이면 빈 줄)
+#   line1: surface ref — dispatch 가 자식 셸에 주입한 $CBP_SELF_PANE(surface:N, 정확한
+#          wrapper-namespace ref) 우선, 없으면 $CMUX_SURFACE_ID 폴백(cmux 실측 UUID 일 수
+#          있음 — wrapper 의 UUID --surface 라우팅이 belt 로 커버). 둘 다 unset 이면 빈 줄.
 #   line2: $CMUX_WORKSPACE_ID — 타 cmux workspace 의 부모가 같은 marker 를
 #          오사용(reap)하는 것을 막는 가드. 소비 측(_cbp_find_done_marker)이
 #          line2 존재 && 자기 CMUX_WORKSPACE_ID 와 다르면 skip.
@@ -72,7 +74,7 @@ if [ "$verdict" = "✅" ] || [ "$verdict" = "❌" ]; then
   if [ -n "$common_abs" ]; then
     branch_sanitized=$(printf '%s' "$branch" | tr '/' '_')
     marker="${common_abs}/cbp-slice-done-${branch_sanitized}"
-    printf '%s\n%s\n' "${CMUX_SURFACE_ID:-}" "${CMUX_WORKSPACE_ID}" > "$marker" 2>/dev/null || true
+    printf '%s\n%s\n' "${CBP_SELF_PANE:-${CMUX_SURFACE_ID:-}}" "${CMUX_WORKSPACE_ID}" > "$marker" 2>/dev/null || true
   fi
 fi
 

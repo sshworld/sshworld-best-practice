@@ -281,6 +281,35 @@ t8_jq_missing_degrades() {
     && [ ! -f "$marker" ]
 }
 
+# T11: CBP_SELF_PANE=surface:7 + CMUX_SURFACE_ID=<UUID> → marker line1 == surface:7 (우선순위)
+t11_self_pane_env_priority() {
+  local pair parent wt tmpdir transcript json_file cmux_bin rc=0
+  pair=$(setup_repo_with_worktree)
+  parent="${pair%|*}"; wt="${pair#*|}"
+  tmpdir=$(mktemp -d)
+  cmux_bin=$(make_mock_cmux "$tmpdir")
+  transcript="$tmpdir/transcript.jsonl"
+  {
+    echo '{"type":"user","message":{"content":[{"type":"text","text":"do something"}]}}'
+    echo '{"type":"assistant","message":{"content":[{"type":"text","text":"작업 끝. ✅ test-slice"}]}}'
+  } > "$transcript"
+  json_file="$tmpdir/stdin.json"
+  printf '{"transcript_path":"%s"}\n' "$transcript" > "$json_file"
+
+  (cd "$wt" && CMUX_BIN="$cmux_bin" CMUX_WORKSPACE_ID="ws1" \
+    CMUX_SURFACE_ID="1A1EDE2A-EB58-4DDD-A309-E750F1DE8999" CBP_SELF_PANE="surface:7" \
+    "$HOOK" < "$json_file" >/dev/null 2>&1)
+  rc=$?
+
+  local marker
+  marker=$(marker_path_of "$parent" "feature_test-slice")
+
+  [ "$rc" -eq 0 ] \
+    && [ -f "$marker" ] \
+    && [ "$(sed -n '1p' "$marker")" = "surface:7" ] \
+    && [ "$(sed -n '2p' "$marker")" = "ws1" ]
+}
+
 # T9: hooks.json / .claude/settings.json 배선 검증
 t9_wiring_hooks_json() {
   python3 -c "
@@ -310,6 +339,7 @@ run "T7 outside .worktrees/ -> noop, escape works"           t7_outside_worktree
 run "T8 jq missing -> bell degrade, no marker"               t8_jq_missing_degrades
 run "T9 hooks.json wiring"                                   t9_wiring_hooks_json
 run "T10 settings.json wiring"                               t10_wiring_settings_json
+run "T11 CBP_SELF_PANE 우선순위 -> marker line1"              t11_self_pane_env_priority
 
 echo "PASS=$PASS FAIL=$FAIL"
 [ "$FAIL" -eq 0 ] && echo "✅ all pass" || { echo "❌ FAILED: ${FAILED[*]}"; exit 1; }

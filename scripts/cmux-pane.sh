@@ -43,6 +43,11 @@
 #                                대상 surface ref 와 일치하면 do_wait_idle 을 스킵하고 바로 capture
 #                                로 직행 (완료 자식의 idle 강제 대기 제거). 0 이면 기존 wait-idle 경로
 #                                그대로 (회귀 없음). marker 는 reaped/died 시 rm (dry-run/kept 시 보존).
+#
+# pane ref 판정: send/capture/wait-idle/kill 모두 _cbp_pane_flag 헬퍼로 flag 를 결정한다.
+# `surface:N` 뿐 아니라 cmux 실측 UUID ref(예: 1A1EDE2A-EB58-4DDD-A309-E750F1DE8999,
+# $CMUX_SURFACE_ID 실값)도 --surface 로 라우팅 — line1 UUID/surface:N namespace 불일치
+# (dispatch CBP_SELF_PANE 미주입 시 belt) 대응.
 
 set -uo pipefail
 
@@ -65,7 +70,8 @@ commands:
   wait-idle --pane=<ref> [--idle=<sec>] [--timeout=<sec>]
                                                 화면이 <idle>초 동안 변하지 않으면 반환.
                                                 디폴트: idle=3, timeout=120
-  kill --pane=<ref>                             surface:N → close-surface + state remove.
+  kill --pane=<ref>                             surface:N 또는 UUID(cmux 실측 $CMUX_SURFACE_ID 값)
+                                                  → close-surface + state remove.
                                                   self-surface(CMUX_SURFACE_ID 일치) 만 거부, 그 외 허용.
                                                 workspace:N → close-workspace (기존).
                                                   자기 workspace kill 거부 (FORCE_SELF_KILL=1 우회).
@@ -99,6 +105,21 @@ USAGE
 }
 
 die() { echo "cmux-pane: $*" >&2; exit "${2:-1}"; }
+
+# pane ref → cmux CLI flag 판정. surface:* 또는 UUID(예: cmux $CMUX_SURFACE_ID 실측값,
+# 1A1EDE2A-EB58-4DDD-A309-E750F1DE8999 류) → --surface. 그 외(workspace:* 포함) → --workspace.
+# send/capture/wait-idle/kill 의 surface 판정 전부가 이 헬퍼로 중앙화됨(중복 case 분기 제거).
+_cbp_pane_flag() {
+  local ref="$1"
+  case "$ref" in
+    surface:*) printf -- '--surface'; return 0 ;;
+  esac
+  if [[ "$ref" =~ ^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}$ ]]; then
+    printf -- '--surface'
+    return 0
+  fi
+  printf -- '--workspace'
+}
 
 # --key=value 또는 --key value 모두 지원
 parse_long_opts() {
@@ -487,12 +508,8 @@ do_send() {
   local PANE="" ENTER="true" DELAY="1.5" ENTER_COUNT="1"
   parse_long_opts "$@"
   [ -z "$PANE" ] && die "send: --pane=<ref> 필요" 2
-  # surface:* → --surface, 그 외 → --workspace
   local pane_flag
-  case "$PANE" in
-    surface:*) pane_flag="--surface" ;;
-    *)         pane_flag="--workspace" ;;
-  esac
+  pane_flag=$(_cbp_pane_flag "$PANE")
   "$CMUX_BIN" send "$pane_flag" "$PANE" "$text" || die "send: 실패" 3
   if [ "$ENTER" = "true" ] && [ "$ENTER_COUNT" != "0" ]; then
     sleep "$DELAY"
@@ -540,12 +557,8 @@ do_capture() {
   local PANE="" LINES=""
   parse_long_opts "$@"
   [ -z "$PANE" ] && die "capture: --pane=<ref> 필요" 2
-  # surface:* → --surface, 그 외 → --workspace
   local pane_flag
-  case "$PANE" in
-    surface:*) pane_flag="--surface" ;;
-    *)         pane_flag="--workspace" ;;
-  esac
+  pane_flag=$(_cbp_pane_flag "$PANE")
   if [ -n "$LINES" ]; then
     "$CMUX_BIN" read-screen "$pane_flag" "$PANE" --lines "$LINES" || die "capture: 실패" 3
   else
@@ -574,12 +587,8 @@ do_wait_idle() {
     fi
 
     local screen_content
-    # surface:* → --surface, 그 외 → --workspace
     local _pane_flag
-    case "$PANE" in
-      surface:*) _pane_flag="--surface" ;;
-      *)         _pane_flag="--workspace" ;;
-    esac
+    _pane_flag=$(_cbp_pane_flag "$PANE")
     screen_content=$("$CMUX_BIN" read-screen "$_pane_flag" "$PANE" 2>/dev/null || echo "")
     if command -v sha256sum >/dev/null 2>&1; then
       cur_hash=$(printf '%s' "$screen_content" | sha256sum | cut -c1-16)
@@ -631,8 +640,11 @@ do_kill() {
   parse_long_opts "$@"
   [ -z "$PANE" ] && die "kill: --pane=<ref> 필요" 2
 
-  case "$PANE" in
-    surface:*)
+  local _kind
+  _kind=$(_cbp_pane_flag "$PANE")
+
+  case "$_kind" in
+    --surface)
       # self-surface 만 거부 (CMUX_SURFACE_ID match). 그 외 surface 는 모두 허용.
       # FORCE_SELF_KILL 영향 없음 (surface 는 부모 workspace 종속이므로 외부 surface kill 위험 낮음).
       local self_surface="${CMUX_SURFACE_ID:-}"
