@@ -37,6 +37,12 @@
 #   CBP_LAUNCH_DEBUG           — 1 이면 _do_launch_grid 의 생성 경로(new-pane/new-split raw_out),
 #                                prev_surface, verify 루프 각 시도의 read-screen 출력을 stderr 로
 #                                dump. 디폴트(0/unset) 시 동작·출력 완전 불변(추가 read-screen 호출 없음).
+#   CBP_REAP_FAST_CHECK        — reap 의 done-marker fast-path 스위치 (디폴트 1=on). 자식 Stop hook
+#                                (S2, hooks/notify-slice-done.sh) 이 남긴
+#                                <git-common-dir>/cbp-slice-done-<sanitized branch> 파일의 첫 줄이
+#                                대상 surface ref 와 일치하면 do_wait_idle 을 스킵하고 바로 capture
+#                                로 직행 (완료 자식의 idle 강제 대기 제거). 0 이면 기존 wait-idle 경로
+#                                그대로 (회귀 없음). marker 는 reaped/died 시 rm (dry-run/kept 시 보존).
 
 set -uo pipefail
 
@@ -656,6 +662,28 @@ EOF
   esac
 }
 
+# done-marker 파일(S2 생산, hooks/notify-slice-done.sh) fast-path 소비 헬퍼.
+# 계약: <git-common-dir>/cbp-slice-done-<sanitized branch> 파일의 첫 줄이 자식 셸의
+# $CMUX_SURFACE_ID (예: surface:4). 이 함수는 변경하지 않음 — 오직 조회만.
+# 인자: surface_ref. 매치 파일 경로를 stdout (없으면 빈 출력). 항상 return 0 (conservative).
+_cbp_find_done_marker() {
+  local surface_ref="$1"
+  local common_dir
+  common_dir=$(git rev-parse --git-common-dir 2>/dev/null) || return 0
+  [ -z "$common_dir" ] && return 0
+
+  local f first_line
+  for f in "$common_dir"/cbp-slice-done-*; do
+    [ -f "$f" ] || continue
+    first_line=$(head -1 "$f" 2>/dev/null)
+    if [ "$first_line" = "$surface_ref" ]; then
+      printf '%s\n' "$f"
+      return 0
+    fi
+  done
+  return 0
+}
+
 # --pane=<ref> 단일 자식 회수 (기존 do_reap 로직 그대로 — 이름만 분리).
 # --all/argless 는 do_reap 이 이 함수를 자식마다 subshell 로 반복 호출한다.
 _do_reap_one() {
@@ -664,7 +692,16 @@ _do_reap_one() {
   parse_long_opts "$@"
   [ -z "$PANE" ] && die "reap: --pane=<ref> 필요" 2
 
-  do_wait_idle --pane="$PANE" --idle="$IDLE" --timeout="$TIMEOUT"
+  # done-marker 조회는 fast-path 토글과 무관하게 항상 수행(best-effort) — reaped/died 시
+  # rm 대상으로 재사용. 토글(CBP_REAP_FAST_CHECK)은 "wait-idle 스킵 여부"만 결정한다.
+  local _done_marker
+  _done_marker=$(_cbp_find_done_marker "$PANE" 2>/dev/null || true)
+
+  if [ "${CBP_REAP_FAST_CHECK:-1}" != "0" ] && [ -n "$_done_marker" ]; then
+    : # fast-path — wait-idle 스킵, 바로 capture 로 직행
+  else
+    do_wait_idle --pane="$PANE" --idle="$IDLE" --timeout="$TIMEOUT"
+  fi
 
   local screen rc
   screen=$(do_capture --pane="$PANE" 2>/dev/null); rc=$?
@@ -672,6 +709,7 @@ _do_reap_one() {
     echo "died — surface '$PANE' not a terminal (자식 비정상 종료 의심; subagent 폴백 권장)" >&2
     echo "died $PANE"
     cbp_state_remove "$PANE"
+    [ -n "$_done_marker" ] && rm -f "$_done_marker"
     return 5
   fi
 
@@ -697,6 +735,7 @@ _do_reap_one() {
       return 0
     fi
     do_kill --pane="$PANE"
+    [ -n "$_done_marker" ] && rm -f "$_done_marker"
     echo "reaped $PANE"
   else
     echo "not done — kept $PANE"
@@ -736,15 +775,23 @@ _do_reap_all() {
 
     # grace: ts 가 수치이고 age < grace_sec 이면 probe 자체 skip.
     # ts 비수치/결측 → 이 case 미매치 → 아래 probe 로 폴백(conservative).
+    # done-marker 매치 시(fast-path on) grace 우회 — 30초 내 끝난 짧은 슬라이스의 완료
+    # 신호 유실 방지 (marker 는 완료를 이미 증명하므로 신생 여부와 무관하게 probe 진행).
     case "$ts_ref" in
       *[!0-9]*|'')
         ;;
       *)
         local age=$((now - ts_ref))
         if [ "$age" -lt "$grace_sec" ]; then
-          echo "grace — kept $surface_ref"
-          kept=$((kept + 1))
-          continue
+          local _grace_marker=""
+          if [ "${CBP_REAP_FAST_CHECK:-1}" != "0" ]; then
+            _grace_marker=$(_cbp_find_done_marker "$surface_ref" 2>/dev/null || true)
+          fi
+          if [ -z "$_grace_marker" ]; then
+            echo "grace — kept $surface_ref"
+            kept=$((kept + 1))
+            continue
+          fi
         fi
         ;;
     esac
