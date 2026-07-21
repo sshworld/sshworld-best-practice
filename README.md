@@ -545,6 +545,12 @@ cmux dispatch 자식이 작업을 마치면 부모 사이드바에 cmux 알림 �
 
 - 우회: `SKIP_SLICE_DONE_NOTIFY=1`(1회) / `DISABLE_SLICE_DONE_NOTIFY=1`(영구).
 
+### 14) reap-on-stop.sh (Stop, 부모 세션 전용) — **완료 자식 자동 회수**
+
+자식이 완료(notify-slice-done 이 남긴 done-marker)되면, 부모가 별도 감시 루프 없이도 **다음 turn 경계마다** 최대 5개까지 해당 surface 를 자동 reap 한다. 회수됐으면 `♻️ reap-on-stop: reaped <ref>`, 자식 input box 에 미제출 텍스트가 남아있으면 `⏸ input-pending — <ref> 보류` 로 한 줄 알려준다.
+
+- 우회: `SKIP_REAP_ON_STOP=1`(1회) / `DISABLE_REAP_ON_STOP=1`(영구).
+
 ---
 
 ## 환경변수 정리

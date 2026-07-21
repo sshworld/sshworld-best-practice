@@ -47,7 +47,8 @@
 - ⚠️ **Phase 5 `do_cmux_cleanup`(finish-plan-dev.sh push 후 자동 호출)은 pending 을 무시하고 닫는 destructive backstop** — input-pending 상태와 무관하게 자식 surface 를 일괄 close 한다. reap 표준 감시 루프로 pending 을 먼저 사용자에게 보고/처리한 뒤 Phase 5 로 넘어갈 것.
 - 사용자가 직접 자식 화면 보기: cmux 사이드바의 surface 탭 클릭.
 - **자식 worktree trust 자동 시딩** (`trust-dir.sh`, cross-machine): dispatch 는 worktree launch 직전 `hasTrustDialogAccepted` 를 자동 set — fresh 머신에서 trust 다이얼로그에 막혀 자식이 멈추는 케이스 회피. 우회: `SKIP_DISPATCH_TRUST=1`.
-- **완료 push 알림** (`hooks/notify-slice-done.sh`, 자식 쪽 Stop hook): 자식이 turn 을 마칠 때마다 (a) `cmux notify` 로 부모 사이드바에 즉시 알림 push (`✅ <branch> 완료` / `❌ <branch> 실패` / 판정 불가 시 `🔔 <branch> turn 종료`), (b) `<git-common-dir>/cbp-slice-done-<branch sanitized: / → _>` done-marker 파일에 자식 `$CMUX_SURFACE_ID` 한 줄 기록 — 아래 표준 감시 루프의 early-wake 신호이자 `reap` fast-path(`CBP_REAP_FAST_CHECK`, `wait-idle` 스킵)가 소비하는 계약. 우회: `SKIP_SLICE_DONE_NOTIFY=1`(1회) / `DISABLE_SLICE_DONE_NOTIFY=1`(영구), 비-dispatch worktree escape `CBP_NOTIFY_ANY_WORKTREE=1`. ⚠️ Stop hook 은 **plugin 버전에 등록**되므로 sshworld plugin 버전을 올린 직후에는 이미 실행 중인 세션엔 반영 안 됨 — 새 세션(자식 재기동)부터 유효.
+- **완료 push 알림** (`hooks/notify-slice-done.sh`, 자식 쪽 Stop hook): 자식이 turn 을 마칠 때마다 (a) `cmux notify` 로 부모 사이드바에 즉시 알림 push (`✅ <branch> 완료` / `❌ <branch> 실패` / 판정 불가 시 `🔔 <branch> turn 종료`), (b) `<git-common-dir>/cbp-slice-done-<branch sanitized: / → _>` done-marker 파일에 **2줄** 기록 — line1 surface ref(dispatch 주입 `$CBP_SELF_PANE` 우선, 폴백 `$CMUX_SURFACE_ID`), line2 `$CMUX_WORKSPACE_ID`(타 workspace 오사용 차단). 우회: `SKIP_SLICE_DONE_NOTIFY=1`(1회) / `DISABLE_SLICE_DONE_NOTIFY=1`(영구), 비-dispatch worktree escape `CBP_NOTIFY_ANY_WORKTREE=1`. ⚠️ Stop hook 은 **plugin 버전에 등록**되므로 sshworld plugin 버전을 올린 직후에는 이미 실행 중인 세션엔 반영 안 됨 — 새 세션(자식 재기동)부터 유효.
+- **자동 회수 체인**: 자식 완료(notify+marker) → **부모 다음 turn 경계에 `hooks/reap-on-stop.sh`(부모 쪽 Stop hook) 가 marker 를 자동 소비해 targeted reap** (감시 루프 없이도 동작). 아래 표준 감시 루프는 이 자동 회수의 **즉시성 보강 + hook 미배선(구버전 plugin) belt** 일 뿐 필수 경로가 아니다. 단, 부모가 완전히 idle(추가 turn 없음) 상태면 다음 turn 경계 자체가 없어 회수도 안 일어나는 게 본질 한계 — 이 경우 (a) notify 알림으로 사용자가 인지해 직접 회수하거나 (b) 감시 루프를 돌려 폴링으로 회수한다. 우회: `SKIP_REAP_ON_STOP=1`(1회) / `DISABLE_REAP_ON_STOP=1`(영구).
 
 #### Dispatch wrapper 가용성 검증 (회복력 룰)
 
@@ -114,10 +115,13 @@ $wrapper reap
 
 부모 감시 루프가 reap 의 에러 출력(exit 2, `--pane=<ref> 필요`)을 무시하고 무한 헛폴링한 실사례가 있었다. 콘텐츠 가드로 아래 형태를 항상 사용할 것 — reap 출력에 `필요|error` 매치 = 호출 방식/환경 문제이므로 폴링 반복은 무의미하고 즉시 abort + 사용자 보고해야 한다.
 
-v2 는 `sleep 30` 고정 폴링 대신 `hooks/notify-slice-done.sh` 가 남기는 done-marker(`cbp-slice-done-*`) 를 2초 간격(최대 30초)으로 확인해 발견 즉시 해당 pane 만 targeted reap 하는 **early-wake** 를 추가한다 — marker 미배선(구버전 plugin)/유실 대비로 기존 `reap --all` belt 는 그대로 유지. 에러/input-pending/60회 상한 가드 원칙은 변경 없음.
+v2 는 `sleep 30` 고정 폴링 대신 `hooks/notify-slice-done.sh` 가 남기는 done-marker(`cbp-slice-done-*`) 를 2초 간격(최대 30초)으로 확인해 발견 즉시 해당 pane 만 targeted reap 하는 **early-wake** 를 추가한다 — marker 미배선(구버전 plugin)/유실 대비로 기존 `reap --all` belt 는 그대로 유지. 에러/input-pending/60회 상한 가드 원칙은 변경 없음. **자동 회수 체인**(`hooks/reap-on-stop.sh`) 이 이미 대부분의 경우를 커버하므로, 이 루프는 즉시성이 더 필요할 때만 선택적으로 돌린다.
+
+> ⚠️ 미매치 glob(marker 없음)이 **zsh 에서는 fatal** — `for m in "$_gc"/cbp-slice-done-*` 가 매치 0개면 zsh 는 `no matches found` 로 그 자리에서 스크립트를 죽인다(bash 는 리터럴 문자열로 확장돼 `[ -f "$m" ]` 가드로 조용히 skip — 안전). 아래 블록 맨 위 `setopt nullglob 2>/dev/null || true` 가 이 가드 — zsh 에선 미매치 glob 을 빈 확장으로 바꿔 무해화하고, bash 에선 `setopt` 자체가 없는 명령이라 `|| true` 로 조용히 무시된다. 이 줄을 지우지 말 것.
 
 ```bash
 # 표준 감시 루프 v2 — marker early-wake + targeted reap + reap --all fallback
+setopt nullglob 2>/dev/null || true  # zsh 미매치 glob fatal 가드 (bash 는 no-op) — 지우지 말 것
 _iter=0
 while :; do
   _iter=$((_iter + 1))
