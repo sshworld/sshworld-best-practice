@@ -127,6 +127,11 @@
           {
             "type": "command",
             "command": "$CLAUDE_PROJECT_DIR/hooks/notify-slice-done.sh"
+          },
+          {
+            "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/hooks/reap-on-stop.sh",
+            "timeout": 30
           }
         ]
       }

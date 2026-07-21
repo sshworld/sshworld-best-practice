@@ -3,9 +3,12 @@
 # (a) cmux notify 패널로 즉시 알리고 (b) done-marker 파일을 남겨
 # 부모 reap 이 fast-path 신호로 쓰게 한다.
 #
-# done-marker 계약 (S1 reap fast-path 와 공유 — 경로/내용 변경 금지):
+# done-marker 계약 (reap fast-path / reap-on-stop 과 공유 — 경로 변경 금지):
 #   경로: <git-common-dir>/cbp-slice-done-<branch sanitized: / → _>
-#   내용: $CMUX_SURFACE_ID 한 줄 (unset 이면 빈 파일)
+#   line1: $CMUX_SURFACE_ID (unset 이면 빈 줄)
+#   line2: $CMUX_WORKSPACE_ID — 타 cmux workspace 의 부모가 같은 marker 를
+#          오사용(reap)하는 것을 막는 가드. 소비 측(_cbp_find_done_marker)이
+#          line2 존재 && 자기 CMUX_WORKSPACE_ID 와 다르면 skip.
 #
 # 우회: SKIP_SLICE_DONE_NOTIFY=1 (1회) / DISABLE_SLICE_DONE_NOTIFY=1 (영구)
 # 비-dispatch worktree 오발화 차단 escape: CBP_NOTIFY_ANY_WORKTREE=1
@@ -69,7 +72,7 @@ if [ "$verdict" = "✅" ] || [ "$verdict" = "❌" ]; then
   if [ -n "$common_abs" ]; then
     branch_sanitized=$(printf '%s' "$branch" | tr '/' '_')
     marker="${common_abs}/cbp-slice-done-${branch_sanitized}"
-    printf '%s\n' "${CMUX_SURFACE_ID:-}" > "$marker" 2>/dev/null || true
+    printf '%s\n%s\n' "${CMUX_SURFACE_ID:-}" "${CMUX_WORKSPACE_ID}" > "$marker" 2>/dev/null || true
   fi
 fi
 

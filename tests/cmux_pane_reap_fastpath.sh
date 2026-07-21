@@ -328,6 +328,68 @@ check_ge "case6: read-screen 호출 ≥3 (wait-idle 경로)" 3 "$(cat "$COUNTER6
 check "case6: marker 파일 삭제됨 (reaped 시 rm 은 토글 무관)" "0" "$([ -f "$MARKER6" ] && echo 1 || echo 0)"
 
 # ============================================================================
+# [7] 2줄 marker(line2=자기 ws) → fast-path 정상 동작 (reaped, 호출 ≤2, marker 삭제)
+# ============================================================================
+echo ""
+echo "[7] 2줄 marker line2=자기 ws — fast-path 정상 동작"
+
+T7=$(mktemp -d)
+trap 'rm -rf "$T7"' EXIT
+( cd "$T7" && git init -q )
+MARKER7="$T7/.git/cbp-slice-done-feature_reap-fastpath"
+printf 'surface:7\nws1\n' > "$MARKER7"
+LOG7="$T7/close.log"; touch "$LOG7"
+COUNTER7="$T7/rs_count"
+SCREEN7="$T7/screen.txt"
+printf '⏺ ✅ done\n' > "$SCREEN7"
+MOCKDIR7="$T7/mock"; mkdir -p "$MOCKDIR7"
+make_mock_cmux_static "$MOCKDIR7" "$SCREEN7" "$LOG7" "$COUNTER7"
+STATE7="$T7/state.json"
+
+out7=$(cd "$T7" && env CMUX_BIN="$MOCKDIR7/cmux" CBP_STATE_FILE="$STATE7" CMUX_WORKSPACE_ID="ws1" \
+  bash "$WRAPPER" reap --pane=surface:7 --idle=1 --timeout=5 2>&1)
+check_contains "case7: 출력에 reaped" "reaped" "$out7"
+check_le "case7: read-screen 호출 ≤2 (fast-path)" 2 "$(cat "$COUNTER7")"
+check "case7: marker 파일 삭제됨" "0" "$([ -f "$MARKER7" ] && echo 1 || echo 0)"
+
+# ============================================================================
+# [8] 2줄 marker(line2=타 ws) → fast-path 미적용 + died 경로에서도 marker 보존
+# ============================================================================
+echo ""
+echo "[8] 2줄 marker line2=타 ws — fast-path 미적용, died 경로에서도 marker 보존"
+
+T8=$(mktemp -d)
+trap 'rm -rf "$T8"' EXIT
+( cd "$T8" && git init -q )
+MARKER8="$T8/.git/cbp-slice-done-feature_reap-fastpath"
+printf 'surface:7\nws-other\n' > "$MARKER8"
+LOG8="$T8/close.log"; touch "$LOG8"
+MOCKDIR8="$T8/mock"; mkdir -p "$MOCKDIR8"
+cat > "$MOCKDIR8/cmux" <<MOCKEOF
+#!/usr/bin/env bash
+subcmd="\$1"; shift
+case "\$subcmd" in
+  read-screen)
+    exit 1
+    ;;
+  close-workspace|close-surface)
+    printf '%s %s\n' "\$subcmd" "\$*" >> "$LOG8"
+    exit 0
+    ;;
+  *)
+    exit 0
+    ;;
+esac
+MOCKEOF
+chmod +x "$MOCKDIR8/cmux"
+STATE8="$T8/state.json"
+
+out8=$(cd "$T8" && env CMUX_BIN="$MOCKDIR8/cmux" CBP_STATE_FILE="$STATE8" CMUX_WORKSPACE_ID="ws1" \
+  bash "$WRAPPER" reap --pane=surface:7 --idle=1 --timeout=5 2>&1)
+check_contains "case8: 출력에 died (dead surface)" "died" "$out8"
+check "case8: 타 ws marker 는 보존됨" "1" "$([ -f "$MARKER8" ] && echo 1 || echo 0)"
+
+# ============================================================================
 echo ""
 echo "=== 결과: pass=$pass fail=$fail_count ==="
 [ "$fail_count" -eq 0 ]

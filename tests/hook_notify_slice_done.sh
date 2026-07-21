@@ -97,7 +97,8 @@ t1_success_verdict() {
   [ "$rc" -eq 0 ] \
     && grep -q '✅' "$tmpdir/cmux.calls" 2>/dev/null \
     && [ -f "$marker" ] \
-    && [ "$(cat "$marker")" = "surf1" ]
+    && [ "$(sed -n '1p' "$marker")" = "surf1" ] \
+    && [ "$(sed -n '2p' "$marker")" = "ws1" ]
 }
 
 # T2: ❌ transcript → ❌ title + marker 생성
@@ -124,7 +125,9 @@ t2_failure_verdict() {
 
   [ "$rc" -eq 0 ] \
     && grep -q '❌' "$tmpdir/cmux.calls" 2>/dev/null \
-    && [ -f "$marker" ]
+    && [ -f "$marker" ] \
+    && [ "$(sed -n '1p' "$marker")" = "surf1" ] \
+    && [ "$(sed -n '2p' "$marker")" = "ws1" ]
 }
 
 # T3: user 줄에만 ✅ (assistant 텍스트엔 없음) → 🔔 title + marker 미생성

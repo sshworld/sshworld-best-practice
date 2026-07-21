@@ -666,20 +666,28 @@ EOF
 # 계약: <git-common-dir>/cbp-slice-done-<sanitized branch> 파일의 첫 줄이 자식 셸의
 # $CMUX_SURFACE_ID (예: surface:4). 이 함수는 변경하지 않음 — 오직 조회만.
 # 인자: surface_ref. 매치 파일 경로를 stdout (없으면 빈 출력). 항상 return 0 (conservative).
+# done-marker 계약 (notify-slice-done.sh 와 공유):
+#   line1: 생산 자식 $CMUX_SURFACE_ID (= surface_ref 매치 대상)
+#   line2: 생산 자식 $CMUX_WORKSPACE_ID — 비어있지 않고 자기 ${CMUX_WORKSPACE_ID:-} 와
+#          다르면 그 marker 는 skip (타 workspace 오사용 방지). line2 없는 구버전
+#          1줄 marker 는 기존 동작(line1 매치만) 그대로.
 _cbp_find_done_marker() {
   local surface_ref="$1"
   local common_dir
   common_dir=$(git rev-parse --git-common-dir 2>/dev/null) || return 0
   [ -z "$common_dir" ] && return 0
 
-  local f first_line
+  local f first_line second_line
   for f in "$common_dir"/cbp-slice-done-*; do
     [ -f "$f" ] || continue
     first_line=$(head -1 "$f" 2>/dev/null)
-    if [ "$first_line" = "$surface_ref" ]; then
-      printf '%s\n' "$f"
-      return 0
+    [ "$first_line" = "$surface_ref" ] || continue
+    second_line=$(sed -n '2p' "$f" 2>/dev/null)
+    if [ -n "$second_line" ] && [ "$second_line" != "${CMUX_WORKSPACE_ID:-}" ]; then
+      continue
     fi
+    printf '%s\n' "$f"
+    return 0
   done
   return 0
 }
