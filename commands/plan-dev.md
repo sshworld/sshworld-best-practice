@@ -124,6 +124,8 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/plan-dev-progress.sh start --total=<N>
 병렬 슬라이스: 한 메시지에 여러 `Agent` 호출 (`subagent_type="implementor"`, `run_in_background=true`, `isolation="worktree"`).
 - implementor 는 `<type>/<slug>` 브랜치 worktree 에서 Red→Green→Refactor 수행 후 `✅` 리턴.
 
+**dispatch(cmux/tmux) 모드도 동일**: 의존성 없는 슬라이스는 **감시 루프 시작 전에 전부 dispatch** — launch lock 이 동시 호출 race 를 방지하므로 한 메시지 병렬 Bash 호출 가능. dispatch→회수→다음 dispatch 순차 진행 금지 (병렬 이점 소멸).
+
 **implementor 실패 시 (`❌` 리턴):**
 1. Rewind → 재시도 (자동, 1회).
 2. 재시도도 `❌` → 슬라이스 중단 + 사용자 보고.

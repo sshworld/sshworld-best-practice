@@ -47,6 +47,7 @@
 - ⚠️ **Phase 5 `do_cmux_cleanup`(finish-plan-dev.sh push 후 자동 호출)은 pending 을 무시하고 닫는 destructive backstop** — input-pending 상태와 무관하게 자식 surface 를 일괄 close 한다. reap 표준 감시 루프로 pending 을 먼저 사용자에게 보고/처리한 뒤 Phase 5 로 넘어갈 것.
 - 사용자가 직접 자식 화면 보기: cmux 사이드바의 surface 탭 클릭.
 - **자식 worktree trust 자동 시딩** (`trust-dir.sh`, cross-machine): dispatch 는 worktree launch 직전 `hasTrustDialogAccepted` 를 자동 set — fresh 머신에서 trust 다이얼로그에 막혀 자식이 멈추는 케이스 회피. 우회: `SKIP_DISPATCH_TRUST=1`.
+- **완료 push 알림** (`hooks/notify-slice-done.sh`, 자식 쪽 Stop hook): 자식이 turn 을 마칠 때마다 (a) `cmux notify` 로 부모 사이드바에 즉시 알림 push (`✅ <branch> 완료` / `❌ <branch> 실패` / 판정 불가 시 `🔔 <branch> turn 종료`), (b) `<git-common-dir>/cbp-slice-done-<branch sanitized: / → _>` done-marker 파일에 자식 `$CMUX_SURFACE_ID` 한 줄 기록 — 아래 표준 감시 루프의 early-wake 신호이자 `reap` fast-path(`CBP_REAP_FAST_CHECK`, `wait-idle` 스킵)가 소비하는 계약. 우회: `SKIP_SLICE_DONE_NOTIFY=1`(1회) / `DISABLE_SLICE_DONE_NOTIFY=1`(영구), 비-dispatch worktree escape `CBP_NOTIFY_ANY_WORKTREE=1`. ⚠️ Stop hook 은 **plugin 버전에 등록**되므로 sshworld plugin 버전을 올린 직후에는 이미 실행 중인 세션엔 반영 안 됨 — 새 세션(자식 재기동)부터 유효.
 
 #### Dispatch wrapper 가용성 검증 (회복력 룰)
 
@@ -94,6 +95,14 @@ $wrapper wait-idle --pane=$pane --idle=10 --timeout=1800
 $wrapper capture   --pane=$pane | tail -50 | grep -E '^[[:space:]]*(⏺[[:space:]]*)?(✅|❌)'
 ```
 
+**병렬 dispatch 예시** — 의존성 없는 슬라이스 2개는 감시 루프 시작 전에 dispatch 를 연속 2회(또는 한 메시지 병렬 Bash 호출) 끝내고, 감시 루프는 **1개**만 돌린다:
+```bash
+${CLAUDE_PLUGIN_ROOT}/scripts/dispatch-slice-pane.sh --slice=<slug-a> --spec-file=.claude/specs/<slug-a>.spec.md --mode=cmux
+${CLAUDE_PLUGIN_ROOT}/scripts/dispatch-slice-pane.sh --slice=<slug-b> --spec-file=.claude/specs/<slug-b>.spec.md --mode=cmux
+# 위 표준 감시 루프 v2 로 두 자식 동시 회수
+```
+launch 는 mkdir-mutex 로 직렬화되지만 자식 작업 자체는 병렬 진행 — dispatch→회수→다음 dispatch 순차 진행은 병렬 이점을 없앤다.
+
 **여러 자식을 한 번에 회수** — `reap --all` (argless 도 동일): 전 자식 순회, 완료(✅/❌)분만 회수하고 미완료는 "not done — kept" 로 보존, 신규 자식은 grace 로 skip. **완료 마커는 떴지만 자식 input box 에 미제출 사용자 텍스트(`❯ text` 프롬프트)가 남아있으면 `input-pending — kept` 로 별도 보존** — 아직 부모에게 전달 안 된 후속 지시일 수 있어 kept 로 흡수하지 않는다. 강제 회수는 `CBP_REAP_IGNORE_PENDING=1`. 마지막 줄에 `reaped N / kept M / pending P` 요약, exit 0.
 ```bash
 $wrapper reap --all
@@ -105,12 +114,21 @@ $wrapper reap
 
 부모 감시 루프가 reap 의 에러 출력(exit 2, `--pane=<ref> 필요`)을 무시하고 무한 헛폴링한 실사례가 있었다. 콘텐츠 가드로 아래 형태를 항상 사용할 것 — reap 출력에 `필요|error` 매치 = 호출 방식/환경 문제이므로 폴링 반복은 무의미하고 즉시 abort + 사용자 보고해야 한다.
 
+v2 는 `sleep 30` 고정 폴링 대신 `hooks/notify-slice-done.sh` 가 남기는 done-marker(`cbp-slice-done-*`) 를 2초 간격(최대 30초)으로 확인해 발견 즉시 해당 pane 만 targeted reap 하는 **early-wake** 를 추가한다 — marker 미배선(구버전 plugin)/유실 대비로 기존 `reap --all` belt 는 그대로 유지. 에러/input-pending/60회 상한 가드 원칙은 변경 없음.
+
 ```bash
-# 표준 감시 루프 — reap --all + 에러 가드. 에러 무시 무한폴링 금지.
-# 최대 반복 상한 60회 — 그 이상은 사용자 보고 후 중단(무한폴링 방지).
+# 표준 감시 루프 v2 — marker early-wake + targeted reap + reap --all fallback
 _iter=0
 while :; do
   _iter=$((_iter + 1))
+  # 1) marker 발견 시 해당 pane 만 targeted reap (fast-path — 즉시 회수)
+  _gc=$(git rev-parse --git-common-dir 2>/dev/null)
+  for m in "$_gc"/cbp-slice-done-*; do
+    [ -f "$m" ] || continue
+    _ref=$(head -1 "$m")
+    [ -n "$_ref" ] && $wrapper reap --pane="$_ref" --idle=3 --timeout=30
+  done
+  # 2) 전체 상태 확인 (hook 미배선/marker 유실 대비 belt)
   out="$($wrapper reap --all 2>&1)"; rc=$?
   echo "$out"
   # 가드: 에러 신호 감지 시 즉시 중단 + 사용자 보고 (헛폴링 방지)
@@ -120,16 +138,19 @@ while :; do
   # input-pending 감지 시 즉시 중단 + 사용자 보고 — 폴링으로는 해소 안 됨
   # (자식 input box 의 미제출 텍스트는 부모가 직접 확인/처리해야 함).
   if echo "$out" | grep -q "input-pending"; then
-    echo "input-pending 감지 — 폴링으로 해소 불가, 루프 중단 + 사용자 보고" >&2; break
+    echo "input-pending 감지 — 루프 중단 + 사용자 보고" >&2; break
   fi
   # 전원 회수 완료 시 종료 (kept 0 && pending 0 기준 — pending 은 kept 로 흡수되지 않음)
   if echo "$out" | grep -q "kept 0" && ! echo "$out" | grep -qE 'pending [1-9]'; then
     break
   fi
-  if [ "$_iter" -ge 60 ]; then
-    echo "감시 루프 60회 상한 도달 — 중단, 사용자 보고" >&2; break
-  fi
-  sleep 30
+  [ "$_iter" -ge 60 ] && { echo "60회 상한 — 중단" >&2; break; }
+  # 3) sleep 30 대신 2초 간격 marker 폴링 (최대 30초) — 발견 즉시 early-wake
+  _w=0
+  while [ "$_w" -lt 15 ]; do
+    ls "$_gc"/cbp-slice-done-* >/dev/null 2>&1 && break
+    sleep 2; _w=$((_w + 1))
+  done
 done
 ```
 

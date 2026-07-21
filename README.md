@@ -539,6 +539,12 @@ Phase 4 의 `commit-advisor` agent 호출을 hook 이 직접 감지해 `plan-dev
 - 비-git cwd / 빈·깨진 stdin 등 모든 실패 경로에서 조용히 exit 0 — 세션을 절대 막지 않음.
 - `agents/commit-advisor.md` 의 agent 본인 touch 는 이제 belt(best-effort) — hook 이 primary.
 
+### 13) notify-slice-done.sh (Stop, 자식 worktree 전용) — **완료 알림 + reap fast-path 신호**
+
+cmux dispatch 자식이 작업을 마치면 부모 사이드바에 cmux 알림 패널을 즉시 push 하고, 부모의 `cmux-pane.sh reap` 이 `wait-idle` 을 건너뛰고 바로 회수하도록 done-marker 파일을 남긴다 — 감시 루프의 `sleep 30` 대기 없이 완료를 즉시 인지.
+
+- 우회: `SKIP_SLICE_DONE_NOTIFY=1`(1회) / `DISABLE_SLICE_DONE_NOTIFY=1`(영구).
+
 ---
 
 ## 환경변수 정리
