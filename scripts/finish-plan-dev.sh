@@ -176,6 +176,9 @@ fi
 
 # ── cmux cleanup 헬퍼 (S3) ────────────────────────────────────────
 do_cmux_cleanup() {
+  # backstop: stale done-marker 파일 정리 (S1 reap fast-path 의 rm 누락/실패 대비, best-effort)
+  rm -f "${COMMON_DIR}"/cbp-slice-done-* 2>/dev/null || true
+
   if [ "${SKIP_PLAN_DEV_CMUX_CLEANUP:-0}" = "1" ]; then
     echo "cmux cleanup skipped (SKIP_PLAN_DEV_CMUX_CLEANUP=1)" >&2
     return 0

@@ -259,6 +259,9 @@ with open(os.environ['MARKER_FILE'], 'w') as f:
       "$CMUX_PANE_BIN" reap-orphans >/dev/null 2>&1 || true
     fi
   fi
+
+  # backstop: stale done-marker 파일 정리 (S1 reap fast-path 의 rm 누락/실패 대비, best-effort)
+  rm -f "$(dirname "$marker")"/cbp-slice-done-* 2>/dev/null || true
 }
 
 # ─────────────────────────────────────────
