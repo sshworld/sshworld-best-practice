@@ -547,7 +547,7 @@ cmux dispatch 자식이 작업을 마치면 부모 사이드바에 cmux 알림 �
 
 ### 14) reap-on-stop.sh (Stop, 부모 세션 전용) — **완료 자식 자동 회수**
 
-자식이 완료(notify-slice-done 이 남긴 done-marker)되면, 부모가 별도 감시 루프 없이도 **다음 turn 경계마다** 최대 5개까지 해당 surface 를 자동 reap 한다. 회수됐으면 `♻️ reap-on-stop: reaped <ref>`, 자식 input box 에 미제출 텍스트가 남아있으면 `⏸ input-pending — <ref> 보류` 로 한 줄 알려준다.
+자식이 완료(notify-slice-done 이 남긴 done-marker)되면, 부모가 별도 감시 루프 없이도 **다음 turn 경계마다** 최대 5개까지 해당 surface 를 자동 reap 한다. 회수됐으면 `♻️ reap-on-stop: reaped <ref>`, 자식 input box 에 미제출 텍스트가 남아있으면 `⏸ input-pending — <ref> 보류` 로 한 줄 알려준다. **done-marker 가 확인되면 이 input-pending 오탐(cmux workspace 잔존 composer draft/오버레이가 화면에 찍혀 발생)에도 marker 가 우선해 자동 회수** 되고 `reaped <ref> (pending-input 무시: <텍스트>)` 로 무시된 입력을 같이 보고한다 (`CBP_REAP_MARKER_TRUMPS_PENDING=0` 으로 구 동작 복원).
 
 - 우회: `SKIP_REAP_ON_STOP=1`(1회) / `DISABLE_REAP_ON_STOP=1`(영구).
 

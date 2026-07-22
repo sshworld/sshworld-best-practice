@@ -43,7 +43,7 @@
   1. `cmux tree | grep surface:<N>` — surface 살아 있는지.
   2. `cmux read-screen --surface surface:<N>` — `Terminal surface not found` 이면 detached. `cmux send-key --surface surface:<N> Enter` 1~2회로 활성화.
   3. 활성화 후 자식이 spec prompt 받은 상태 (`✳ Forming…` / `Undulating…` 등 thinking) 이면 정상.
-- 부모가 회수: `${CLAUDE_PLUGIN_ROOT}/scripts/cmux-pane.sh reap --pane=surface:<N>` — 완료 감지 시 자동 탭 종료, 미완료면 보존. **완료 마커는 떴지만 자식 input box 에 미제출 사용자 텍스트가 남아있으면 `input-pending — kept` 로 보존** (강제 회수: `CBP_REAP_IGNORE_PENDING=1`). (내부적으로 wait-idle → capture → grep ✅/❌ → close-surface 흐름. finish-plan-dev 의 bulk cleanup 은 backstop 으로 남음.) reap 가 `died`(exit 5) 반환 시 = 자식 비정상 종료 → 재dispatch 또는 subagent 폴백.
+- 부모가 회수: `${CLAUDE_PLUGIN_ROOT}/scripts/cmux-pane.sh reap --pane=surface:<N>` — 완료 감지 시 자동 탭 종료, 미완료면 보존. **완료 마커는 떴지만 자식 input box 에 미제출 사용자 텍스트가 남아있으면 원칙적으로 `input-pending — kept` 로 보존** (강제 회수: `CBP_REAP_IGNORE_PENDING=1`). 단, **done-marker 가 own-workspace 로 확인되면 이 pending 가드보다 marker 를 우선시켜(`CBP_REAP_MARKER_TRUMPS_PENDING`, 디폴트 1) 자동 회수하고 출력에 `reaped ... (pending-input 무시: <텍스트>)` 로 무시된 입력을 부기**한다 — cmux workspace 에 잔존하는 composer draft/오버레이(예: `❯ push it`)가 모든 자식 surface 의 화면 캡처에 그대로 찍혀 input-pending 가드가 상시 오탐하는 문제가 실증됐기 때문 (갓 만든 자식 2개가 동일 텍스트를 보인 것으로 확인). marker 가 없는 경로는 기존 보수 가드(`input-pending — kept`) 그대로 유지. (내부적으로 wait-idle → capture → grep ✅/❌ → close-surface 흐름. finish-plan-dev 의 bulk cleanup 은 backstop 으로 남음.) reap 가 `died`(exit 5) 반환 시 = 자식 비정상 종료 → 재dispatch 또는 subagent 폴백.
 - ⚠️ **Phase 5 `do_cmux_cleanup`(finish-plan-dev.sh push 후 자동 호출)은 pending 을 무시하고 닫는 destructive backstop** — input-pending 상태와 무관하게 자식 surface 를 일괄 close 한다. reap 표준 감시 루프로 pending 을 먼저 사용자에게 보고/처리한 뒤 Phase 5 로 넘어갈 것.
 - 사용자가 직접 자식 화면 보기: cmux 사이드바의 surface 탭 클릭.
 - **자식 worktree trust 자동 시딩** (`trust-dir.sh`, cross-machine): dispatch 는 worktree launch 직전 `hasTrustDialogAccepted` 를 자동 set — fresh 머신에서 trust 다이얼로그에 막혀 자식이 멈추는 케이스 회피. 우회: `SKIP_DISPATCH_TRUST=1`.
@@ -104,7 +104,7 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/dispatch-slice-pane.sh --slice=<slug-b> --spec-fil
 ```
 launch 는 mkdir-mutex 로 직렬화되지만 자식 작업 자체는 병렬 진행 — dispatch→회수→다음 dispatch 순차 진행은 병렬 이점을 없앤다.
 
-**여러 자식을 한 번에 회수** — `reap --all` (argless 도 동일): 전 자식 순회, 완료(✅/❌)분만 회수하고 미완료는 "not done — kept" 로 보존, 신규 자식은 grace 로 skip. **완료 마커는 떴지만 자식 input box 에 미제출 사용자 텍스트(`❯ text` 프롬프트)가 남아있으면 `input-pending — kept` 로 별도 보존** — 아직 부모에게 전달 안 된 후속 지시일 수 있어 kept 로 흡수하지 않는다. 강제 회수는 `CBP_REAP_IGNORE_PENDING=1`. 마지막 줄에 `reaped N / kept M / pending P` 요약, exit 0.
+**여러 자식을 한 번에 회수** — `reap --all` (argless 도 동일): 전 자식 순회, 완료(✅/❌)분만 회수하고 미완료는 "not done — kept" 로 보존, 신규 자식은 grace 로 skip. **완료 마커는 떴지만 자식 input box 에 미제출 사용자 텍스트(`❯ text` 프롬프트)가 남아있으면 원칙적으로 `input-pending — kept` 로 별도 보존** — 아직 부모에게 전달 안 된 후속 지시일 수 있어 kept 로 흡수하지 않는다. 단 **done-marker 가 있으면(marker trumps pending, 디폴트 on) pending 을 무시하고 회수 후 `reaped ... (pending-input 무시: <텍스트>)` 로 부기** — cmux composer draft/오버레이 오탐 대응(위 "부모가 회수" 절 참조). 강제 회수는 `CBP_REAP_IGNORE_PENDING=1`(marker 유무 무관 전면 무시). 마지막 줄에 `reaped N / kept M / pending P` 요약, exit 0.
 ```bash
 $wrapper reap --all
 # 또는 인자 없이 (argless 도 --all 과 동일 동작)
@@ -141,6 +141,8 @@ while :; do
   fi
   # input-pending 감지 시 즉시 중단 + 사용자 보고 — 폴링으로는 해소 안 됨
   # (자식 input box 의 미제출 텍스트는 부모가 직접 확인/처리해야 함).
+  # marker 가 pending 을 trump 해 회수된 경우의 annotation 표기는 "pending-input"(어순 반대,
+  # "reaped ... (pending-input 무시: ...)") 이라 보류 의미 "input-pending" grep 과 충돌하지 않는다.
   if echo "$out" | grep -q "input-pending"; then
     echo "input-pending 감지 — 루프 중단 + 사용자 보고" >&2; break
   fi
