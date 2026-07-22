@@ -43,6 +43,13 @@
 #                                대상 surface ref 와 일치하면 do_wait_idle 을 스킵하고 바로 capture
 #                                로 직행 (완료 자식의 idle 강제 대기 제거). 0 이면 기존 wait-idle 경로
 #                                그대로 (회귀 없음). marker 는 reaped/died 시 rm (dry-run/kept 시 보존).
+#   CBP_REAP_MARKER_TRUMPS_PENDING — reap 의 input-pending 가드보다 done-marker 를 우선시킬지
+#                                (디폴트 1=on). done-marker(자식 Stop hook 이 transcript ✅/❌ 로
+#                                판정한 턴 종료 권위 신호)가 own-workspace 로 확인되면, 화면 input
+#                                줄에 미제출 텍스트(cmux composer draft 오탐 가능)가 남아 있어도
+#                                무시하고 회수 진행 — 출력에 "(pending-input 무시: <텍스트>)" 부기.
+#                                0 이면 기존 동작 복원(marker 있어도 pending 이면 kept).
+#                                CBP_REAP_IGNORE_PENDING=1 은 이보다 상위(pending 자체를 전면 무시).
 #
 # pane ref 판정: send/capture/wait-idle/kill 모두 _cbp_pane_flag 헬퍼로 flag 를 결정한다.
 # `surface:N` 뿐 아니라 cmux 실측 UUID ref(예: 1A1EDE2A-EB58-4DDD-A309-E750F1DE8999,
@@ -95,6 +102,10 @@ commands:
                                                   (기본 30)인 신생 자식은 probe 없이 "grace — kept".
                                                   마지막 줄 "reaped N / kept M" 요약. exit 0.
                                                 CBP_REAP_DRY_RUN=1 dry-run.
+                                                done-marker 가 own-workspace 로 확인되면 input-pending
+                                                  가드보다 우선 — pending 이어도 회수 진행 후 출력에
+                                                  "(pending-input 무시: <텍스트>)" 부기.
+                                                  CBP_REAP_MARKER_TRUMPS_PENDING=0 으로 구 동작 복원.
   reap-orphans                                  모든 state file(CBP_STATE_DIR, 디폴트 ~/.cache/cbp) 스캔.
                                                 dead surface(read-screen rc≠0) → close-surface + state 제거.
                                                 alive / self(CMUX_SURFACE_ID) surface 보호.
@@ -736,19 +747,51 @@ _do_reap_one() {
   printf '%s\n' "$screen" | tail -20
 
   if printf '%s\n' "$screen" | grep -qE "$DONE_PATTERN"; then
-    # 완료 마커는 떴지만 input box 에 미제출 사용자 텍스트가 남아있으면 회수 보류
-    # (그 텍스트는 부모에게 아직 전달 안 된 후속 지시일 수 있음).
-    if [ "${CBP_REAP_IGNORE_PENDING:-0}" != "1" ]; then
-      local _pend_rc
-      _send_is_submitted "$screen"; _pend_rc=$?
-      if [ "$_pend_rc" -eq 1 ]; then
+    # pending 검사는 marker 유무와 무관하게 항상 수행 — annotation 용 입력줄 텍스트가 필요.
+    local _pend_rc=0
+    _send_is_submitted "$screen"; _pend_rc=$?
+    if [ "$_pend_rc" -eq 1 ] && [ "${CBP_REAP_IGNORE_PENDING:-0}" != "1" ]; then
+      # 완료 마커는 떴지만 input box 에 미제출 사용자 텍스트가 남아있는 경우.
+      # 원칙: done-marker(자식 Stop hook 이 transcript 로 판정한 턴 종료 권위 신호) 는
+      # 화면 input 줄(cmux workspace 잔존 composer draft 오탐 가능)보다 권위가 높다 —
+      # own-workspace 로 확인된 marker 가 있으면 pending 을 무시하고 회수한다.
+      # (loose _done_marker 는 legacy 1줄 marker 도 매치하므로, 여기서만 별도로 line2 를
+      # 다시 읽어 own-workspace 확인을 요구 — fast-path 스킵 판정(_done_marker)은 안 건드림.)
+      local _marker_own_ws=""
+      if [ -n "$_done_marker" ]; then
+        local _marker_ws
+        _marker_ws=$(sed -n '2p' "$_done_marker" 2>/dev/null)
+        if [ -n "$_marker_ws" ] && [ "$_marker_ws" = "${CMUX_WORKSPACE_ID:-}" ]; then
+          _marker_own_ws="$_done_marker"
+        fi
+      fi
+      if [ -n "$_marker_own_ws" ] && [ "${CBP_REAP_MARKER_TRUMPS_PENDING:-1}" != "0" ]; then
+        # marker 가 kept 보다 우선 — pending 무시하고 회수 진행.
+        local _last_prompt _annot
+        _last_prompt=$(printf '%s\n' "$screen" | grep -E '^[[:space:]]*[❯>]' | tail -1)
+        _annot=$(printf '%s\n' "$_last_prompt" \
+          | sed -E 's/^[[:space:]]*[❯>][[:space:]]*//' \
+          | tr -d '"' \
+          | tr -d '[:cntrl:]' \
+          | cut -c1-80)
         if [ "${CBP_REAP_DRY_RUN:-0}" = "1" ]; then
-          echo "would keep (input-pending) $PANE"
+          echo "would reap $PANE"
           return 0
         fi
-        echo "input-pending — kept $PANE (CBP_REAP_IGNORE_PENDING=1 로 강제 회수 가능)"
+        do_kill --pane="$PANE"
+        rm -f "$_done_marker"
+        # 계약: 회수 성공 출력은 반드시 "^reaped " prefix — 소비자: _do_reap_all 의
+        # grep '^reaped ', reap-on-stop.sh 분류. annotation 의 "pending-input"(어순 반대)은
+        # 보류 의미 "input-pending" 과 의도적으로 구별한 표기 — 바꾸지 말 것.
+        printf 'reaped %s (pending-input 무시: %s)\n' "$PANE" "$_annot"
         return 0
       fi
+      if [ "${CBP_REAP_DRY_RUN:-0}" = "1" ]; then
+        echo "would keep (input-pending) $PANE"
+        return 0
+      fi
+      echo "input-pending — kept $PANE (CBP_REAP_IGNORE_PENDING=1 로 강제 회수 가능)"
+      return 0
     fi
     if [ "${CBP_REAP_DRY_RUN:-0}" = "1" ]; then
       echo "would reap $PANE"

@@ -79,6 +79,11 @@ case "${PANE_MODE:-reaped}" in
     echo "화면 줄1"
     echo "input-pending — kept $ref (CBP_REAP_IGNORE_PENDING=1 로 강제 회수 가능)"
     ;;
+  reaped_annotated)
+    echo "화면 줄1"
+    echo "화면 줄2"
+    echo "reaped $ref (pending-input 무시: push it)"
+    ;;
   notdone)
     echo "화면 줄1"
     echo "not done — kept $ref"
@@ -310,6 +315,28 @@ assert any('reap-on-stop.sh' in c for c in cmds), cmds
 "
 }
 
+# T13: mock 이 "reaped ... (pending-input 무시: ...)" 반환 (done-marker 가 pending 을 trump)
+# → reaped 로 분류되고(보류로 오분류 안 됨) annotation 이 systemMessage 에 그대로 병기됨.
+t13_marker_trumps_pending_annotated() {
+  local parent tmpdir pane_bin calls_file marker out rc msg
+  parent=$(setup_parent_repo)
+  tmpdir=$(mktemp -d)
+  pane_bin="$tmpdir/pane"; make_mock_pane "$pane_bin"
+  calls_file="$tmpdir/calls"
+  marker="$parent/.git/cbp-slice-done-feature_x"
+  printf 'surface:7\nws1\n' > "$marker"
+
+  out=$(cd "$parent" && CBP_PANE_BIN="$pane_bin" PANE_CALLS_FILE="$calls_file" PANE_MODE="reaped_annotated" \
+    CMUX_WORKSPACE_ID="ws1" CMUX_SURFACE_ID="" "$HOOK" < /dev/null 2>/dev/null)
+  rc=$?
+
+  [ "$rc" -eq 0 ] || return 1
+  assert_json_one_line "$out" || return 1
+  msg=$(printf '%s' "$out" | python3 -c "import json,sys; print(json.loads(sys.stdin.read())['systemMessage'])" 2>/dev/null)
+  printf '%s' "$msg" | grep -q 'reaped surface:7' || return 1
+  printf '%s' "$msg" | grep -q 'push it'
+}
+
 run "T1 basic reap -> pane called + JSON 1-line stdout"    t1_basic_reap
 run "T2 no marker -> noop"                                 t2_no_marker_noop
 run "T3 line2=foreign ws -> skip"                          t3_foreign_ws_skip
@@ -322,6 +349,7 @@ run "T9 input-pending -> marker kept + JSON mentions it"    t9_input_pending_mar
 run "T10 jq missing -> empty stdout, exit 0"                t10_jq_missing_degrades
 run "T11 hooks.json wiring"                                 t11_wiring_hooks_json
 run "T12 settings.json wiring"                              t12_wiring_settings_json
+run "T13 reaped w/ pending-input annotation -> reaped classified + annotation in msg" t13_marker_trumps_pending_annotated
 
 echo "PASS=$PASS FAIL=$FAIL"
 [ "$FAIL" -eq 0 ] && echo "✅ all pass" || { echo "❌ FAILED: ${FAILED[*]}"; exit 1; }

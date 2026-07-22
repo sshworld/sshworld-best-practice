@@ -58,7 +58,18 @@ for marker in "${markers[@]}"; do
   # 두면 hook stdout 이 오염돼 아래 systemMessage JSON 출력이 깨진다.
   out=$(CBP_REAP_FAST_CHECK=1 "$PANE_BIN" reap --pane="$ref" --idle=2 --timeout=15 2>&1)
 
-  if printf '%s\n' "$out" | grep -q 'input-pending'; then
+  # "^reaped " 매치 우선 — done-marker 가 pending 을 trump 한 경우
+  # ("reaped ... (pending-input 무시: <텍스트>)") 가 아래 input-pending 검사에
+  # 오분류(보류로 잘못 판정)되는 것을 방지. annotation 이 있으면 추출해 그대로 병기.
+  reaped_line=$(printf '%s\n' "$out" | grep '^reaped ' | tail -1)
+  if [ -n "$reaped_line" ]; then
+    annot=$(printf '%s\n' "$reaped_line" | grep -oE '\(pending-input 무시:[^)]*\)')
+    if [ -n "$annot" ]; then
+      reaped_list+=("$ref $annot")
+    else
+      reaped_list+=("$ref")
+    fi
+  elif printf '%s\n' "$out" | grep -q 'input-pending'; then
     pending_list+=("$ref")
   elif printf '%s\n' "$out" | grep -qE '(^|[^[:alnum:]])(reaped|died) '; then
     reaped_list+=("$ref")
