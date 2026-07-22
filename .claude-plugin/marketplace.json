@@ -12,7 +12,7 @@
       "name": "sshworld",
       "source": ".",
       "description": "Plan-driven TDD dev workflow (Phase 0~6, dispatch). 명령: /sshworld:plan-dev",
-      "version": "1.7.0"
+      "version": "1.7.1"
     },
     {
       "name": "taste-skill",
