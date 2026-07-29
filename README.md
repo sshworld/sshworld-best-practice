@@ -277,6 +277,7 @@ cmux 앱 안에서 실행 중일 때 (`CMUX_WORKSPACE_ID` set) `scripts/cmux-pan
 - `cmux-pane.sh list` → state file 의 자식 surface 우선, 폴백으로 cbp- workspace 목록. cmux tree 와 lazy reconcile (mock 환경 자동 감지).
 - `cmux-pane.sh cleanup` → state file 의 surface 일괄 `close-surface` + state 제거 후, 기존 cbp- workspace cleanup 도 실행 (호환).
 - `cmux-pane.sh reap-orphans` → `~/.cache/cbp/children-*.json` **전체** 스캔 (cross-workspace). self surface 제외 + alive surface 보존 + dead surface best-effort close-surface + 빈 state file 제거. `CBP_REAP_ORPHANS_DRY_RUN=1` dry-run (close 없이 "would reap" 출력). `CBP_STATE_DIR` 로 스캔 경로 override 가능. `plan-dev-session.sh start` 및 `finish-plan-dev.sh` 가 best-effort 로 자동 호출 — 이전 세션 finish 누락 시에도 다음 plan-dev 시작 시 cross-WS dead orphan 이 자동 정리됨.
+- `cmux-pane.sh watch [--interval=N] [--max-iter=N] [--idle=N] [--timeout=N]` → marker fast-path + `reap --all` 벨트를 묶은 foreground 감시 루프 (기본 회수는 reap-on-stop hook 자동 체인 — watch 는 즉시성 필요 시 보조). exit `0`=전원 회수 / `2`=usage 오류 / `4`=max-iter 도달 / `6`=input-pending 감지 중단 / `7`=reap 에러가드 중단.
 
 `CBP_SPLIT_POLICY` 환경변수로 방향을 `down` / `right` 고정 가능 (unset 시 라운드로빈 고정).
 

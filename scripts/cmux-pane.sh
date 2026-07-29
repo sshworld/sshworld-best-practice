@@ -111,6 +111,15 @@ commands:
                                                 alive / self(CMUX_SURFACE_ID) surface 보호.
                                                 CBP_REAP_ORPHANS_DRY_RUN=1: close 없이 "would reap <ref>" 만 출력.
                                                 CMUX_BIN 미존재 시 conservative exit 0.
+  watch [--interval=N] [--max-iter=N] [--idle=N] [--timeout=N]
+                                                marker fast-path + reap --all 벨트를 묶은 foreground 감시
+                                                  루프. 기본 회수는 reap-on-stop hook 자동 체인 — watch 는
+                                                  즉시성이 필요할 때 foreground 보조로 사용.
+                                                --interval 기본 2(marker 폴링 sleep 초, 0=생략 — 테스트용),
+                                                --max-iter 기본 60(outer loop 상한), --idle/--timeout 은
+                                                  targeted reap --pane 에 전달(기본 3/30).
+                                                exit: 0=전원 회수 / 2=usage 오류 / 4=max-iter 도달 /
+                                                  6=input-pending 감지 중단 / 7=reap 에러가드 중단.
 USAGE
   exit 2
 }
@@ -152,6 +161,10 @@ parse_long_opts() {
       --timeout)   TIMEOUT="$2"; shift 2 ;;
       --done-pattern=*) DONE_PATTERN="${1#*=}"; shift ;;
       --done-pattern)   DONE_PATTERN="$2"; shift 2 ;;
+      --interval=*) INTERVAL="${1#*=}"; shift ;;
+      --interval)   INTERVAL="$2"; shift 2 ;;
+      --max-iter=*) MAX_ITER="${1#*=}"; shift ;;
+      --max-iter)   MAX_ITER="$2"; shift 2 ;;
       --all)       ALL="1"; shift ;;
       --)          shift; break ;;
       *)           shift ;;
@@ -1318,6 +1331,79 @@ EOF2
   return 0
 }
 
+# ----------------------------------------------------------------
+# do_watch — marker fast-path + reap --all 벨트를 묶은 foreground 감시 루프
+# (commands/plan-dev/cmux-dispatch.md 의 "표준 감시 루프 v2" 화석을 승격).
+# in-process 호출 — $wrapper 서브프로세스 아님. 헬퍼 재사용: do_reap, parse_long_opts,
+# _skip_if_non_cmux, die.
+# ----------------------------------------------------------------
+do_watch() {
+  _skip_if_non_cmux
+  local INTERVAL="2" MAX_ITER="60" IDLE="3" TIMEOUT="30"
+  parse_long_opts "$@"
+
+  case "$MAX_ITER" in
+    ''|*[!0-9]*) die "watch: --max-iter 숫자 필요" 2 ;;
+  esac
+  case "$INTERVAL" in
+    ''|*[!0-9]*) die "watch: --interval 숫자 필요" 2 ;;
+  esac
+
+  local common_dir
+  common_dir=$(git rev-parse --git-common-dir 2>/dev/null) || common_dir=""
+
+  local iter=0
+  while :; do
+    iter=$((iter + 1))
+
+    # 1) marker fast-path: 각 done-marker 의 line1(surface ref) 대상 targeted reap.
+    #    line2(workspace) 검증은 reap 내부 _cbp_find_done_marker 계약에 위임.
+    if [ -n "$common_dir" ]; then
+      local f ref
+      for f in "$common_dir"/cbp-slice-done-*; do
+        [ -f "$f" ] || continue
+        ref=$(head -1 "$f" 2>/dev/null)
+        [ -n "$ref" ] && do_reap --pane="$ref" --idle="$IDLE" --timeout="$TIMEOUT"
+      done
+    fi
+
+    # 2) belt: state 의 모든 자식 순회
+    local out rc
+    out=$(do_reap --all --idle="$IDLE" --timeout="$TIMEOUT" 2>&1); rc=$?
+    printf '%s\n' "$out"
+
+    # 3) 가드 (화석 순서 그대로)
+    if [ "$rc" -ge 2 ] || printf '%s\n' "$out" | grep -qE '필요|error'; then
+      echo "cmux-pane watch: reap 에러가드 감지 — 중단" >&2
+      return 7
+    fi
+    if printf '%s\n' "$out" | grep -q 'input-pending'; then
+      echo "cmux-pane watch: input-pending 감지 — 중단" >&2
+      return 6
+    fi
+    if printf '%s\n' "$out" | grep -q 'kept 0' && ! printf '%s\n' "$out" | grep -qE 'pending [1-9]'; then
+      return 0
+    fi
+    if [ "$iter" -ge "$MAX_ITER" ]; then
+      echo "cmux-pane watch: max-iter(${MAX_ITER}) 도달 — 중단" >&2
+      return 4
+    fi
+
+    # 4) inner poll: marker 뜨면 즉시 break, 아니면 INTERVAL 초씩 최대 15회 대기
+    local w marker_exists
+    for w in $(seq 0 14); do
+      marker_exists=""
+      if [ -n "$common_dir" ]; then
+        for f in "$common_dir"/cbp-slice-done-*; do
+          [ -f "$f" ] && { marker_exists=1; break; }
+        done
+      fi
+      [ -n "$marker_exists" ] && break
+      [ "$INTERVAL" -gt 0 ] && sleep "$INTERVAL"
+    done
+  done
+}
+
 main() {
   [ $# -lt 1 ] && usage
   local cmd="$1"; shift
@@ -1332,6 +1418,7 @@ main() {
     kill)      do_kill "$@" ;;
     reap)      do_reap "$@" ;;
     reap-orphans) do_reap_orphans "$@" ;;
+    watch)     do_watch "$@" ;;
     list)      do_list "$@" ;;
     cleanup)   do_cleanup "$@" ;;
     status)    do_status "$@" ;;
