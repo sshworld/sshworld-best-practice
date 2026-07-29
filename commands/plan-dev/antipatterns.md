@@ -1,30 +1,13 @@
 ## 안티패턴 — 절대 하지 말 것
 
-- ❌ plan 내용을 인라인 메시지로만 출력하고 implementor 호출
-- ❌ "질문 생략 지시" 를 받았다고 plan mode 자체도 생략
-- ❌ Phase 1-0 Explore 생략하고 빈틈 질문을 추상적으로 던지기
-- ❌ Horizontal phases 로 슬라이스 분해
-- ❌ `slice/<kebab>` branch 명 사용 — 반드시 `<branch-prefix>/<slug>`. **branch prefix 는 commit type 과 별개**: `feat` → `feature/`, 그 외(fix/refactor/chore/test/docs)는 type 그대로. 예: `feature/...`, `fix/...`. (commit 메시지 type 은 conventional `feat:` 유지, **scope 안 씀**)
-- ❌ `git merge --no-ff slice/...` — rebase fast-forward + branch -D 사용
-- ❌ pane 모드에서 자식 결과(`✅` / `❌`) **회수 전 머지** 시도
-- ❌ Phase 5 우회 (`SKIP_PLAN_DEV_FINISH`) 를 기본값처럼 사용
-- ❌ `PROGRESS_DRY_RUN=1` 을 기본값처럼 켜두기 (테스트 전용, 실제 push 억제됨)
-- ❌ 두 슬라이스가 같은 파일의 같은 영역 수정 — plan 단계에서 Slice File Map 으로 의존성 분석 후 순차 강등 또는 병합.
-- ❌ Phase 1-0 Explore 에서 `page.tsx` / `layout.tsx` 같은 상위 컨테이너 컴포넌트 제외 — 단축키·라우팅·전역 listener 중복 구현 회귀로 비용 폭증.
-- ❌ plan 에 cmux dispatch 의도된 슬라이스를 Phase 2 진입 후 "가벼우니 직접 Edit" 로 강등하면서 사용자에게 명시 공지 안 함 — Slice File Map 의 `Mode` 컬럼과 어긋남.
-- ❌ dispatch wrapper PWD 검색 실패 시 절대경로 호출 시도 없이 subagent fallback 자동 결정 — 사용자 명시 mode 의 핵심 가치 (시각화 등) 사라짐. AskUserQuestion 으로 확인.
-- ❌ 검색 권한 거부를 실행 권한 거부로 단정 — system-reminder / CLAUDE.md / 메모리에 절대경로 노출돼 있으면 그 경로로 직접 호출 시도.
-- ❌ classifier/sandbox "사용자에게 설명" 안내 무시하고 자동 fallback — 권한 확장 또는 우회 명시 요청 필요.
-- ❌ 작업 중 발견한 별개 버그를 단발 보고만 하고 다음 turn 으로 떠넘기기 — 임시 cleanup 가능하면 즉시 수행 + AskUserQuestion 으로 follow-up plan-dev 진입 여부 확인.
-- ❌ dispatch spec-file 을 `/tmp/<slug>-spec.md` 등 repo 밖 임시 디렉토리에 쓰기 — classifier 가 같은 turn 의 Write 추적 못 해 dispatch 거부 위험. `.claude/specs/<slug>.spec.md` 사용.
-- ❌ Slice File Map 없이 슬라이스 분해 — rebase fast-forward 시 같은 파일 영역 충돌로 부모 수동 복구 비용 발생.
-- ❌ Auto Mode (system prompt) 를 "필수 명확화도 묻지 말고 가정으로 처리" 로 해석 — Auto Mode 는 "재량 명확화" 의 default 만. "정반대 가능" trigger 매치 결정은 Auto Mode 무관 반드시 AskUserQuestion.
-- ❌ 사용자가 메시지에 명시한 옵션 (A 또는 B) 을 Assumptions 에서 임의 선택 후 ExitPlanMode — 사용자 의도 있음 신호. 반드시 AskUserQuestion 으로 확인.
-- ❌ Slice File Map 의 Mode 컬럼 비워두거나 모호하게 ("적당히") 두기 — plan 단계 dispatch/direct-edit 분기 흐려져 Phase 2 진입 후 디폴트로 direct-edit 흐름. 빈 셀 = ExitPlanMode 차단 신호로 self-check.
-- ❌ cmux 환경 plan Mode 에 direct-edit — dispatch(cmux) 만. `enforce-cmux-dispatch` hook 이 ExitPlanMode 차단. 예외는 `CMUX_DIRECT_EDIT_OK=1` escape (out-of-band env, plan 콘텐츠 X). (비-cmux 환경은 그 반대: direct-edit 기본.)
-- ❌ 옵션 list (A/B/C) 를 plain text 로 응답 끝에 dump 하고 turn 종료 — selection chip UI 안 떠 사용자 입력 비용 증가, plan-dev 흐름 끊김. **AskUserQuestion 의무**.
-- ❌ Goal Statement 에 측정 불가 추상 표현 ("품질 향상", "안정성 강화") 만 박기 — Phase 3 Verify 에서 모델이 PASS/FAIL 판정 못 함. grep/test/명령 결과로 확인 가능한 항목만 허용.
-- ❌ Goal Statement 섹션에 `<!-- machine-checks -->` 블록 누락 — Phase 3 Verify 때 실행할 입력 없음. 형식 박스 그대로 따를 것.
-- ❌ 세션을 plan full goal 미만으로 의도적 종료(plan 문서화만 / 범위 축소 / 중단)했다고 **machine-checks 를 부분 deliverable 에 맞춰 rewrite** — plan goal 오염, 다음 구현 세션이 실제 구현을 미검증. machine-checks 는 plan 의 종료 상태로 보존.
-- ❌ `S1`/`S2` 등 슬라이스 라벨 또는 `merge:` 를 최종 커밋 메시지·브랜치명에 노출 — 협업자는 슬라이스 번호를 모른다. commit-advisor 가 squash·위생 추천, rebase-ff 로 merge 커밋 자체 제거. 커밋 메시지는 "무엇을 왜 바꿨는가" 만으로.
-- ❌ cmux 환경에서 "정책/하네스/문서 파일이니 direct-edit 가 맞다"며 반사적 direct-edit — 자기수정도 dispatch(cmux) 기본. `CMUX_DIRECT_EDIT_OK=1` 는 dispatch 자체가 불가한 환경 등 진짜 예외 한정.
+핵심 7개만 잔류 — 각 항목의 상세 배경은 canonical 파일 링크 참조.
+
+- ❌ `git merge <type>/<slug>` 사용 — merge 커밋이 슬라이스 라벨·잡음을 히스토리에 노출. 항상 rebase fast-forward. 📎 [cmux dispatch 가이드 — Phase 3 머지 방법](./cmux-dispatch.md#phase-3--worktree-머지-방법)
+- ❌ pane/cmux 모드에서 자식 결과(`✅` / `❌`) **회수 전 머지** 시도 — 미완료 상태를 머지해 부모 브랜치가 오염될 수 있음. 📎 [cmux dispatch 가이드 — 부모가 회수](./cmux-dispatch.md)
+- ❌ `S1`/`S2` 등 슬라이스 라벨 또는 `merge:` 를 최종 커밋 메시지·브랜치명에 노출 — 협업자는 슬라이스 번호를 모른다. 📎 [commit-advisor.md](../../agents/commit-advisor.md)
+- ❌ Phase 1-4 ExitPlanMode 사용자 승인 게이트를 우회하고 Phase 2 진입 — plan 미승인 상태의 구현은 되돌리기 비용이 큼.
+- ❌ 다른 슬라이스가 점유한 worktree/브랜치의 파일을 교차 수정 — Slice File Map 의 Files 교집합으로 사전 점검, 겹치면 순차 강등 또는 병합.
+- ❌ 슬라이스 worktree 안에서 직접 `git commit` / `git push` — 통합은 Phase 3(rebase) → Phase 4(commit-advisor) → Phase 5(finish-plan-dev.sh) 흐름으로만.
+- ❌ 사용자 opt-in 없이 `Workflow` 툴 호출 — 수십 agent 비용 발생. 📎 [Workflow 통합 가이드](./workflow-integration.md)
+
+> 📎 cmux 환경별 Mode 규칙(direct-edit 금지 등) canonical: [cmux dispatch 가이드](./cmux-dispatch.md)

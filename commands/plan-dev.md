@@ -45,12 +45,7 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/plan-dev-session.sh start
 | **필수 명확화** (결과가 의도와 정반대 가능) | 반드시 AskUserQuestion |
 | **재량 명확화** (어느 쪽이든 합리적) | "묻지 말고 진행" 지시 있으면 Assumptions 에 기록 |
 
-"정반대 가능" trigger 예시 — **이 중 하나라도 해당하면 필수 명확화**:
-- 사용자가 메시지에 옵션을 **명시적으로** 제시 (예: "A 또는 B", "`.plans/` 또는 `specs/`") → 의도 있음 → ask
-- 모델이 "default 가 명확하지 않다" 고 인지한 결정 (= 임의 선택)
-- 해당 결정이 backward-incompatibility / 사용자 인터페이스 변경 / 데이터 손실 위험 동반
-- 사용자가 이전 turn 에서 명시한 선호와 다른 선택이 나올 가능성
-- **사용자 선택을 요구하는 option list** (A/B/C 중 고르세요 형태) 를 제시하는 응답 — 반드시 AskUserQuestion 으로 전달 (plain text dump 금지). 단순 정보 enumeration ("다음 2가지 결과가 나옴: ...") 은 해당 없음.
+**판단 기준**: 되돌리기 어렵거나(backward-incompatibility·데이터 손실 위험), 사용자가 메시지에 옵션을 명시적으로 제시했거나, 이전 turn 에서 명시한 선호와 충돌 가능하거나, 모델 스스로 "default 가 불명확한 임의 선택"이라고 인지하면 필수 명확화 → AskUserQuestion. **사용자 선택을 요구하는 option list 는 반드시 AskUserQuestion 으로 전달** (plain text dump 금지) — 단순 정보 enumeration 은 해당 없음.
 
 > 🛑 **EnterPlanMode 진입 전 self-check**: Assumptions 에 들어갈 결정 항목 중 위 "정반대 가능" trigger 매치하는 게 있는가? 있으면 **EnterPlanMode 호출 전** AskUserQuestion 으로 확인. plan 파일 안 Assumptions 에 결정값 dump 금지 — 결정값은 ask 대상.
 
@@ -66,7 +61,7 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/plan-dev-session.sh start
 | S1 | scripts/foo.sh, README.md | direct-edit | updated |
 | S2 | .claude/agents/bar.md | dispatch (cmux, 사용자 시각화 요청) | none |
 
-- `Mode` — **`Mode 컬럼 필수`**, 빈 셀 금지. 값: `direct-edit` / `dispatch(cmux)` / `dispatch(tmux)` / `workflow`. **기본은 환경 의존**: **cmux 환경(`CMUX_WORKSPACE_ID` set)이면 `dispatch(cmux)` 만 정상값** — direct-edit 는 plan Mode 컬럼에 쓰지 않는다(`enforce-cmux-dispatch` hook 이 ExitPlanMode 차단). cmux 에서 direct-edit 가 정말 필요하면 **plan 콘텐츠가 아니라 out-of-band env** 로: `CMUX_DIRECT_EDIT_OK=1` escape (ExitPlanMode 게이트 1회 통과). 비-cmux 환경이면 `direct-edit` 기본, dispatch 가 opt-in. `workflow` 는 opt-in (대규모/비시각, ➜ "Workflow 통합" 섹션).
+- `Mode` — **`Mode 컬럼 필수`**, 빈 셀 금지. 값: `direct-edit` / `dispatch(cmux)` / `dispatch(tmux)` / `workflow`. **기본은 환경 의존** (cmux 환경 = `dispatch(cmux)` 만, escape 포함) — canonical 규칙은 [cmux dispatch 가이드](./plan-dev/cmux-dispatch.md) 참조. `workflow` 는 opt-in (대규모/비시각, ➜ "Workflow 통합" 섹션).
 - `DOC_IMPACT` — `none` / `updated` 중 plan 단계에 미리 결정 (commit 시점에 발견하면 hook 차단 후 재시도 비용).
 
 Slice 정의 시 **type 도 같이 결정**: `feat|fix|refactor|test|docs|chore`. (commit type. **branch prefix 는 `feat`→`feature/`, 그 외 type 그대로** — dispatch 가 자동 매핑. commit 메시지엔 scope 안 씀: `feat: …` 형식.)

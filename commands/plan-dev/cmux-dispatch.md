@@ -100,7 +100,7 @@ $wrapper capture   --pane=$pane | tail -50 | grep -E '^[[:space:]]*(⏺[[:space:
 ```bash
 ${CLAUDE_PLUGIN_ROOT}/scripts/dispatch-slice-pane.sh --slice=<slug-a> --spec-file=.claude/specs/<slug-a>.spec.md --mode=cmux
 ${CLAUDE_PLUGIN_ROOT}/scripts/dispatch-slice-pane.sh --slice=<slug-b> --spec-file=.claude/specs/<slug-b>.spec.md --mode=cmux
-# 위 표준 감시 루프 v2 로 두 자식 동시 회수
+# 아래 "표준 감시 루프 — cmux-pane.sh watch" 로 두 자식 동시 회수
 ```
 launch 는 mkdir-mutex 로 직렬화되지만 자식 작업 자체는 병렬 진행 — dispatch→회수→다음 dispatch 순차 진행은 병렬 이점을 없앤다.
 
@@ -111,54 +111,16 @@ $wrapper reap --all
 $wrapper reap
 ```
 
-#### 표준 감시 루프 (박제 — 이 형태 그대로 사용)
+#### 표준 감시 루프 — `cmux-pane.sh watch`
 
-부모 감시 루프가 reap 의 에러 출력(exit 2, `--pane=<ref> 필요`)을 무시하고 무한 헛폴링한 실사례가 있었다. 콘텐츠 가드로 아래 형태를 항상 사용할 것 — reap 출력에 `필요|error` 매치 = 호출 방식/환경 문제이므로 폴링 반복은 무의미하고 즉시 abort + 사용자 보고해야 한다.
-
-v2 는 `sleep 30` 고정 폴링 대신 `hooks/notify-slice-done.sh` 가 남기는 done-marker(`cbp-slice-done-*`) 를 2초 간격(최대 30초)으로 확인해 발견 즉시 해당 pane 만 targeted reap 하는 **early-wake** 를 추가한다 — marker 미배선(구버전 plugin)/유실 대비로 기존 `reap --all` belt 는 그대로 유지. 에러/input-pending/60회 상한 가드 원칙은 변경 없음. **자동 회수 체인**(`hooks/reap-on-stop.sh`) 이 이미 대부분의 경우를 커버하므로, 이 루프는 즉시성이 더 필요할 때만 선택적으로 돌린다.
-
-> ⚠️ 미매치 glob(marker 없음)이 **zsh 에서는 fatal** — `for m in "$_gc"/cbp-slice-done-*` 가 매치 0개면 zsh 는 `no matches found` 로 그 자리에서 스크립트를 죽인다(bash 는 리터럴 문자열로 확장돼 `[ -f "$m" ]` 가드로 조용히 skip — 안전). 아래 블록 맨 위 `setopt nullglob 2>/dev/null || true` 가 이 가드 — zsh 에선 미매치 glob 을 빈 확장으로 바꿔 무해화하고, bash 에선 `setopt` 자체가 없는 명령이라 `|| true` 로 조용히 무시된다. 이 줄을 지우지 말 것.
+marker fast-path + `reap --all` belt 를 묶은 foreground 감시 루프는 `cmux-pane.sh` 의 `watch` 서브커맨드로 인터페이스화되어 있다 (과거 여기 있던 fossil 쉘 루프는 이 서브커맨드로 승격 이관됨).
 
 ```bash
-# 표준 감시 루프 v2 — marker early-wake + targeted reap + reap --all fallback
-setopt nullglob 2>/dev/null || true  # zsh 미매치 glob fatal 가드 (bash 는 no-op) — 지우지 말 것
-_iter=0
-while :; do
-  _iter=$((_iter + 1))
-  # 1) marker 발견 시 해당 pane 만 targeted reap (fast-path — 즉시 회수)
-  _gc=$(git rev-parse --git-common-dir 2>/dev/null)
-  for m in "$_gc"/cbp-slice-done-*; do
-    [ -f "$m" ] || continue
-    _ref=$(head -1 "$m")
-    [ -n "$_ref" ] && $wrapper reap --pane="$_ref" --idle=3 --timeout=30
-  done
-  # 2) 전체 상태 확인 (hook 미배선/marker 유실 대비 belt)
-  out="$($wrapper reap --all 2>&1)"; rc=$?
-  echo "$out"
-  # 가드: 에러 신호 감지 시 즉시 중단 + 사용자 보고 (헛폴링 방지)
-  if [ $rc -ge 2 ] || echo "$out" | grep -qE '필요|error'; then
-    echo "reap 에러 감지 — 루프 중단, 사용자 보고" >&2; break
-  fi
-  # input-pending 감지 시 즉시 중단 + 사용자 보고 — 폴링으로는 해소 안 됨
-  # (자식 input box 의 미제출 텍스트는 부모가 직접 확인/처리해야 함).
-  # marker 가 pending 을 trump 해 회수된 경우의 annotation 표기는 "pending-input"(어순 반대,
-  # "reaped ... (pending-input 무시: ...)") 이라 보류 의미 "input-pending" grep 과 충돌하지 않는다.
-  if echo "$out" | grep -q "input-pending"; then
-    echo "input-pending 감지 — 루프 중단 + 사용자 보고" >&2; break
-  fi
-  # 전원 회수 완료 시 종료 (kept 0 && pending 0 기준 — pending 은 kept 로 흡수되지 않음)
-  if echo "$out" | grep -q "kept 0" && ! echo "$out" | grep -qE 'pending [1-9]'; then
-    break
-  fi
-  [ "$_iter" -ge 60 ] && { echo "60회 상한 — 중단" >&2; break; }
-  # 3) sleep 30 대신 2초 간격 marker 폴링 (최대 30초) — 발견 즉시 early-wake
-  _w=0
-  while [ "$_w" -lt 15 ]; do
-    ls "$_gc"/cbp-slice-done-* >/dev/null 2>&1 && break
-    sleep 2; _w=$((_w + 1))
-  done
-done
+$wrapper watch [--interval=2] [--max-iter=60] [--idle=3] [--timeout=30]
 ```
+
+- exit 코드: `0` 전원 회수 / `2` usage 오류 / `4` max-iter 도달 / `6` input-pending 감지 중단 / `7` reap 에러가드 중단.
+- **기본 회수는 `hooks/reap-on-stop.sh` 자동 체인** — `watch` 는 즉시성이 더 필요할 때만 foreground 보조로 사용.
 
 #### cross-WS dead orphan 자동 정리 (reap-orphans)
 
