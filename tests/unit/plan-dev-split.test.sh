@@ -36,6 +36,14 @@ for kw in "Phase 0" "Phase 1" "Phase 2" "Phase 3" "Phase 4" "Phase 5" "Phase 6" 
     && ok "keyword: $kw" || fail "keyword missing: $kw"
 done
 
+# 5. troubleshooting-dispatch.md exists
+[ -f "$REPO_ROOT/commands/plan-dev/troubleshooting-dispatch.md" ] \
+  && ok "exists: troubleshooting-dispatch.md" || fail "missing: commands/plan-dev/troubleshooting-dispatch.md"
+
+# 6. cmux-dispatch.md links troubleshooting-dispatch.md
+grep -q "troubleshooting-dispatch" "$REPO_ROOT/commands/plan-dev/cmux-dispatch.md" \
+  && ok "cmux-dispatch links troubleshooting-dispatch" || fail "cmux-dispatch.md missing link to troubleshooting-dispatch"
+
 echo ""
 echo "Results: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ] && exit 0 || exit 1

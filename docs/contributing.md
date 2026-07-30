@@ -35,6 +35,7 @@
 |---|---|
 | `scripts/release.sh` | 릴리즈 자동화 — draft(type별 한글 skeleton)/publish(bump+commit+태그+push+gh release)/backfill(과거 소급 태그+release). 버전 소스 plugin.json+marketplace.json 동기화. `RELEASE_DRY_RUN`/`GH_CMD`/`GIT_PUSH_CMD` mock. 노트 body 는 Claude 가 작성해 --notes-file 로 전달. |
 | `commands/plan-dev.md` | 사용자 entry point. 단계별 가이드와 안티패턴. Phase 6 = `/fork` 스킬 직접 호출(세션 클로저). |
+| `commands/plan-dev/troubleshooting-dispatch.md` | dispatch 진단 가이드 (문제 시에만 로드) — cmux-dispatch.md 의 정상 플로우와 분리된 launch 검증/진단 시퀀스/reap 판정 근거/wrapper 가용성 검증 상세. |
 | `commands/parallel-consult.md` | 자식 Claude pane 띄워 1회 질의응답. |
 | `agents/implementor.md` | TDD Red→Green→Refactor. subagent / tmux pane 모드 양쪽 지원. |
 | `agents/verifier.md` | Read-only 빌드/테스트. 코드 수정 안 함. |
