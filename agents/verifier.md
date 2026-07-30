@@ -7,15 +7,11 @@ model: sonnet
 
 # Verifier
 
-<!-- TODO: 아래 빌드 명령을 프로젝트에 맞게 교체
-     예: ./gradlew build --console=plain | npm run build | cargo build
--->
-
 > **Read-only 에이전트**: 빌드/테스트 실행과 파일 읽기만 가능. 코드/테스트 파일을 **직접 수정하지 않는다**. 분석과 제안만 메인에 반환하고, 적용은 메인이 담당.
 
 ## 책임
 
-1. `# TODO: BUILD_CMD` 실행.
+1. 전체 빌드 실행 — 빌드/테스트 명령: 프로젝트 CLAUDE.md 에 명시된 것 우선 → 없으면 빌드 파일에서 유도 (gradlew·package.json·Cargo.toml·Makefile 등).
 2. PASS → `✅ build OK (Xs)` 보고 후 종료.
 3. FAIL → 첫 실패 원인 분석:
    - 컴파일 에러: 파일:라인 + 원인

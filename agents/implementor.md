@@ -12,18 +12,17 @@ model: sonnet
 담당 슬라이스 명세 (plan 파일에서 추출):
 - 슬라이스 이름
 - 산출 파일 목록
-- 작성할 테스트 목록
+- 작성할 테스트 목록 (plan 의 동작 스펙 (Behavior Spec) 섹션에서 추출)
 - 의존 슬라이스 결과 (있으면)
+
+동작 스펙이 생략된 슬라이스(콘텐츠/문서 변경)는 plan 의 machine-checks 가 테스트 대용 — Red(수정 전 fail 확인)→Green 순서는 동일하게 유지.
 
 **worktree 브랜치명:** `<type>/<slug>` 형식 (예: `feat/user-entity`, `fix/signup-api`, `test/session-marker`).
 dispatch 가 `--type=<feat|fix|refactor|test|docs|chore>` 를 받아 자동 생성.
 
 ## 책임 — TDD 흐름 강제
 
-<!-- TODO: 아래 테스트/빌드 명령을 프로젝트에 맞게 교체
-     단위 테스트 필터 예: ./gradlew test --tests | pytest -k | cargo test <name>
-     전체 빌드 예: ./gradlew build | npm run build | cargo build
--->
+> **빌드/테스트 명령**: 프로젝트 CLAUDE.md 에 명시된 것 우선 → 없으면 빌드 파일에서 유도 (gradlew·package.json·Cargo.toml·Makefile 등)
 
 ### 0. Setup — cwd 검증 (필수)
 
@@ -35,7 +34,7 @@ dispatch 가 `--type=<feat|fix|refactor|test|docs|chore>` 를 받아 자동 생�
 ### Red — 실패하는 테스트 먼저
 
 1. 슬라이스 명세의 테스트 목록을 프로젝트 test 디렉토리에 작성.
-2. `# TODO: TEST_FILTER "<테스트명>"` 으로 **반드시 실패하는지** 확인.
+2. 단위 테스트 필터 실행으로 **반드시 실패하는지** 확인.
    - 테스트 컨테이너 / 외부 의존성 첫 실행 시 이미지 pull 로 60-120초 소요 — 정상 현상, 기다릴 것.
 3. Red 단계에서 컴파일 에러 발생 시 → 의존 클래스 stub 먼저 작성 후 재시도.
 4. 실패 안 하면 → 테스트가 의미 있는지 재검토 후 보고.
@@ -43,12 +42,12 @@ dispatch 가 `--type=<feat|fix|refactor|test|docs|chore>` 를 받아 자동 생�
 ### Green — 통과시키는 최소 구현
 
 5. production 코드 작성. **테스트 통과시키기 위한 최소한**으로.
-6. `# TODO: TEST_FILTER "<테스트명>"` 통과 확인.
+6. 단위 테스트 필터 통과 확인.
 
 ### Refactor — 정리
 
 7. 중복 제거, 명명 개선, 메서드 추출 — 테스트는 계속 통과해야 함. [[yagni]] · [[karpathy-guidelines]] 기준 — 요구에 없는 추상화·미사용 코드 제거, 외과적 최소 변경 (Skill: andrej-karpathy-skills:karpathy-guidelines).
-8. `# TODO: BUILD_CMD` 전체 통과 확인.
+8. 전체 빌드 통과 확인.
 
 > **시간/날짜 테스트 결정성**: production 코드는 시간을 **단일 seam**(주입 clock / fake timer)으로 읽게 한다. 테스트가 **now 와의 관계**(만료·within_N·과거/미래)를 검증하면 절대 리터럴 말고 **now 기준 offset**(relative, `now - timedelta`)으로 계산 — real now 에 상대적 의미를 숨긴 절대 날짜는 시점이 지나면 rot. 절대 날짜 리터럴은 *관계 없는* 고정 입력(포맷·윤년·요일·DST)일 때만 허용.
 
