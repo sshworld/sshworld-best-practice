@@ -9,11 +9,6 @@ argument-hint: <짧은 요구사항 한 줄>
 
 요청: $ARGUMENTS
 
-<!-- TODO: 아래 빌드/테스트 명령을 프로젝트에 맞게 교체
-     BUILD_CMD  예: ./gradlew build | npm run build | cargo build
-     TEST_CMD   예: ./gradlew test  | npm test      | cargo test
--->
-
 ## Phase 0 — Session Start (자동)
 
 세션 시작 직후 **즉시** 실행:
@@ -43,7 +38,7 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/plan-dev-session.sh start
 | 분류 | 처리 |
 |---|---|
 | **필수 명확화** (결과가 의도와 정반대 가능) | 반드시 AskUserQuestion |
-| **재량 명확화** (어느 쪽이든 합리적) | "묻지 말고 진행" 지시 있으면 Assumptions 에 기록 |
+| **재량 명확화** (어느 쪽이든 합리적) | 기본: **배치로 묶어 AskUserQuestion** (질문 1회에 여러 결정 항목). "묻지 말고 진행" 지시 또는 Auto Mode 시 가정 후 Assumptions 기록 |
 
 **판단 기준**: 되돌리기 어렵거나(backward-incompatibility·데이터 손실 위험), 사용자가 메시지에 옵션을 명시적으로 제시했거나, 이전 turn 에서 명시한 선호와 충돌 가능하거나, 모델 스스로 "default 가 불명확한 임의 선택"이라고 인지하면 필수 명확화 → AskUserQuestion. **사용자 선택을 요구하는 option list 는 반드시 AskUserQuestion 으로 전달** (plain text dump 금지) — 단순 정보 enumeration 은 해당 없음.
 
@@ -52,7 +47,7 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/plan-dev-session.sh start
 > 💡 **Phase 1-1 ↔ Phase 1-2 연결**: 1-1 의 Acceptance criteria 가 1-2 의 Goal Statement 의 source. 같은 항목을 측정 가능 form (grep/test/명령) 으로만 transform.
 
 ### 1-2. EnterPlanMode → plan 파일 작성
-필수 섹션: Context / Explored Files / Assumptions / Vertical Slices / **Slice File Map** / TDD Strategy / Verification / **Goal Statement**.
+필수 섹션: Context / Explored Files / Assumptions / Vertical Slices / **Slice File Map** / **동작 스펙 (Behavior Spec)** / Verification / **Goal Statement**.
 **Plan 파일 200줄 이하** — 넘으면 슬라이스 추가 분해.
 
 **Slice File Map** — 각 슬라이스의 산출 파일 목록 (Write/Edit 대상). rebase fast-forward 충돌 예방 목적. 형식:
@@ -65,6 +60,13 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/plan-dev-session.sh start
 - `DOC_IMPACT` — `none` / `updated` 중 plan 단계에 미리 결정 (commit 시점에 발견하면 hook 차단 후 재시도 비용).
 
 Slice 정의 시 **type 도 같이 결정**: `feat|fix|refactor|test|docs|chore`. (commit type. **branch prefix 는 `feat`→`feature/`, 그 외 type 그대로** — dispatch 가 자동 매핑. commit 메시지엔 scope 안 씀: `feat: …` 형식.)
+
+#### 동작 스펙 (Behavior Spec) — 사람이 승인하는 동작 계약
+
+슬라이스별 **테스트 케이스명 목록** (시나리오 문장 나열, 본문·코드 없음). 이 목록이 implementor spec 의 "작성할 테스트 목록" 으로 그대로 전달된다.
+
+- **역할 구분**: 동작 스펙 = 사람이 승인하는 동작 계약 (ExitPlanMode 리뷰 대상) / Goal Statement = 기계가 판정하는 완료 조건 (Phase 3 Verify 입력).
+- **판단 기준** (규칙 아님): 동작 분기·상태 전이·에러 경로가 있는 슬라이스는 필수. 기계적 변경(rename·문서 이동·설정값)은 한 줄 사유로 생략 가능.
 
 #### Goal Statement — 측정가능 완료 기준
 
@@ -104,6 +106,7 @@ test -x scripts/foo.sh
 
 ### 1-4. ExitPlanMode → 사용자 승인 (MANDATORY)
 승인 전 Phase 2 진입 금지.
+Assumptions 가 비어있지 않으면 ExitPlanMode 승인 요청 텍스트에 **가정 요약** 을 포함한다 — 사용자가 승인과 함께 가정을 일괄 확인.
 
 슬라이스 수 확정 후 progress 시작:
 ```bash
