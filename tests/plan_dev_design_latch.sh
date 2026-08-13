@@ -506,5 +506,30 @@ step T13 "회귀: plan_dev_finish.sh / plan_dev_session_setplan.sh"
   echo "  T13 OK"
 }
 
+# ─────────────────────────────────────────
+# T14: 커밋 0개 세션은 게이트를 타지 않고 skip
+# ─────────────────────────────────────────
+# 게이트가 Range 검증보다 앞에 있으면, 푸시할 게 없는 세션까지 설계 문서를
+# 요구해 exit 2 가 된다. 게이트는 "밀 게 있을 때만" 물어야 한다.
+step T14 "커밋 0개 + latch 없음 + 선언 없음 → 게이트 미발동, skip(exit 0)"
+{
+  read -r SRC BARE <<< "$(setup_repo)"
+  add_develop_to_origin "$SRC"
+
+  git -C "$SRC" switch -c feat/design-t14 -q
+
+  MARKER="$(marker_abs_path "$SRC")"
+  HEAD_REF=$(git -C "$SRC" rev-parse HEAD)          # start_ref == HEAD → 새 커밋 0개
+  write_marker "$MARKER" "$HEAD_REF" "develop" "feat/design-t14" "false"
+
+  OUT=$(cd "$SRC" && PLAN_DEV_SESSION_BIN=/bin/false "$FINISH" 2>/dev/null)
+  RC=$?
+  assert_eq "T14 exit code" "0" "$RC"
+  echo "$OUT" | grep -q "no new commits" || fail "T14: 'no new commits' skip 경로가 아님. got: $OUT"
+
+  rm -rf "$SRC" "$BARE"
+  echo "  T14 OK"
+}
+
 echo ""
 echo "OK"
