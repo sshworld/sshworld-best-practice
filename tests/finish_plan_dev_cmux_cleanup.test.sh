@@ -3,6 +3,10 @@
 
 set -uo pipefail
 
+# 설계 문서 실측 게이트(finish-plan-dev.sh)는 이 스위트의 관심사가 아니다 —
+# push/branch 분기만 검증한다. 게이트 전용 스위트: tests/plan_dev_design_latch.sh
+export DISABLE_DESIGN_DOC_GATE=1
+
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 FINISH="$REPO/scripts/finish-plan-dev.sh"
 

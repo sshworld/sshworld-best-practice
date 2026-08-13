@@ -12,6 +12,9 @@
 #                                      없으면 marker 파일 직접 파싱 폴백.
 #   SKIP_CMUX_REAP=1                 → push 후 reap-orphans backstop 1회 skip
 #   SKIP_PLAN_DEV_CMUX_CLEANUP=1     → push 후 cmux 자식 surface cleanup 1회 skip
+#   DESIGN_DOC=none                  → 설계 문서 없는 기계적 변경 선언 (latch 없을 때 게이트 통과)
+#   SKIP_DESIGN_DOC=1                → 설계 문서 실측 게이트 1회 우회
+#   DISABLE_DESIGN_DOC_GATE=1        → 설계 문서 실측 게이트 영구 비활성화
 
 set -uo pipefail
 
@@ -42,6 +45,9 @@ finish-plan-dev.sh [--dry-run] [--remote=<name>]
   SKIP_PLAN_DEV_FINISH=1     1회 우회 (exit 0 + "skipped (SKIP)")
   DISABLE_PLAN_DEV_FINISH=1  영구 비활성화 (exit 0 + "disabled")
   GIT_PUSH_CMD               push 명령 override (테스트용)
+  DESIGN_DOC=none            설계 문서 없는 기계적 변경 선언 (latch 없을 때 게이트 통과)
+  SKIP_DESIGN_DOC=1          설계 문서 실측 게이트 1회 우회
+  DISABLE_DESIGN_DOC_GATE=1  설계 문서 실측 게이트 영구 비활성화
   PLAN_DEV_SESSION_BIN       plan-dev-session.sh 경로 override
 USAGE
       exit 0 ;;
@@ -127,6 +133,147 @@ fi
 if [ -z "$START_REF" ] || [ -z "$BASE_BRANCH" ]; then
   echo "finish-plan-dev: marker 파싱 실패 (start_ref 또는 base_branch 없음)" >&2
   exit 2
+fi
+
+# ── 설계 문서 실측 게이트 ──────────────────────────────────────────
+#
+# 설계 문서(docs/design/<slug>.md) 의 '## 6. 결과' 실측 칸이 채워졌는지 검사.
+# commit 시점 hook 이 아니라 여기인 이유: 설계 문서는 기능당 1개 = 세션당 1개라
+# 커밋 granularity 와 안 맞고(커밋마다 env prefix = 마찰), 실측값은 작업이 끝난
+# 이 시점에만 존재한다.
+#
+# 차단만 하지 않고 선택지를 준다 — enforce-doc-sync.sh 의 DOC_IMPACT 와 같은
+# "판단 강제" 패턴. 일률 차단은 본 repo 원칙 위반.
+#
+# design_doc 는 query 분기와 무관하게 항상 marker 직독 (PLAN_DEV_SESSION_BIN
+# 부재 폴백 경로에서도 게이트가 동작해야 함).
+
+DESIGN_DOC_PATH=$(json_get "$MARKER" "design_doc") || DESIGN_DOC_PATH=""
+
+# 실측 칸 판정 → stdout: OK | PLACEHOLDER | MISSING
+#
+# 표 형식과 리스트 형식을 따로 다룬다:
+#   표   `| 항목 | 목표 | 실측 |` — '실측' 은 컬럼 라벨일 뿐 값이 아니다.
+#        컬럼 인덱스를 구해 이후 데이터 행의 같은 컬럼을 본다. 하나라도
+#        채워져 있으면 OK (헤더만 있고 데이터 행이 없으면 PLACEHOLDER).
+#   리스트 `- 실측: <값>` — '실측' 뒤 텍스트가 곧 값.
+design_measure_verdict() {
+  awk '
+    # 실측 칸의 값이 "실제로 기입된 값" 인지 판정.
+    # 반환: 1 = 기입됨(통과) / 0 = 미기입(차단)
+    function is_measured(v) {
+      # 측정 불가를 명시적으로 자백한 경우는 다른 규칙보다 먼저 통과시킨다 —
+      # 감추지 않고 적는 것이 이 칸의 목적이므로 유효한 값이다.
+      if (v ~ /미검증/) return 1
+      if (v == "") return 0
+      # 괄호로 감싼 전체는 자리표시자: "(S4 에서 채움)" "(측정 예정)"
+      if (v ~ /^\(.*\)$/) return 0
+      u = toupper(v)
+      if (u == "TODO" || u == "TBD" || u == "N/A" || u == "NA" || u == "-") return 0
+      # 정확 일치만 — 부분 일치로 하면 "회귀 테스트 채움 완료" 같은 정당한
+      # 문장까지 자리표시자로 오판한다. 괄호 규칙이 감싼 형태를 이미 잡는다.
+      if (v == "—" || v == "미정" || v == "채움" || v == "미측정") return 0
+      return 1
+    }
+
+    /^##[[:space:]]*6\./          { insec=1; next }
+    insec && /^##[[:space:]]/     { insec=0 }
+    insec                         { lines[++n]=$0 }
+
+    END {
+      verdict="MISSING"
+      for (i=1; i<=n; i++) {
+        L=lines[i]
+        if (L !~ /실측/) continue
+
+        if (L ~ /^[[:space:]]*\|/) {
+          # 표 형식 — 실측 컬럼 인덱스 확보
+          col=0; m=split(L, a, "|")
+          for (j=1; j<=m; j++) {
+            gsub(/^[ \t]+|[ \t]+$/, "", a[j])
+            if (a[j] == "실측") col=j
+          }
+          if (col == 0) continue
+          verdict="PLACEHOLDER"
+          for (k=i+1; k<=n; k++) {
+            R=lines[k]
+            if (R !~ /^[[:space:]]*\|/) continue
+            if (R ~ /^[[:space:]]*\|[-: |]+\|[[:space:]]*$/) continue   # 구분행
+            m2=split(R, b, "|")
+            if (col > m2) continue
+            v=b[col]; gsub(/^[ \t]+|[ \t]+$/, "", v)
+            if (is_measured(v)) verdict="OK"
+          }
+        } else {
+          # 리스트 형식
+          v=L
+          sub(/^.*실측[[:space:]]*[:：]?[[:space:]]*/, "", v)
+          gsub(/^[ \t]+|[ \t]+$/, "", v)
+          verdict = is_measured(v) ? "OK" : "PLACEHOLDER"
+        }
+      }
+      print verdict
+    }
+  ' "$1"
+}
+
+if [ "${DISABLE_DESIGN_DOC_GATE:-0}" != "1" ] && [ "${SKIP_DESIGN_DOC:-0}" != "1" ]; then
+  if [ -n "$DESIGN_DOC_PATH" ]; then
+    if [ ! -f "$DESIGN_DOC_PATH" ]; then
+      cat >&2 <<MSG
+⛔ latch 된 설계 문서를 찾을 수 없음 — push 차단됨.
+
+latch 경로: ${DESIGN_DOC_PATH}
+
+다음 중 하나로 재시도:
+  • 경로가 바뀌었으면: plan-dev-session.sh set-design <새 절대경로> 후 재실행
+  • 설계 문서가 필요 없어졌으면: DESIGN_DOC=none <명령>
+
+1회 우회: SKIP_DESIGN_DOC=1 / 영구 off: DISABLE_DESIGN_DOC_GATE=1
+MSG
+      exit 2
+    fi
+
+    DESIGN_VERDICT="$(design_measure_verdict "$DESIGN_DOC_PATH")"
+    if [ "$DESIGN_VERDICT" != "OK" ]; then
+      cat >&2 <<MSG
+⛔ 설계 문서 실측 미기입 — push 차단됨.
+
+설계 문서: ${DESIGN_DOC_PATH}
+판정: ${DESIGN_VERDICT}
+
+다음 중 하나로 재시도:
+  • 실측값을 채웠으면: ${DESIGN_DOC_PATH} 의 '## 6. 결과' 실측 칸 갱신 후 재실행
+  • 측정이 불가하면:   실측 칸에 '미검증 — 재발 감시 중' 명시 후 재실행
+  • 이번 세션이 기계적 변경이면: DESIGN_DOC=none <명령>
+
+1회 우회: SKIP_DESIGN_DOC=1 / 영구 off: DISABLE_DESIGN_DOC_GATE=1
+MSG
+      exit 2
+    fi
+    echo "design-doc gate: 실측 확인 — ${DESIGN_DOC_PATH}"
+  else
+    if [ "${DESIGN_DOC:-}" = "none" ]; then
+      echo "design-doc gate: DESIGN_DOC=none — 설계 문서 없는 기계적 변경으로 선언됨"
+    else
+      cat >&2 <<'MSG'
+⛔ 설계 문서 판단 필요 — push 차단됨.
+
+이 세션에 latch 된 설계 문서가 없다. 다음 중 하나로 재시도:
+
+  • 설계 문서를 만들었으면 (조건부 블록 중 하나라도 필요한 작업):
+        plan-dev-session.sh set-design <설계 문서 절대경로>
+    후 재실행. 실측 칸까지 채워야 통과한다.
+
+  • 기계적 변경이면 (원인 자명 + 구조 불변 + 대안 없음 + 잴 것 없음
+    = rename·문서 이동·설정값·버전 bump):
+        DESIGN_DOC=none <명령>
+
+1회 우회: SKIP_DESIGN_DOC=1 / 영구 off: DISABLE_DESIGN_DOC_GATE=1
+MSG
+      exit 2
+    fi
+  fi
 fi
 
 # ── clear marker 헬퍼 ─────────────────────────────────────────────
