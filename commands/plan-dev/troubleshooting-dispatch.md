@@ -1,5 +1,21 @@
 # dispatch 진단 가이드 (문제 발생 시)
 
+## 자식이 작업 중반에 죽는다 — 자식 자살 (2026-08-13 원인 확정)
+
+**증상**: 자식이 정상 작업하다 특정 Bash 호출 직후 응답 없이 사라진다. surface 가 `capture` 에서 `not_found`, 심하면 **형제 자식까지 동시에** 사라진다. 부분 산출물은 worktree 에 남는다.
+
+**원인**: 자식이 `finish-plan-dev.sh` 를 (보통 테스트를 통해) 실행하면 push 성공 경로가 `do_cmux_cleanup()` 을 호출한다. 이 함수의 가드는 **`CMUX_WORKSPACE_ID` 존재 여부뿐**이고 dispatch 된 자식은 그 값을 상속한다 → 임시 repo 대상 테스트인데도 `cmux-pane.sh cleanup` + `reap-orphans` 가 **실제 workspace** 에 나가 자기/형제 surface 를 닫는다.
+
+**진단** (2분): 자식 transcript 의 마지막 `tool_use` 를 본다 — `~/.claude/projects/<worktree 경로 sanitized>/*.jsonl` 의 마지막 줄이 `tool_result` + `attachment` 로 끝나고 뒤에 assistant 응답이 없으면 프로세스가 죽은 것(API 에러·graceful 종료는 메시지를 남긴다). 직전 명령이 `finish-plan-dev.sh` 를 타는 테스트면 이 케이스다.
+
+**예방**: `finish-plan-dev.sh` 를 실제 실행하는 테스트는 상단에 반드시 선언한다.
+```bash
+export SKIP_PLAN_DEV_CMUX_CLEANUP=1
+export SKIP_CMUX_REAP=1
+```
+
+**구별할 것**: launch 직후(첫 tool 실행 **전**) `Terminal surface not found` 로 죽는 건 **다른 기제**다 — surface 는 등록되나 terminal 이 attach 되지 않는 문제로 원인 미해결. `CBP_LAUNCH_DEBUG=1` 로 launch raw_out 확보가 다음 스텝.
+
 `cmux-dispatch.md` 의 정상 플로우에서 문제가 생겼을 때만 읽는 문서 — 정상 dispatch/reap 흐름을 따라가는 중이면 이 파일이 필요 없다.
 
 ---

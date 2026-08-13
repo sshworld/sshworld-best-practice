@@ -7,6 +7,14 @@
 
 set -uo pipefail
 
+# ⚠️ 이 스위트는 finish-plan-dev.sh 를 실제 실행한다. push 성공 경로가
+# do_cmux_cleanup() 을 호출하고, 그 가드는 CMUX_WORKSPACE_ID 존재뿐이라
+# dispatch 된 자식 안에서 돌리면 실제 cmux workspace 에 cleanup +
+# reap-orphans 가 나가 자기/형제 surface 를 닫는다 (= 자식 자살).
+# 2026-08-13 실측: 자식 2회 사망 원인이 이것이었다.
+export SKIP_PLAN_DEV_CMUX_CLEANUP=1
+export SKIP_CMUX_REAP=1
+
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SESSION_SCRIPT="$REPO/scripts/plan-dev-session.sh"
 FINISH="$REPO/scripts/finish-plan-dev.sh"
