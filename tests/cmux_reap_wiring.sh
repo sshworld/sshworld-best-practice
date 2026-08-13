@@ -10,6 +10,10 @@
 
 set -uo pipefail
 
+# 설계 문서 실측 게이트는 이 스위트의 관심사가 아니다 (reap 배선만 검증).
+# 게이트 전용 스위트: tests/plan_dev_design_latch.sh
+export DISABLE_DESIGN_DOC_GATE=1
+
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SESSION_SCRIPT="$REPO/scripts/plan-dev-session.sh"
 FINISH_SCRIPT="$REPO/scripts/finish-plan-dev.sh"

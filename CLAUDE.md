@@ -15,6 +15,7 @@
 3. **plan 파일은 200줄 이하** — implementor 가 자식 컨텍스트에서 통째로 읽기 좋게. 길어지면 슬라이스를 더 쪼개는 신호.
 4. **Vertical slice — Horizontal phases 금지** — 슬라이스는 cross-layer feature 단위(DB+service+UI 같이). 슬라이스별 산출 파일 목록(`Slice File Map`)을 plan 에 명시, 다른 슬라이스와 같은 파일·영역 수정 시 단일 슬라이스로 병합 또는 순차 강등.
 5. **README/CLAUDE.md 동기화** — `.claude/` 또는 `install.sh` 의 동작이 바뀌면 README.md 의 해당 섹션을 같이 업데이트. commit 의 `DOC_IMPACT` prefix 로 이를 강제.
+6. **독자가 다르면 파일을 나눈다 (수명 분리)** — 한 파일이 사람과 기계를 같이 섬기면 순서가 한쪽으로 기울고 다른 쪽이 묻힌다. 사람용 = `docs/design/<slug>.md` (영속·누적, 파일 단위 = **롤백 단위**), 기계용 = plan 파일 (폐기). 섹션 순서를 조정하는 게 아니라 수명을 갈라야 200줄 캡과 사람 가독성이 동시에 성립한다.
 
 ## 릴리즈 & 체크리스트 (상세는 링크)
 
@@ -40,6 +41,8 @@
 - ❌ 검증용 단순 curl / sleep 단독 호출 — Bash 자동 background 진입으로 동기 결과 못 받음. `timeout 5 curl ...` 또는 cmux browser eval 사용.
 - ❌ 테스트에 now 와의 관계를 가정한 절대 날짜 리터럴(2026-01-01 식 start_ts 등) — 시점 지나면 rot. now-offset(relative)으로.
 - ❌ 병렬 슬라이스 통합 시 worktree 점유 브랜치를 rebase 시도 / rebase+cleanup 을 한 `&&` 체인에 — 중간 실패가 미머지 브랜치를 삭제. worktree remove 먼저, cleanup 은 머지 후. disjoint 슬라이스(파일 비충돌)는 rebase 말고 `cherry-pick` 권장.
+- ❌ 영속되어야 할 문서를 `.claude/` 아래 두기 — 이 repo 조차 `.gitignore` 에 `.claude/specs/*.spec.md` 가 있고, 회사 repo 는 `.claude/` 를 통째로 ignore 하는 경우가 흔하다. 영속성이 목적인 파일은 `docs/` 로 (개인 vault 도 안 됨 — 코드와 갱신 트리거가 끊겨 rot).
+- ❌ 필수 동작을 선택 단계(`Phase 3.5 — Review (선택)` 등) 안에 배치 — 그 단계를 건너뛰는 세션이 필수 동작을 같이 건너뛴다. 필수는 필수 단계에 (실측 write-back 을 3.5 → 4-0 으로 옮긴 이유).
 - ❌ 콘텐츠만 추가 / 하네스 없음, 또는 그 반대 — 양쪽 다 필요 (예외: `/fork` 같은 스킬 호출은 hook 으로 강제 불가 — Stop hook 은 turn 재개만 가능하고 액션 지정 불가, 이 경우는 콘텐츠 전용이 정당한 설계).
 
 > 📎 dispatch/cmux/plan-dev 관련 안티패턴(30항목 상세)은 [commands/plan-dev/antipatterns.md](./commands/plan-dev/antipatterns.md) 가 canonical.

@@ -6,11 +6,12 @@
 #   plan-dev-session.sh query [--json|--key=<field>]
 #   plan-dev-session.sh progress [--inc] [--set-done=<n>] [--set-total=<n>]
 #   plan-dev-session.sh set-plan <절대경로>
+#   plan-dev-session.sh set-design <절대경로>
 #   plan-dev-session.sh clear
 #
 # marker 경로: $(git rev-parse --git-common-dir)/plan-dev-session.json
 # 키: start_ref, base_branch, work_branch, start_ts, start_pid, auto_branch,
-#     total_slices, done_slices, plan_file
+#     total_slices, done_slices, plan_file, design_doc
 #
 # 환경변수:
 #   SKIP_CMUX_REAP=1   — start 시 reap-orphans best-effort 호출 skip
@@ -30,6 +31,7 @@ commands:
   query [--json|--key=<field>]                              marker 내용 조회
   progress [--inc] [--set-done=<n>] [--set-total=<n>]      진행률 업데이트/조회
   set-plan <절대경로>                                        plan_file 필드 기록 (세션격리 latch)
+  set-design <절대경로>                                      design_doc 필드 기록 (Phase 5 실측 게이트용)
   clear                                                      marker 삭제
 USAGE
   exit 2
@@ -399,6 +401,52 @@ with open(f, 'w') as fp:
 }
 
 # ─────────────────────────────────────────
+# subcommand: set-design
+# ─────────────────────────────────────────
+# marker 에 design_doc 필드 기록 (read-modify-write — 기존 필드 전부 보존).
+# Phase 5 finish-plan-dev.sh 의 실측 게이트가 이 필드로 설계 문서를 찾는다.
+# 세션당 1개 = latch. 절대경로 권장 — 상대경로는 gate 에서 stat miss 됨.
+do_set_design() {
+  local design_doc="${1:-}"
+
+  if [ -z "$design_doc" ]; then
+    echo "plan-dev-session: set-design 사용법: set-design <절대경로>" >&2
+    exit 2
+  fi
+
+  case "$design_doc" in
+    /*) ;;
+    *) echo "plan-dev-session: 경고 — design_doc 은 절대경로 권장 (상대경로는 gate 에서 stat miss 됨): $design_doc" >&2 ;;
+  esac
+
+  local marker
+  marker="$(marker_path)"
+
+  if [ ! -f "$marker" ]; then
+    echo "plan-dev-session: 마커 없음 — set-design no-op" >&2
+    exit 0
+  fi
+
+  DESIGN_DOC_ARG="$design_doc" MARKER_FILE="$marker" python3 -c "
+import json, os
+f = os.environ['MARKER_FILE']
+d = json.load(open(f))
+d['design_doc'] = os.environ['DESIGN_DOC_ARG']
+with open(f, 'w') as fp:
+    json.dump(d, fp, indent=2)
+    fp.write('\n')
+"
+  WRITE_RC=$?
+
+  if [ "$WRITE_RC" != "0" ]; then
+    echo "plan-dev-session: set-design 기록 실패 (python3 rc=$WRITE_RC)" >&2
+    exit 2
+  fi
+
+  echo "design_doc set: $design_doc"
+}
+
+# ─────────────────────────────────────────
 # subcommand: clear
 # ─────────────────────────────────────────
 do_clear() {
@@ -425,6 +473,7 @@ case "$CMD" in
   query)    do_query "$@" ;;
   progress) do_progress "$@" ;;
   set-plan) do_set_plan "$@" ;;
+  set-design) do_set_design "$@" ;;
   clear)    do_clear "$@" ;;
   *)        usage ;;
 esac

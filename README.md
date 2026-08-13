@@ -151,7 +151,9 @@ claude plugin prune                        # 고아 플러그인 일괄 정리
 0. **Session Start** (Phase 0): `plan-dev-session.sh start` 자동 호출 — start_ref, base_branch 기록
 1. **Explore**: 관련 파일 자동 스캔 — 단축키·라우팅·전역 listener 류 작업은 `page.tsx` / `layout.tsx` 같은 상위 컨테이너 컴포넌트 포함
 2. **빈틈 진단**: `AskUserQuestion` 으로 요구사항 명확화 반복 (옵션 list 제시 시 plain text dump 금지)
-3. **EnterPlanMode**: plan 파일 작성 (200줄 이하 권장) + slice 별 type 결정 + Slice File Map 의 `Mode` / `DOC_IMPACT` 컬럼 미리 결정
+2.5. **설계 문서 작성 + 승인** (Phase 1-1.5): 조건부 블록(원인분석 / 구조 델타 / 결정 갈림길 / 기준선) 중 하나라도 필요하면 `docs/design/<slug>.md` 를 먼저 쓰고 **AskUserQuestion 으로 승인** → 2게이트(설계 승인 → plan 승인). 전부 불필요하면 fast path(1게이트). 경로 override: `CBP_DESIGN_DIR`. 템플릿·mermaid 규약은 [설계 문서 가이드](./commands/plan-dev/design-doc.md).
+   - plan 파일은 폐기물, **설계 문서는 영속** — 완료 후 `실측` 을 되써서 인수인계·이력서 자료로 남는다 (Phase 4-0 write-back, Phase 5 게이트가 판단 강제).
+3. **EnterPlanMode**: plan 파일 작성 (200줄 이하 권장) + slice 별 type 결정 + Slice File Map 의 `Mode` / `DOC_IMPACT` 컬럼 미리 결정. 사람이 판단할 내용은 설계 문서에 있으니 plan 엔 링크만 둔다
 4. **Staff Engineer Plan Review**: Plan 서브에이전트 비평 (선택)
 5. **ExitPlanMode**: 사용자 승인
 6. **TDD Execute**: 병렬 implementor → `<type>/<slug>` worktree 격리, Red→Green→Refactor — 진단 기록은 plan 파일 또는 `<plan>-notes.md` 에 즉시 기록
@@ -496,6 +498,27 @@ cmux 환경(`CMUX_WORKSPACE_ID` set) 세션 시작 시 **dispatch-first advisory
   - 그 외(마커 활성 + plan mode 미진입) → **exit 2 차단**.
 - ⚠️ marker **파일 mtime** 이 아니라 **`start_ts` JSON 필드** 기준 — `plan-dev-progress.sh` 가 marker 를 재기록하며 mtime 을 bump 해서, mtime 기준이면 progress start 직후 매번 false-positive 차단됨. start_ts 는 progress 가 보존하므로 안정.
 - **한계**: plan 을 reject 해도 plan 파일은 남아 통과. 목적은 "plan mode 아예 미진입" catch 이지 "plan reject 후 강행" 방지가 아님.
+
+### 10) 설계 문서 실측 게이트 (`finish-plan-dev.sh`, Phase 5 push 직전)
+
+설계 문서(`docs/design/<slug>.md`)의 `## 6. 결과` **실측 칸이 채워졌는지** push 전에 검사한다. hook 이 아니라 Phase 5 스크립트에 있는 이유: 설계 문서는 **기능당 1개 = 세션당 1개**라 commit 시점(세션당 N회)과 granularity 가 안 맞고, 실측값은 작업이 끝난 이 시점에만 존재한다.
+
+```bash
+# 설계 문서를 만든 세션 — 승인 후 latch (Phase 1-1.5)
+plan-dev-session.sh set-design /abs/path/docs/design/<slug>.md
+
+# 기계적 변경 (원인 자명 + 구조 불변 + 대안 없음 + 잴 것 없음)
+DESIGN_DOC=none finish-plan-dev.sh
+
+# 1회 우회 / 영구 off
+SKIP_DESIGN_DOC=1 finish-plan-dev.sh
+export DISABLE_DESIGN_DOC_GATE=1
+```
+
+- `latch 있음` + 실측 채워짐 → 통과. 빈 칸·`TODO`·`(자리표시자)` → **exit 2 + 선택지 안내**.
+- 측정이 불가하면 실측 칸에 `미검증 — 재발 감시 중` 을 쓰면 통과 — 감추는 것보다 자백이 낫다는 판단.
+- `latch 없음` + 선언 없음 → exit 2 (`set-design` 하거나 `DESIGN_DOC=none` 선언). `DOC_IMPACT` 와 같은 **판단 강제** 패턴이지 일률 차단이 아니다.
+- 표 형식(`| 항목 | 목표 | 실측 |`)은 `실측` 컬럼 인덱스를 잡아 **데이터 행**을 본다 — 헤더의 `실측` 라벨을 값으로 오인해 영구 차단하지 않기 위함.
 - (구 버그: `permission_mode==plan` 시 flag 를 찍는 방식이었으나 plan 파일 write 가 PreToolUse Write 경로를 안 타 flag 미기록 → 승인 후 모든 Edit 를 false-positive 차단. start_ts 신호로 교체 수정.)
 
 ```bash
@@ -563,6 +586,10 @@ cmux dispatch 자식이 작업을 마치면 부모 사이드바에 cmux 알림 �
 | `SKIP_DOC_SYNC=1` | off | doc-sync hook 1회 우회 |
 | `DISABLE_DOC_SYNC_HOOK=1` | off | doc-sync hook 영구 비활성화 |
 | `DISABLE_TOKEN_STATS=1` | off | token-stats hook 비활성화 |
+| `CBP_DESIGN_DIR=<path>` | `docs/design` | 영속 설계 문서 디렉토리 (repo 상대). `.claude/` 아래 두지 말 것 — repo 별로 gitignore 되어 영속성이 깨진다 |
+| `DESIGN_DOC=none` | (latch 없으면 차단) | Phase 5 push 시 "설계 문서 없는 기계적 변경" 선언 |
+| `SKIP_DESIGN_DOC=1` | off | 설계 문서 실측 게이트 1회 우회 |
+| `DISABLE_DESIGN_DOC_GATE=1` | off | 설계 문서 실측 게이트 영구 비활성화 |
 | `CLAUDE_MAX_CHILD_PANES=N` | 99 | 자식 tmux+cmux pane 합산 상한 (limit-child-panes hook, 사실상 무제한) |
 | `DISABLE_PANE_LIMIT_HOOK=1` | off | limit-child-panes hook 비활성화 |
 | `FORCE_SELF_KILL=1` | off | tmux-pane.sh kill 의 자기 pane 거부 우회 |
