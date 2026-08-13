@@ -47,7 +47,7 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/plan-dev-session.sh start
 > 💡 **Phase 1-1 ↔ Phase 1-2 연결**: 1-1 의 Acceptance criteria 가 1-2 의 Goal Statement 의 source. 같은 항목을 측정 가능 form (grep/test/명령) 으로만 transform.
 
 ### 1-1.5. 설계 문서 작성 + 승인
-조건부 블록(원인분석 / 구조 델타 / 결정 갈림길 / 기준선) 중 **하나라도 필요하면** `docs/design/<slug>.md` 를 먼저 쓰고 AskUserQuestion 으로 승인 → **2게이트**(설계 승인 → plan 승인). 전부 불필요하면 **fast path**(1게이트). commit type 으로 가르지 않는다. `hotfix` 는 착수 전 **골격만**(증상+가설+즉시조치) 승인하고 원인분석·재발방지는 사후. 승인 후 `plan-dev-session.sh set-design <절대경로>` 로 latch (Phase 5 게이트 입력). 판정 기준·절차·하네스 한계는 ➜ [설계 문서 가이드](./plan-dev/design-doc.md).
+조건부 블록(원인분석 / 구조 델타 / 결정 갈림길 / 기준선) 중 **하나라도 필요하면** `docs/design/<slug>.md` 를 먼저 쓰고 AskUserQuestion 으로 승인 → **2게이트**(설계 승인 → plan 승인). 전부 불필요하면 **fast path**(1게이트). commit type 으로 가르지 않는다. `hotfix` 는 착수 전 **골격만**(증상+가설+즉시조치) 승인하고 원인분석·재발방지는 사후. 승인 후 `${CLAUDE_PLUGIN_ROOT}/scripts/plan-dev-session.sh set-design <절대경로>` 로 latch (Phase 5 게이트 입력). 판정 기준·절차·하네스 한계는 ➜ [설계 문서 가이드](./plan-dev/design-doc.md).
 
 ### 1-2. EnterPlanMode → plan 파일 작성
 필수 섹션: **설계 문서 링크**(1-1.5 산출물, fast path 면 Context 한 단락으로 대체) / Explored Files / Assumptions / Vertical Slices / **Slice File Map** / **동작 스펙 (Behavior Spec)** / Verification / **Goal Statement**. plan 의 독자는 implementor/자식 surface — 사람이 판단할 내용은 설계 문서에 두고 plan 엔 링크만.

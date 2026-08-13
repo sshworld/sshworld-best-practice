@@ -135,6 +135,38 @@ if [ -z "$START_REF" ] || [ -z "$BASE_BRANCH" ]; then
   exit 2
 fi
 
+# ── clear marker 헬퍼 ─────────────────────────────────────────────
+
+clear_marker() {
+  rm -f "$MARKER"
+  rm -f "$MARKER_ADVISED"
+}
+
+# ── 현재 HEAD branch 확인 ──────────────────────────────────────────
+
+CUR_BRANCH="$(git symbolic-ref --short HEAD 2>/dev/null)" || {
+  echo "finish-plan-dev: detached HEAD — push 불가" >&2
+  exit 2
+}
+
+# ── Range 검증 ─────────────────────────────────────────────────────
+
+REV_LIST_ERR=""
+if ! NEW_COMMITS="$(git rev-list --count "${START_REF}..HEAD" 2>&1)"; then
+  REV_LIST_ERR="$NEW_COMMITS"
+  echo "finish-plan-dev: start_ref 무효 (rebase/GC?) — '${START_REF}' 를 rev-list 로 해석 불가." >&2
+  echo "  git error: ${REV_LIST_ERR}" >&2
+  echo "  복구: plan-dev-session.sh start 를 재실행해 marker 를 갱신하거나," >&2
+  echo "        marker 의 start_ref 를 유효한 SHA 로 직접 수정할 것." >&2
+  exit 2
+fi
+
+if [ "$NEW_COMMITS" = "0" ]; then
+  echo "no new commits since marker — skip"
+  clear_marker
+  exit 0
+fi
+
 # ── 설계 문서 실측 게이트 ──────────────────────────────────────────
 #
 # 설계 문서(docs/design/<slug>.md) 의 '## 6. 결과' 실측 칸이 채워졌는지 검사.
@@ -274,38 +306,6 @@ MSG
       exit 2
     fi
   fi
-fi
-
-# ── clear marker 헬퍼 ─────────────────────────────────────────────
-
-clear_marker() {
-  rm -f "$MARKER"
-  rm -f "$MARKER_ADVISED"
-}
-
-# ── 현재 HEAD branch 확인 ──────────────────────────────────────────
-
-CUR_BRANCH="$(git symbolic-ref --short HEAD 2>/dev/null)" || {
-  echo "finish-plan-dev: detached HEAD — push 불가" >&2
-  exit 2
-}
-
-# ── Range 검증 ─────────────────────────────────────────────────────
-
-REV_LIST_ERR=""
-if ! NEW_COMMITS="$(git rev-list --count "${START_REF}..HEAD" 2>&1)"; then
-  REV_LIST_ERR="$NEW_COMMITS"
-  echo "finish-plan-dev: start_ref 무효 (rebase/GC?) — '${START_REF}' 를 rev-list 로 해석 불가." >&2
-  echo "  git error: ${REV_LIST_ERR}" >&2
-  echo "  복구: plan-dev-session.sh start 를 재실행해 marker 를 갱신하거나," >&2
-  echo "        marker 의 start_ref 를 유효한 SHA 로 직접 수정할 것." >&2
-  exit 2
-fi
-
-if [ "$NEW_COMMITS" = "0" ]; then
-  echo "no new commits since marker — skip"
-  clear_marker
-  exit 0
 fi
 
 # ── commit-advisor gate ────────────────────────────────────────────

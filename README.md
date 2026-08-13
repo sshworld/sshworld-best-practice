@@ -151,20 +151,20 @@ claude plugin prune                        # 고아 플러그인 일괄 정리
 0. **Session Start** (Phase 0): `plan-dev-session.sh start` 자동 호출 — start_ref, base_branch 기록
 1. **Explore**: 관련 파일 자동 스캔 — 단축키·라우팅·전역 listener 류 작업은 `page.tsx` / `layout.tsx` 같은 상위 컨테이너 컴포넌트 포함
 2. **빈틈 진단**: `AskUserQuestion` 으로 요구사항 명확화 반복 (옵션 list 제시 시 plain text dump 금지)
-2.5. **설계 문서 작성 + 승인** (Phase 1-1.5): 조건부 블록(원인분석 / 구조 델타 / 결정 갈림길 / 기준선) 중 하나라도 필요하면 `docs/design/<slug>.md` 를 먼저 쓰고 **AskUserQuestion 으로 승인** → 2게이트(설계 승인 → plan 승인). 전부 불필요하면 fast path(1게이트). 경로 override: `CBP_DESIGN_DIR`. 템플릿·mermaid 규약은 [설계 문서 가이드](./commands/plan-dev/design-doc.md).
+3. **설계 문서 작성 + 승인** (Phase 1-1.5): 조건부 블록(원인분석 / 구조 델타 / 결정 갈림길 / 기준선) 중 하나라도 필요하면 `docs/design/<slug>.md` 를 먼저 쓰고 **AskUserQuestion 으로 승인** → 2게이트(설계 승인 → plan 승인). 전부 불필요하면 fast path(1게이트). 경로 override: `CBP_DESIGN_DIR`. 템플릿·mermaid 규약은 [설계 문서 가이드](./commands/plan-dev/design-doc.md).
    - plan 파일은 폐기물, **설계 문서는 영속** — 완료 후 `실측` 을 되써서 인수인계·이력서 자료로 남는다 (Phase 4-0 write-back, Phase 5 게이트가 판단 강제).
-3. **EnterPlanMode**: plan 파일 작성 (200줄 이하 권장) + slice 별 type 결정 + Slice File Map 의 `Mode` / `DOC_IMPACT` 컬럼 미리 결정. 사람이 판단할 내용은 설계 문서에 있으니 plan 엔 링크만 둔다
-4. **Staff Engineer Plan Review**: Plan 서브에이전트 비평 (선택)
-5. **ExitPlanMode**: 사용자 승인
-6. **TDD Execute**: 병렬 implementor → `<type>/<slug>` worktree 격리, Red→Green→Refactor — 진단 기록은 plan 파일 또는 `<plan>-notes.md` 에 즉시 기록
-7. **Verify**: rebase fast-forward 머지 + verifier 빌드/테스트 (max 5회 루프)
-8. **Review**: reviewer 치명적 이슈 점검 (선택)
-9. **Commit**: commit-advisor 다중 커밋 분석 → 한글 메시지 + `<type>/<slug>` 브랜치명 추천
-10. **Branch & Push** (Phase 5): `finish-plan-dev.sh` 로 develop/main 분기 push 자동화
-11. **Context 정리** (Phase 6): **`/fork` 스킬을 직접 호출** — 잔여 정리(unlocked worktree-agent-* cleanup 등) + 세션 요약 후, fork 가 마지막 줄에 다음 명령(`/clear`/`/compact`) 추천
-12. **Goal Statement**: plan 의 `## Goal Statement` — Phase 1-1 Acceptance criteria 를 측정가능 form(`<!-- machine-checks -->` bash one-liner) 으로 옮긴 것. Phase 3 Verify 에서 모델이 직접 실행해 완료 판정.
-13. **자식 surface 자동 cleanup** (Phase 5 끝): `finish-plan-dev.sh` 가 push 성공 직후 cmux 자식 surface (`cbp-*` 등 state file 등록 surface) 일괄 close. 사용자 수동 정리 0.
-14. **cross-WS dead orphan 자동 정리**: `plan-dev-session.sh start`(Phase 0) 및 `finish-plan-dev.sh`(Phase 5) 가 best-effort 로 `cmux-pane.sh reap-orphans` 를 호출 — 이전 세션이 finish 없이 종료해 잔존하는 dead 자식 surface 를 모든 `~/.cache/cbp/children-*.json` 에 걸쳐 회수. 살아있는 타 세션 자식은 보호, self surface 제외. 우회: `SKIP_CMUX_REAP=1`.
+4. **EnterPlanMode**: plan 파일 작성 (200줄 이하 권장) + slice 별 type 결정 + Slice File Map 의 `Mode` / `DOC_IMPACT` 컬럼 미리 결정. 사람이 판단할 내용은 설계 문서에 있으니 plan 엔 링크만 둔다
+5. **Staff Engineer Plan Review**: Plan 서브에이전트 비평 (선택)
+6. **ExitPlanMode**: 사용자 승인
+7. **TDD Execute**: 병렬 implementor → `<type>/<slug>` worktree 격리, Red→Green→Refactor — 진단 기록은 plan 파일 또는 `<plan>-notes.md` 에 즉시 기록
+8. **Verify**: rebase fast-forward 머지 + verifier 빌드/테스트 (max 5회 루프)
+9. **Review**: reviewer 치명적 이슈 점검 (선택)
+10. **Commit**: commit-advisor 다중 커밋 분석 → 한글 메시지 + `<type>/<slug>` 브랜치명 추천
+11. **Branch & Push** (Phase 5): `finish-plan-dev.sh` 로 develop/main 분기 push 자동화
+12. **Context 정리** (Phase 6): **`/fork` 스킬을 직접 호출** — 잔여 정리(unlocked worktree-agent-* cleanup 등) + 세션 요약 후, fork 가 마지막 줄에 다음 명령(`/clear`/`/compact`) 추천
+13. **Goal Statement**: plan 의 `## Goal Statement` — Phase 1-1 Acceptance criteria 를 측정가능 form(`<!-- machine-checks -->` bash one-liner) 으로 옮긴 것. Phase 3 Verify 에서 모델이 직접 실행해 완료 판정.
+14. **자식 surface 자동 cleanup** (Phase 5 끝): `finish-plan-dev.sh` 가 push 성공 직후 cmux 자식 surface (`cbp-*` 등 state file 등록 surface) 일괄 close. 사용자 수동 정리 0.
+15. **cross-WS dead orphan 자동 정리**: `plan-dev-session.sh start`(Phase 0) 및 `finish-plan-dev.sh`(Phase 5) 가 best-effort 로 `cmux-pane.sh reap-orphans` 를 호출 — 이전 세션이 finish 없이 종료해 잔존하는 dead 자식 surface 를 모든 `~/.cache/cbp/children-*.json` 에 걸쳐 회수. 살아있는 타 세션 자식은 보호, self surface 제외. 우회: `SKIP_CMUX_REAP=1`.
 
 ### 보조 — `/fork`
 
