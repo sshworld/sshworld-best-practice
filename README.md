@@ -155,8 +155,8 @@ claude plugin prune                        # 고아 플러그인 일괄 정리
 0. **Session Start** (Phase 0): `plan-dev-session.sh start` 자동 호출 — start_ref, base_branch 기록
 1. **Explore**: 관련 파일 자동 스캔 — 단축키·라우팅·전역 listener 류 작업은 `page.tsx` / `layout.tsx` 같은 상위 컨테이너 컴포넌트 포함
 2. **빈틈 진단**: `AskUserQuestion` 으로 요구사항 명확화 반복 (옵션 list 제시 시 plain text dump 금지)
-3. **설계 문서 작성 + 승인** (Phase 1-1.5): 조건부 블록(원인분석 / 구조 델타 / 결정 갈림길 / 기준선) 중 하나라도 필요하면 `docs/design/<slug>.md` 를 먼저 쓰고 **AskUserQuestion 으로 승인** → 2게이트(설계 승인 → plan 승인). 전부 불필요하면 fast path(1게이트). 경로 override: `CBP_DESIGN_DIR`. 템플릿·mermaid 규약은 [설계 문서 가이드](./commands/plan-dev/design-doc.md).
-   - plan 파일은 폐기물, **설계 문서는 영속** — 완료 후 `실측` 을 되써서 인수인계·이력서 자료로 남는다 (Phase 4-0 write-back, Phase 5 게이트가 판단 강제).
+3. **설계 문서 작성 + 승인** (Phase 1-1.5): 조건부 블록(원인분석 / 구조 델타 / 결정 갈림길 / 기준선) 중 하나라도 필요하면 `~/.claude/design/<repo>/<slug>.md` 를 먼저 쓰고 **AskUserQuestion 으로 승인** → 2게이트(설계 승인 → plan 승인). 전부 불필요하면 fast path(1게이트). 경로 override: `CBP_DESIGN_DIR`. 템플릿·mermaid 규약은 [설계 문서 가이드](./commands/plan-dev/design-doc.md).
+   - plan 파일은 폐기물, **설계 문서는 개인 머신에 영속** — 완료 후 `실측` 을 되써서 "왜 이렇게 만들었는지" 를 남긴다 (Phase 4-0 write-back, Phase 5 게이트가 판단 강제). repo 밖(`~/.claude/design/<repo>/`)이 기본 — 공개 저장소에 개인 노트를 올리지 않기 위함이며, 팀 공유가 필요하면 `CBP_DESIGN_DIR` 로 repo 안 경로를 명시한다.
 4. **EnterPlanMode**: plan 파일 작성 (200줄 이하 권장) + slice 별 type 결정 + Slice File Map 의 `Mode` / `DOC_IMPACT` 컬럼 미리 결정. 사람이 판단할 내용은 설계 문서에 있으니 plan 엔 링크만 둔다
 5. **Staff Engineer Plan Review**: Plan 서브에이전트 비평 (선택)
 6. **ExitPlanMode**: 사용자 승인
@@ -619,7 +619,7 @@ cmux dispatch 자식이 작업을 마치면 부모 사이드바에 cmux 알림 �
 | `SKIP_DOC_SYNC=1` | off | doc-sync hook 1회 우회 |
 | `DISABLE_DOC_SYNC_HOOK=1` | off | doc-sync hook 영구 비활성화 |
 | `DISABLE_TOKEN_STATS=1` | off | token-stats hook 비활성화 |
-| `CBP_DESIGN_DIR=<path>` | `docs/design` | 영속 설계 문서 디렉토리 (repo 상대). `.claude/` 아래 두지 말 것 — repo 별로 gitignore 되어 영속성이 깨진다 |
+| `CBP_DESIGN_DIR=<path>` | `~/.claude/design/<repo>` | 설계 문서 디렉토리. 기본은 **repo 밖 개인 머신** — 개인 작업 기록이라 커밋하지 않는다. 팀 공유가 필요할 때만 repo 안 경로를 명시 |
 | `DESIGN_DOC=none` | (latch 없으면 차단) | Phase 5 push 시 "설계 문서 없는 기계적 변경" 선언 |
 | `SKIP_DESIGN_DOC=1` | off | 설계 문서 실측 게이트 1회 우회 |
 | `DISABLE_DESIGN_DOC_GATE=1` | off | 설계 문서 실측 게이트 영구 비활성화 |

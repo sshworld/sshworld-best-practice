@@ -15,7 +15,7 @@
 3. **plan 파일은 200줄 이하** — implementor 가 자식 컨텍스트에서 통째로 읽기 좋게. 길어지면 슬라이스를 더 쪼개는 신호.
 4. **Vertical slice — Horizontal phases 금지** — 슬라이스는 cross-layer feature 단위(DB+service+UI 같이). 슬라이스별 산출 파일 목록(`Slice File Map`)을 plan 에 명시, 다른 슬라이스와 같은 파일·영역 수정 시 단일 슬라이스로 병합 또는 순차 강등.
 5. **README/CLAUDE.md 동기화** — `.claude/` 또는 `install.sh` 의 동작이 바뀌면 README.md 의 해당 섹션을 같이 업데이트. commit 의 `DOC_IMPACT` prefix 로 이를 강제.
-6. **독자가 다르면 파일을 나눈다 (수명 분리)** — 한 파일이 사람과 기계를 같이 섬기면 순서가 한쪽으로 기울고 다른 쪽이 묻힌다. 사람용 = `docs/design/<slug>.md` (영속·누적, 파일 단위 = **롤백 단위**), 기계용 = plan 파일 (폐기). 섹션 순서를 조정하는 게 아니라 수명을 갈라야 200줄 캡과 사람 가독성이 동시에 성립한다.
+6. **독자가 다르면 파일을 나눈다 (수명 분리)** — 한 파일이 사람과 기계를 같이 섬기면 순서가 한쪽으로 기울고 다른 쪽이 묻힌다. 사람용 = `~/.claude/design/<repo>/<slug>.md` (**개인 머신** 영속·누적, 파일 단위 = **롤백 단위**), 기계용 = plan 파일 (폐기). 섹션 순서를 조정하는 게 아니라 수명을 갈라야 200줄 캡과 사람 가독성이 동시에 성립한다.
 
 ## 릴리즈 & 체크리스트 (상세는 링크)
 
@@ -44,7 +44,7 @@
 - ❌ 자식(cmux surface / tmux pane / bg 세션 / subagent)을 띄우고 **계보를 기록하지 않기** — Claude 세션 레코드엔 부모 필드가 없어서(2026-08-14 실측) spawn 시점에 안 적으면 "누가 내 자식인가" 를 영영 알 수 없고, 회수가 전역 스윕으로 밀린다. spawn=`reap-agents.sh record`, 회수=`reap-agents.sh reap`. **원천은 보존, 자식만 회수.** 📎 [계약](./commands/plan-dev/troubleshooting-dispatch.md)
 - ❌ `_pid_chain | grep -qx "$pid"` 로 자기 보호 판정 — `grep -q` 가 매치 즉시 파이프를 닫아 SIGPIPE(141)가 나고 `set -o pipefail` 이 그걸 파이프라인 결과로 삼아 **매치했는데 거짓**이 된다(자기 보호가 조용히 꺼짐). 파이프 없는 루프로 판정할 것.
 - ❌ 실제 cmux/tmux 를 건드리는 스크립트(`finish-plan-dev.sh` 의 `do_cmux_cleanup` 등)를 테스트에서 우회 선언 없이 실행 — 가드가 `CMUX_WORKSPACE_ID` 존재뿐이라 dispatch 자식 안에서 돌면 자기/형제 surface 를 닫는다(= 자식 자살, 2026-08-13 실측). 해당 스위트는 `export SKIP_PLAN_DEV_CMUX_CLEANUP=1` + `export SKIP_CMUX_REAP=1` 필수. 📎 [진단](./commands/plan-dev/troubleshooting-dispatch.md)
-- ❌ 영속되어야 할 문서를 `.claude/` 아래 두기 — 이 repo 조차 `.gitignore` 에 `.claude/specs/*.spec.md` 가 있고, 회사 repo 는 `.claude/` 를 통째로 ignore 하는 경우가 흔하다. 영속성이 목적인 파일은 `docs/` 로 (개인 vault 도 안 됨 — 코드와 갱신 트리거가 끊겨 rot).
+- ❌ **개인 작업 기록(설계 문서)을 repo 에 커밋** — 공개 저장소면 그대로 공개되고, 팀 저장소면 타인에게 읽기·유지를 강요한다. 기본은 repo 밖 `~/.claude/design/<repo>/`(홈의 `~/.claude/` 이지 **repo 안 `.claude/` 가 아니다** — 후자는 repo 별 gitignore 로 소실된다). 팀과 공유할 문서만 `CBP_DESIGN_DIR` 로 repo 안 경로를 명시.
 - ❌ 필수 동작을 선택 단계(`Phase 3.5 — Review (선택)` 등) 안에 배치 — 그 단계를 건너뛰는 세션이 필수 동작을 같이 건너뛴다. 필수는 필수 단계에 (실측 write-back 을 3.5 → 4-0 으로 옮긴 이유).
 - ❌ 콘텐츠만 추가 / 하네스 없음, 또는 그 반대 — 양쪽 다 필요 (예외: `/fork` 같은 스킬 호출은 hook 으로 강제 불가 — Stop hook 은 turn 재개만 가능하고 액션 지정 불가, 이 경우는 콘텐츠 전용이 정당한 설계).
 
