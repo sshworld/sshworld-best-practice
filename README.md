@@ -24,7 +24,10 @@ skills/
 │   ├── fork/SKILL.md         # 자식 컨텍스트에서 처리하고 요약만 반환
 │   ├── tmux-orchestrate/SKILL.md # 부모-자식 Claude tmux pane 협업 패턴
 │   ├── yagni/SKILL.md        # 코드 추가 前 필요성 검사 — 추측성 추상화·미사용 코드 방지
-│   └── terse-output/SKILL.md # 응답 군더더기 제거 — 기술 substance 유지, 토큰 절감
+│   ├── terse-output/SKILL.md # 응답 군더더기 제거 — 기술 substance 유지, 토큰 절감
+│   └── architecture-trace/   # 요청 흐름 애니메이션 HTML 1파일 (구조 아닌 행위 — 실패 경로·지연 누적)
+│       ├── SKILL.md
+│       └── assets/trace-template.html
 hooks/
 │   ├── hooks.json            # 플러그인 hooks 정의 (${CLAUDE_PLUGIN_ROOT} 기반 경로)
 │   ├── enforce-test-first.sh # production 파일 작성 전 테스트 존재 검사
@@ -165,6 +168,19 @@ claude plugin prune                        # 고아 플러그인 일괄 정리
 13. **Goal Statement**: plan 의 `## Goal Statement` — Phase 1-1 Acceptance criteria 를 측정가능 form(`<!-- machine-checks -->` bash one-liner) 으로 옮긴 것. Phase 3 Verify 에서 모델이 직접 실행해 완료 판정.
 14. **자식 surface 자동 cleanup** (Phase 5 끝): `finish-plan-dev.sh` 가 push 성공 직후 cmux 자식 surface (`cbp-*` 등 state file 등록 surface) 일괄 close. 사용자 수동 정리 0.
 15. **cross-WS dead orphan 자동 정리**: `plan-dev-session.sh start`(Phase 0) 및 `finish-plan-dev.sh`(Phase 5) 가 best-effort 로 `cmux-pane.sh reap-orphans` 를 호출 — 이전 세션이 finish 없이 종료해 잔존하는 dead 자식 surface 를 모든 `~/.cache/cbp/children-*.json` 에 걸쳐 회수. 살아있는 타 세션 자식은 보호, self surface 제외. 우회: `SKIP_CMUX_REAP=1`.
+
+### 보조 — `/architecture-trace`
+
+요청이 시스템을 **어떻게 지나가는지** 를 애니메이션 HTML 한 파일로 그린다. 의존성 0, `file://` 로 열림.
+
+```text
+/sshworld:architecture-trace "결제 승인 요청 흐름"
+```
+
+- mermaid 는 **구조**를, 트레이스는 **행위**(실패 경로 / 지연 누적 / 동시 구간)를 그린다. 겹치지 않는다.
+- 시나리오 최소 3개 + **실패 필수** — 저자가 실패 경로를 열거하도록 강제하는 게 값의 핵심이지 시각효과가 아니다.
+- **생성물이다.** 설계 문서(`docs/design/<slug>.md`)의 mermaid 가 원본이고, 트레이스는 동기화 의무 없이 필요할 때 재생성한다. rot 은 동기화 의무가 있을 때만 부채다.
+- 노드 12개를 넘으면 손 좌표가 무너진다 → 하위 시스템별로 쪼개거나 React Flow(dagre/elk)로 확대.
 
 ### 보조 — `/fork`
 

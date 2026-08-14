@@ -1,0 +1,289 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>요청 추적 — 템플릿</title>
+<!--
+  architecture-trace 템플릿.
+  고칠 곳은 아래 (1) NODES (2) EDGES (3) SCENARIOS 셋뿐이다.
+  (4) 플레이어는 건드리지 않는다 — 단계를 렌더 코드에 하드코딩하지 말 것.
+
+  ⚠️ 이 파일은 생성물이다. 코드가 바뀌어도 동기화 의무 없음.
+     원본(진실)은 설계 문서의 mermaid. 필요할 때 다시 생성한다.
+     생성 시점: <YYYY-MM-DD> / 대상: <시스템·커밋>
+-->
+<style>
+  :root{
+    --bg:#08080f; --node:#0c1218;
+    --wire-idle:#16323d; --wire-seen:#22505f;
+    --bd-idle:#1e4453;   --bd-seen:#2b6a7d;
+    --active:#0ff; --ok:#1fd18a; --err:#ff4d7d;
+    --label-idle:#356; --label-active:#cff;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:#9fc;font:14px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace}
+  .wrap{max-width:1220px;margin:0 auto;padding:28px 20px 48px}
+  h1{font-size:15px;letter-spacing:2px;color:#7ab;margin:0 0 4px;font-weight:500}
+  .sub{font-size:12px;color:#456;margin:0 0 22px;letter-spacing:.5px}
+  .scn{display:flex;gap:8px;flex-wrap:wrap;margin:0 0 18px}
+  .scn button{
+    background:#0b1116;border:1px solid var(--bd-idle);color:#68909e;
+    font:12px/1 ui-monospace,monospace;letter-spacing:1.5px;
+    padding:9px 13px;border-radius:7px;cursor:pointer;transition:.3s
+  }
+  .scn button:hover{border-color:var(--bd-seen);color:#9cc}
+  .scn button.on{border-color:var(--active);color:var(--active);box-shadow:0 0 0 1px #0ff2 inset}
+  .scn button.fail.on{border-color:var(--err);color:var(--err);box-shadow:0 0 0 1px #ff4d7d22 inset}
+  .stage{overflow-x:auto;border:1px solid #101c22;border-radius:12px;background:#090d12;padding:6px 0}
+  svg{display:block;min-width:820px}
+  .box{fill:var(--node);stroke:var(--bd-idle);stroke-width:1.2;transition:.3s}
+  .box.seen{stroke:var(--bd-seen)}
+  .box.ok{stroke:var(--ok);filter:drop-shadow(0 0 6px var(--ok))}
+  .box.err{stroke:var(--err);filter:drop-shadow(0 0 6px var(--err))}
+  .box.on{stroke:var(--active);filter:drop-shadow(0 0 6px var(--active))}
+  .t{fill:var(--label-idle);font:12px ui-monospace,monospace;transition:.3s}
+  .k{fill:#2c4a55;font:9px ui-monospace,monospace;letter-spacing:1.6px;transition:.3s}
+  .lit .t{fill:var(--label-active)} .lit .k{fill:#5b8c9c}
+  .wire{stroke:var(--wire-idle);stroke-width:1.4;fill:none;transition:.3s}
+  .wire.seen{stroke:var(--wire-seen)}
+  .wire.on{stroke:var(--active);filter:drop-shadow(0 0 5px var(--active))}
+  .wire.err{stroke:var(--err);filter:drop-shadow(0 0 5px var(--err))}
+  .lines{margin:20px 2px 0;min-height:46px}
+  .status{font-size:13px;letter-spacing:2px;color:var(--label-active);min-height:20px}
+  .status.err{color:var(--err)}
+  .meta{font-size:11px;letter-spacing:2px;color:#456;margin-top:6px;min-height:16px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>&lt;시스템 이름&gt; — 요청 추적</h1>
+  <p class="sub">&lt;커밋 / 버전&gt; · 생성 &lt;YYYY-MM-DD&gt; · 이 파일은 생성물(동기화 의무 없음)</p>
+
+  <div class="scn" id="scn"></div>
+
+  <div class="stage">
+    <svg viewBox="0 0 820 400" id="svg">
+      <g id="wires"></g>
+      <g id="nodes"></g>
+      <g id="dots"></g>
+    </svg>
+  </div>
+
+  <div class="lines">
+    <div class="status" id="status"></div>
+    <div class="meta" id="meta"></div>
+  </div>
+</div>
+
+<script>
+/* ═══ (1) 토폴로지 — 좌표와 라벨만 ═══════════════════════════
+   중심은 가로 160 / 세로 116 격자. 박스는 104×46 (중심 ±52, ±23).      */
+const NODES = {
+  client: {x:90,  y:190, t:'client',    k:'BROWSER'},
+  api:    {x:250, y:190, t:'api gw',    k:'EDGE'},
+  auth:   {x:250, y:74,  t:'auth',      k:'JWT'},
+  cache:  {x:410, y:190, t:'cache',     k:'REDIS'},
+  db:     {x:570, y:190, t:'postgres',  k:'PRIMARY'},
+  event:  {x:570, y:306, t:'event bus', k:'EMIT'},
+  reject: {x:90,  y:74,  t:'401',       k:'REJECT'}
+};
+
+/* ═══ (2) 엣지 — 끝점은 노드 "가장자리" 에서 계산한다 ══════════
+   중심에서 계산하면 점이 박스 밑에서 출발한다. 선이 박스를 관통하면 안 됨.  */
+const EDGES = {
+  ca: 'M142 190 H198',   // client → api      (90+52 → 250-52)
+  aa: 'M250 167 V97',    // api    → auth     (190-23 → 74+23)
+  ar: 'M198 74 H142',    // auth   → reject   (250-52 → 90+52)
+  ac: 'M302 190 H358',   // api    → cache
+  cd: 'M462 190 H518',   // cache  → db
+  de: 'M570 213 V283'    // db     → event bus
+};
+
+/* ═══ (3) 시나리오 — 흐름 하나당 배열 하나 ═══════════════════
+   최소 3개, 그중 하나는 반드시 중간에 실패한다.
+   step: {e} 엣지 / {e,back:1} 역주행(응답) / {e,err:1} 실패 레그
+         {n,s:'ok'|'err'} 노드 상태 / {par:[...]} 진짜 동시 구간
+         {l:'상태줄'} / {ms:38} 지연 기여분(누적 표시)                  */
+const SCENARIOS = {
+  '정상 — 캐시 히트': [
+    {l:'GET /orders/8821'},
+    {n:'client', s:'ok'},
+    {e:'ca', ms:6},
+    {n:'api', s:'ok', l:'라우트 매치 · 토큰 추출'},
+    {e:'aa', ms:4},
+    {n:'auth', s:'ok', l:'JWT 서명 검증 OK'},
+    {e:'aa', back:1},
+    {e:'ac', ms:3},
+    {n:'cache', s:'ok', l:'HIT — orders:8821'},
+    {e:'ac', back:1, ms:2},
+    {e:'ca', back:1},
+    {n:'client', s:'ok', l:'200 OK'}
+  ],
+
+  '저하 — 캐시 미스': [
+    {l:'GET /orders/8821'},
+    {n:'client', s:'ok'},
+    {e:'ca', ms:6},
+    {n:'api', s:'ok'},
+    {e:'aa', ms:4},
+    {n:'auth', s:'ok', l:'JWT 서명 검증 OK'},
+    {e:'aa', back:1},
+    {e:'ac', ms:3},
+    {n:'cache', l:'MISS — 원본 조회로 폴백'},
+    {e:'cd', ms:5},
+    {n:'db', s:'ok', l:'SELECT … WHERE id=8821', ms:41},
+    /* par 는 "진짜 동시" 일 때만. 순차 호출을 병렬로 그리면 거짓말이다. */
+    {par:[{e:'cd', back:1}, {e:'de'}], l:'응답 반환 + 이벤트 발행 동시'},
+    {n:'event', s:'ok', l:'order.read 발행'},
+    {e:'ac', back:1, ms:2},
+    {e:'ca', back:1},
+    {n:'client', s:'ok', l:'200 OK — 누적 비용을 정상 경로와 비교할 것'}
+  ],
+
+  '실패 — 서명 만료': [
+    {l:'GET /orders/8821'},
+    {n:'client', s:'ok'},
+    {e:'ca', ms:6},
+    {n:'api', s:'ok', l:'라우트 매치 · 토큰 추출'},
+    {e:'aa', ms:4},
+    {n:'auth', s:'err', l:'SIGNATURE EXPIRED — exp 2026-08-01'},
+    {e:'aa', back:1, err:1},
+    {e:'ar', err:1},
+    {n:'reject', s:'err', l:'401 — 재인증 필요'}
+  ]
+};
+
+/* 실패로 끝나는 시나리오 이름 — 버튼 색과 종료 메타줄에 쓰인다. */
+const FAILING = new Set(['실패 — 서명 만료']);
+
+/* ═══ (4) 플레이어 — 위 세 구조만 읽는다. 수정 불필요 ═══════════ */
+const SVGNS = 'http://www.w3.org/2000/svg';
+const REDUCED = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const D_EDGE = REDUCED ? 0 : 340, D_SETTLE = REDUCED ? 0 : 60,
+      D_NODE = REDUCED ? 0 : 180, D_LOOP = 2200;
+
+const $ = id => document.getElementById(id);
+const wiresG = $('wires'), nodesG = $('nodes'), dotsG = $('dots');
+
+for (const [id, d] of Object.entries(EDGES)) {
+  const p = document.createElementNS(SVGNS, 'path');
+  p.setAttribute('id', 'e_' + id); p.setAttribute('d', d); p.setAttribute('class', 'wire');
+  wiresG.appendChild(p);
+}
+for (const [id, n] of Object.entries(NODES)) {
+  const g = document.createElementNS(SVGNS, 'g');
+  g.setAttribute('id', 'n_' + id);
+  const r = document.createElementNS(SVGNS, 'rect');
+  r.setAttribute('x', n.x - 52); r.setAttribute('y', n.y - 23);
+  r.setAttribute('width', 104); r.setAttribute('height', 46);
+  r.setAttribute('rx', 9); r.setAttribute('class', 'box');
+  const t = document.createElementNS(SVGNS, 'text');
+  t.setAttribute('x', n.x); t.setAttribute('y', n.y + 1);
+  t.setAttribute('text-anchor', 'middle'); t.setAttribute('class', 't');
+  t.textContent = n.t;
+  const k = document.createElementNS(SVGNS, 'text');
+  k.setAttribute('x', n.x); k.setAttribute('y', n.y + 14);
+  k.setAttribute('text-anchor', 'middle'); k.setAttribute('class', 'k');
+  k.textContent = n.k;
+  g.append(r, t, k); nodesG.appendChild(g);
+}
+
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+/* ride 는 자기 점을 만들고 끝나면 스스로 지운다 —
+   공유 점 하나로는 fan-out 도, 한 레그가 아직 날아가는 중에
+   돌아오는 응답도 표현할 수 없다. 가장 자주 틀리는 지점. */
+function ride(pathId, D, back, err) {
+  return new Promise(res => {
+    const path = $('e_' + pathId);
+    path.classList.add(err ? 'err' : 'on');
+    if (REDUCED) {
+      path.classList.remove('on', 'err');
+      path.classList.add('seen');
+      return res();
+    }
+    const L = path.getTotalLength(), c = err ? '#ff4d7d' : '#0ff';
+    const dot = document.createElementNS(SVGNS, 'circle');
+    dot.setAttribute('r', 4); dot.setAttribute('fill', c);
+    dot.setAttribute('filter', `drop-shadow(0 0 6px ${c})`);
+    dotsG.appendChild(dot);
+    const t0 = performance.now();
+    (function f(now) {
+      const k = Math.min((now - t0) / D, 1);
+      const { x, y } = path.getPointAtLength(L * (back ? 1 - k : k));
+      dot.setAttribute('cx', x); dot.setAttribute('cy', y);
+      if (k < 1) requestAnimationFrame(f);
+      else {
+        dot.remove();
+        path.classList.remove('on', 'err');
+        path.classList.add('seen');
+        res();
+      }
+    })(t0);
+  });
+}
+
+function reset() {
+  document.querySelectorAll('.wire').forEach(w => w.setAttribute('class', 'wire'));
+  document.querySelectorAll('#nodes g').forEach(g => {
+    g.classList.remove('lit');
+    g.querySelector('.box').setAttribute('class', 'box');
+  });
+  dotsG.innerHTML = '';
+  $('status').classList.remove('err');
+  $('status').textContent = '';
+  $('meta').textContent = '';
+}
+
+let runId = 0;
+async function play(name) {
+  const my = ++runId;
+  reset();
+  document.querySelectorAll('#scn button').forEach(b =>
+    b.classList.toggle('on', b.dataset.n === name));
+
+  let cum = 0;
+  for (const st of SCENARIOS[name]) {
+    if (my !== runId) return;
+    if (st.l) {
+      $('status').textContent = st.l;
+      $('status').classList.toggle('err', !!(st.err || st.s === 'err'));
+    }
+    if (st.ms) { cum += st.ms; $('meta').textContent = `+${st.ms} ms · 누적 ${cum} ms`; }
+
+    if (st.par) {
+      await Promise.all(st.par.map(p => ride(p.e, D_EDGE, p.back, p.err)));
+      await sleep(D_SETTLE);
+    } else if (st.e) {
+      await ride(st.e, D_EDGE, st.back, st.err);
+      await sleep(D_SETTLE);
+    } else if (st.n) {
+      const g = $('n_' + st.n), box = g.querySelector('.box');
+      g.classList.add('lit');
+      box.classList.add('seen');
+      box.classList.add(st.s || 'on');
+      await sleep(D_NODE);
+      box.classList.remove('on');
+    } else {
+      await sleep(D_NODE);
+    }
+  }
+  if (my !== runId) return;
+  $('meta').textContent += FAILING.has(name) ? '   ·   중단됨' : (cum ? '   ·   완료' : '');
+  await sleep(D_LOOP);
+  if (my === runId) play(name);
+}
+
+const scn = $('scn');
+Object.keys(SCENARIOS).forEach(name => {
+  const b = document.createElement('button');
+  b.textContent = name; b.dataset.n = name;
+  if (FAILING.has(name)) b.classList.add('fail');
+  b.onclick = () => play(name);
+  scn.appendChild(b);
+});
+play(Object.keys(SCENARIOS)[0]);
+</script>
+</body>
+</html>
