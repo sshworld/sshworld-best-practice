@@ -18,13 +18,23 @@ set -u
 
 [ -z "${CMUX_WORKSPACE_ID:-}" ] && exit 0
 
-GIT_DIR=$(git rev-parse --git-dir 2>/dev/null) || exit 0
-GIT_COMMON=$(git rev-parse --git-common-dir 2>/dev/null) || exit 0
-# 자식 worktree 세션은 제외 — 이 hook 은 부모(원본 repo dir)에서만 동작한다.
-[ "$GIT_DIR" != "$GIT_COMMON" ] && exit 0
+# marker 경로는 writer(hooks/notify-slice-done.sh) 와 **같은 리졸버**로 구한다.
+# 예전엔 여기서 독립 계산했고 비-git 이면 exit 0 이라, writer 가 남긴 marker 를
+# 영영 못 찾는 조합이 생겼다.
+_RESOLVER="${BASH_SOURCE[0]%/*}/../scripts/cbp-marker-path.sh"
+[ -r "$_RESOLVER" ] || exit 0
+# shellcheck source=/dev/null
+. "$_RESOLVER"
 
-COMMON_ABS=$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null)
-[ -n "$COMMON_ABS" ] || COMMON_ABS=$(cd "$GIT_COMMON" 2>/dev/null && pwd)
+# 부모 전용 가드는 **git 일 때만** 의미가 있다 (자식 worktree 세션 제외 목적).
+# 비-git 이면 이 구분 자체가 없으므로 건너뛴다.
+GIT_DIR=$(git rev-parse --git-dir 2>/dev/null) || GIT_DIR=""
+GIT_COMMON=$(git rev-parse --git-common-dir 2>/dev/null) || GIT_COMMON=""
+# 자식 worktree 세션은 제외 — 이 hook 은 부모에서만 동작한다.
+# (git 일 때만 판정 가능. 비-git 이면 둘 다 빈 문자열이라 이 검사를 통과한다.)
+[ -n "$GIT_DIR" ] && [ "$GIT_DIR" != "$GIT_COMMON" ] && exit 0
+
+COMMON_ABS=$(cbp_marker_dir)
 [ -n "$COMMON_ABS" ] || exit 0
 
 shopt -s nullglob

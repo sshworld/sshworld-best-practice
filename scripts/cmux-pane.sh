@@ -61,6 +61,21 @@ set -uo pipefail
 CMUX_BIN="${CMUX_BIN:-cmux}"
 CBP_WORKSPACE_PREFIX="${CBP_WORKSPACE_PREFIX:-cbp-}"
 
+# done-marker 경로는 writer(hooks/notify-slice-done.sh) 와 **같은 리졸버**를 쓴다.
+# 각자 계산하던 시절엔 비-git 에서 writer 가 아무것도 안 남겨 reader 가 영영 못 찾았다.
+_CBP_RESOLVER="${BASH_SOURCE[0]%/*}/cbp-marker-path.sh"
+if [ -r "$_CBP_RESOLVER" ]; then
+  # shellcheck source=/dev/null
+  . "$_CBP_RESOLVER"
+else
+  cbp_marker_dir() { git rev-parse --path-format=absolute --git-common-dir 2>/dev/null; }
+  cbp_marker_key() { git rev-parse --abbrev-ref HEAD 2>/dev/null; }
+fi
+
+# 마스킹은 리졸버 파일(cbp-marker-path.sh)이 제공한다 — 이 파일은 sourcing guard 가
+# 없어 테스트가 함수를 꺼낼 수 없기 때문이다. 폴백은 no-op(원본 그대로).
+command -v cbp_mask_volatile >/dev/null 2>&1 || cbp_mask_volatile() { cat; }
+
 usage() {
   cat >&2 <<'USAGE'
 cmux-pane <command> [args]
@@ -372,6 +387,23 @@ _do_launch_grid() {
   # 병렬 dispatch race 방지. 이 구간이 비원자적이면 동시 호출이 같은 count/prev_surface
   # 를 읽어 다중 new-pane 또는 같은 prev split → cmux 동시 생성 실패로 surface detached.
   # 우회 (테스트 red baseline): CBP_DISABLE_LAUNCH_LOCK=1.
+  # stale workspace 선검사 — 세션이 자기 workspace 보다 오래 살아남으면
+  # (데몬 재시작·재호스팅·workspace 종료) CMUX_WORKSPACE_ID 는 세션 시작 시점
+  # 값으로 굳어 있어 cmux 가 "not_found: Workspace not found" 로 거절한다.
+  # 예전엔 이 실패가 stderr 와 함께 버려져 "PTY 미기동(not a terminal)" 이라는
+  # 엉뚱한 메시지로 나타났다 — 원인 진단을 한 달 넘게 막았다.
+  if [ -n "${CMUX_WORKSPACE_ID:-}" ] && [ "${CBP_SKIP_WS_PRECHECK:-0}" != "1" ]; then
+    local _ws_probe
+    _ws_probe=$("$CMUX_BIN" list-pane-surfaces --workspace "$CMUX_WORKSPACE_ID" 2>&1) || true
+    case "$_ws_probe" in
+      *"not_found"*|*"Workspace not found"*)
+        die "launch: CMUX_WORKSPACE_ID=$CMUX_WORKSPACE_ID 가 더 이상 존재하지 않습니다 (stale).
+  세션이 자기 workspace 보다 오래 살아남았을 때 생깁니다 (데몬 재시작·재호스팅).
+  이 세션에서는 dispatch 가 불가능합니다 — plan-dev 는 --mode=subagent 폴백을 쓰세요.
+  cmux 원문: $_ws_probe" 3 ;;
+    esac
+  fi
+
   local _locked=0
   if [ "${CBP_DISABLE_LAUNCH_LOCK:-0}" != "1" ]; then
     _cbp_lock_acquire "$lockpath"
@@ -390,7 +422,7 @@ _do_launch_grid() {
     raw_out=$("$CMUX_BIN" new-pane \
       --type terminal \
       --direction right \
-      --workspace "$CMUX_WORKSPACE_ID" 2>/dev/null || true)
+      --workspace "$CMUX_WORKSPACE_ID" 2>&1 || true)
     surface_ref=$(printf '%s' "$raw_out" | awk '/^OK / {print $2; exit}')
     _creation_path="new-pane(first child)"
     _cbp_debug "creation path=$_creation_path raw_out=[$raw_out]"
@@ -424,7 +456,7 @@ _REVEOF
       raw_out=$("$CMUX_BIN" new-pane \
         --type terminal \
         --direction right \
-        --workspace "$CMUX_WORKSPACE_ID" 2>/dev/null || true)
+        --workspace "$CMUX_WORKSPACE_ID" 2>&1 || true)
       surface_ref=$(printf '%s' "$raw_out" | awk '/^OK / {print $2; exit}')
       _creation_path="new-pane(fallback, no live prev)"
       _cbp_debug "creation path=$_creation_path raw_out=[$raw_out]"
@@ -614,6 +646,9 @@ do_wait_idle() {
     local _pane_flag
     _pane_flag=$(_cbp_pane_flag "$PANE")
     screen_content=$("$CMUX_BIN" read-screen "$_pane_flag" "$PANE" 2>/dev/null || echo "")
+    # 변동 라인(경과시간·비용·스피너) 제거 후 해시 — 안 그러면 살아있는 Claude TUI
+    # 상대로는 sha 가 매 폴링마다 달라져 idle 에 영원히 도달하지 못한다.
+    screen_content=$(printf '%s' "$screen_content" | cbp_mask_volatile)
     if command -v sha256sum >/dev/null 2>&1; then
       cur_hash=$(printf '%s' "$screen_content" | sha256sum | cut -c1-16)
     elif command -v shasum >/dev/null 2>&1; then
@@ -710,7 +745,7 @@ EOF
 _cbp_find_done_marker() {
   local surface_ref="$1"
   local common_dir
-  common_dir=$(git rev-parse --git-common-dir 2>/dev/null) || return 0
+  common_dir=$(cbp_marker_dir) || return 0
   [ -z "$common_dir" ] && return 0
 
   local f first_line second_line
@@ -1350,7 +1385,7 @@ do_watch() {
   esac
 
   local common_dir
-  common_dir=$(git rev-parse --git-common-dir 2>/dev/null) || common_dir=""
+  common_dir=$(cbp_marker_dir) || common_dir=""
 
   local iter=0
   while :; do

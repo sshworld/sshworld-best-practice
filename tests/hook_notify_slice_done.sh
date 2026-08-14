@@ -157,8 +157,12 @@ t3_user_line_echo_ignored() {
     && [ ! -f "$marker" ]
 }
 
-# T4: 부모 repo cwd (비-worktree) → 무동작
-t4_parent_repo_noop() {
+# T4: 부모 repo cwd (비-worktree) → **통지·marker 기록됨** (계약 변경)
+#
+# 예전 계약: linked worktree 안에서만 동작(비-worktree 는 noop).
+# 그 게이트 때문에 비-git·일반 체크아웃에서 marker 가 조용히 안 남았고,
+# reap fast-path·reap-on-stop·wait-idle 폴백이 동시에 죽었다. 게이트를 없앴다.
+t4_parent_repo_notifies() {
   local pair parent wt tmpdir transcript json_file cmux_bin rc=0
   pair=$(setup_repo_with_worktree)
   parent="${pair%|*}"; wt="${pair#*|}"
@@ -173,7 +177,7 @@ t4_parent_repo_noop() {
     "$HOOK" < "$json_file" >/dev/null 2>&1)
   rc=$?
 
-  [ "$rc" -eq 0 ] && [ ! -f "$tmpdir/cmux.calls" ]
+  [ "$rc" -eq 0 ] && [ -f "$tmpdir/cmux.calls" ]
 }
 
 # T5: CMUX_WORKSPACE_ID unset → 무동작
@@ -214,7 +218,11 @@ t6_disabled_noop() {
   [ "$rc" -eq 0 ] && [ ! -f "$tmpdir/cmux.calls" ]
 }
 
-# T7: .worktrees/ 밖 worktree → 무동작. CBP_NOTIFY_ANY_WORKTREE=1 이면 동작.
+# T7: `.worktrees/` 밖 worktree 도 **동작한다** (계약 변경).
+#
+# 예전엔 TOPLEVEL 이 `*/.worktrees/*` 가 아니면 noop 이었고 CBP_NOTIFY_ANY_WORKTREE=1
+# 로만 열렸다. `.claude/worktrees/` 처럼 다른 위치의 worktree 가 조용히 탈락했다.
+# escape 변수는 이제 무의미하지만(항상 동작) 하위호환으로 남겨둔다.
 t7_outside_worktrees_dir() {
   local pair parent wt tmp other_wt tmpdir transcript json_file cmux_bin rc=0
   pair=$(setup_repo_with_worktree)
@@ -237,7 +245,8 @@ t7_outside_worktrees_dir() {
     "$HOOK" < "$json_file" >/dev/null 2>&1)
   rc=$?
   local no_escape_ok=1
-  [ "$rc" -eq 0 ] && [ ! -f "$tmpdir/cmux.calls" ] || no_escape_ok=0
+  # escape 없이도 동작해야 한다 (게이트 제거).
+  [ "$rc" -eq 0 ] && [ -f "$tmpdir/cmux.calls" ] || no_escape_ok=0
 
   (cd "$other_wt" && CMUX_BIN="$cmux_bin" CMUX_WORKSPACE_ID="ws1" CMUX_SURFACE_ID="surf1" \
     CBP_NOTIFY_ANY_WORKTREE=1 "$HOOK" < "$json_file" >/dev/null 2>&1)
@@ -332,10 +341,10 @@ assert any('notify-slice-done.sh' in c for c in cmds), cmds
 run "T1 child worktree + success verdict -> notify+marker"  t1_success_verdict
 run "T2 failure verdict -> notify+marker"                   t2_failure_verdict
 run "T3 user-line echo ignored -> bell, no marker"          t3_user_line_echo_ignored
-run "T4 parent repo cwd -> noop"                            t4_parent_repo_noop
+run "T4 parent repo cwd -> 통지+marker (계약 변경)"          t4_parent_repo_notifies
 run "T5 CMUX_WORKSPACE_ID unset -> noop"                    t5_no_cmux_workspace_noop
 run "T6 DISABLE_SLICE_DONE_NOTIFY=1 -> noop"                 t6_disabled_noop
-run "T7 outside .worktrees/ -> noop, escape works"           t7_outside_worktrees_dir
+run "T7 outside .worktrees/ -> 동작 (계약 변경)"              t7_outside_worktrees_dir
 run "T8 jq missing -> bell degrade, no marker"               t8_jq_missing_degrades
 run "T9 hooks.json wiring"                                   t9_wiring_hooks_json
 run "T10 settings.json wiring"                               t10_wiring_settings_json
