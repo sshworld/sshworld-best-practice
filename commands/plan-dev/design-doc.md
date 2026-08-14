@@ -1,6 +1,8 @@
-# 설계 문서 템플릿 (`docs/design/<slug>.md`)
+# 설계 문서 템플릿 (`~/.claude/design/<repo>/<slug>.md`)
 
-plan 파일은 기계용 물류(Slice File Map, dispatch 인자)가 앞에 오고 작업 후 폐기된다. **설계 문서**는 사람용이고 repo 안에 영속한다 — 인수인계·이력서에 한 줄로 쓸 자산.
+plan 파일은 기계용 물류(Slice File Map, dispatch 인자)가 앞에 오고 작업 후 폐기된다. **설계 문서**는 사람용이고 **작성자 개인 머신에 영속**한다 — 나중에 "이 기능을 왜 이렇게 만들었는지" 되짚기 위한 **개인 작업 기록**이다.
+
+> 기본 경로는 repo 밖(`~/.claude/design/<repo>/`)이다. repo 에 커밋하면 공개 저장소에서는 개인 노트가 그대로 공개되고, 팀 저장소에서는 다른 사람에게 읽기·유지를 강요하게 된다. 팀과 공유할 문서라면 `CBP_DESIGN_DIR` 로 repo 안 경로를 **명시적으로** 지정한다.
 
 ---
 
@@ -15,7 +17,7 @@ plan 파일은 기계용 물류(Slice File Map, dispatch 인자)가 앞에 오�
 commit type 으로 가르지 않는 이유: fix 도 도메인 구조를 바꿔 고치면 아키텍처 승인이 최우선이고, type 목록에 `perf` 가 없어 성능 개선이 fix 로 들어온다. 규칙을 2개(게이트 표 + 템플릿 표) 따로 두면 반드시 서로 어긋나므로 하나에서 파생시킨다.
 
 **절차**:
-1. `docs/design/<slug>.md` 작성 (경로 override: `CBP_DESIGN_DIR`).
+1. `~/.claude/design/<repo>/<slug>.md` 작성 (경로 override: `CBP_DESIGN_DIR`).
 2. 사용자에게 제시하고 **AskUserQuestion 으로 승인**. 승인 없이 Phase 1-2 진입 금지.
 3. 승인 후 latch — Phase 5 push 게이트가 이 latch 로 실측 write-back 을 판단 강제:
    ```bash
@@ -32,7 +34,7 @@ commit type 으로 가르지 않는 이유: fix 도 도메인 구조를 바꿔 �
 
 ---
 
-## (a) 파일 단위 판정 — `docs/design/<slug>.md` 1개 = 기능 1개
+## (a) 파일 단위 판정 — 설계 문서 1개 = 기능 1개
 
 slice 는 이 아래의 하위층(구현 편의 분해)이다. 판정 순서:
 
@@ -40,11 +42,12 @@ slice 는 이 아래의 하위층(구현 편의 분해)이다. 판정 순서:
 |---|---|
 | 롤백 단위 | 이 중 하나만 되돌릴 수 있어야 하면 별개 파일. 같이 되돌려야 의미 있으면 한 파일 |
 | 수치 공유 | 같은 baseline/목표 표를 쓰면 한 기능. 각자 다른 걸 재면 별개 |
-| 한 줄 서술 | 나중에 인수인계·이력서에 한 줄로 쓸 단위 = 파일 1개 |
+| 한 줄 서술 | 나중에 한 줄로 "무엇을 왜 했는지" 설명할 단위 = 파일 1개 |
 
 한 프롬프트에 기능 3개 넘으면 프롬프트 분해 신호 (200줄 캡이 slice 분해 신호인 것과 같은 꼴).
 
-경로는 `CBP_DESIGN_DIR` env 로 override, 기본 `docs/design`.
+경로는 `CBP_DESIGN_DIR` env 로 override, 기본 `~/.claude/design/<repo>/`.
+**repo 안에 두지 않는 것이 기본**이다 — 개인 기록이므로.
 
 ---
 
@@ -150,7 +153,7 @@ config:
 | Obsidian (`mermaid@11.4.1` + `registerLayoutLoaders`) | O | `flowchart LR` 이 지켜져 **가로 814×376 (비 2.16)** — subgraph 두 개가 나란히 |
 | GitHub | **X** | 조용히 dagre 폴백 → **세로 426×1395 (비 0.31)** — LR 무시, 길게 늘어짐 |
 
-**에러로 뜨지 않는다 — 조용히 나빠진다.** 그래서 "깨지면 지워라" 로는 못 잡는다. 인수인계처럼 GitHub 에서 읽힐 문서라면 subgraph 두 개를 나란히 놓는 구성 자체를 피하고, 다이어그램을 둘로 쪼개는 편이 안전하다.
+**에러로 뜨지 않는다 — 조용히 나빠진다.** 그래서 "깨지면 지워라" 로는 못 잡는다. GitHub 에서 읽힐 문서라면 subgraph 두 개를 나란히 놓는 구성 자체를 피하고, 다이어그램을 둘로 쪼개는 편이 안전하다.
 
 **라벨에 `<` `>` 금지** — mermaid 가 HTML 태그로 먹어 통째로 사라진다. 실측: `docs/design/&lt;slug&gt;.md` → `docs/design/.md` 로 렌더됨. **`docs/design/[slug].md` 처럼 대괄호를 쓴다.**
 
