@@ -114,7 +114,6 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/plan-dev-progress.sh start --total=<N>
 ```
 
 ## Phase 2 — TDD Execute (비동기)
-
 > **진단 기록 가이드**: Phase 2 진행 중 발견한 진단·결정·우회는 plan 파일 (200줄 한도면 별도 `<plan>-notes.md`) 에 즉시 기록. 세션이 중간에 끊겨도 다음 세션이 1턴 만에 컨텍스트 복원 가능.
 
 **의존성 없는 슬라이스는 병렬, 의존 있으면 순차** — subagent(`Agent` 호출, `run_in_background=true`, `isolation="worktree"`)든 dispatch(cmux/tmux)든 **감시 루프 시작 전에 전부 dispatch**(launch lock 이 동시 호출 race 방지, dispatch→회수→다음 dispatch 순차 진행은 병렬 이점 소멸). implementor 는 `<type>/<slug>` worktree 에서 Red→Green→Refactor 후 `✅` 리턴.
@@ -134,7 +133,6 @@ plan 승인(1-4 ExitPlanMode) 후, 원래 Slice File Map 에 없던 편집 요�
 - 📎 상세: [cmux dispatch 가이드 — 애드혹 dispatch](./plan-dev/cmux-dispatch.md)
 
 ## Phase 3 — Verify (loop)
-
 완료된 slice worktree 를 순서대로 **rebase fast-forward** 후 verifier 호출. (`git merge` 금지 — merge 커밋이 S라벨·잡음 누출. 📎 [cmux dispatch 가이드](./plan-dev/cmux-dispatch.md))
 
 **verifier 루프:**
@@ -167,7 +165,6 @@ verifier PASS 후 commit 전 코드 리뷰를 원하면 `reviewer` 에이전트 
   `record-commit-advised` hook(PostToolUse Task|Agent) 이 commit-advisor 호출을 감지해 이 marker 를 자동 기록하는 게 primary — 이 번들은 belt(hook 미배선/비-plugin 환경 대비).
 
 ## Phase 5 — Branch & Push
-
 1. commit-advisor 추천의 `<type>/<slug>` 브랜치명 적용.
 2. `${CLAUDE_PLUGIN_ROOT}/scripts/finish-plan-dev.sh` 실행:
    - marker 읽기 → develop 있음/없음 분기 → `git push -u origin <branch>`.
@@ -180,6 +177,9 @@ verifier PASS 후 commit 전 코드 리뷰를 원하면 `reviewer` 에이전트 
 - `DISABLE_PLAN_DEV_FINISH=1` — 영구 비활성화.
 
 ## Phase 6 — Context 정리
+### 6-0. 자식 회수 (필수) — 띄운 건 반드시 거둔다
+`${CLAUDE_PLUGIN_ROOT}/scripts/reap-agents.sh audit` 로 현황, `reap --apply` 로 **내 자식만** 회수(고아까지면 `--orphans`). dispatch 가 spawn 시 계보 원장에 적어두고 회수는 그 원장만 근거로 한다 — 전역 스윕과 달리 남의 surface·자기 자신을 못 건드린다. ➜ [계보 원장·회수 계약](./plan-dev/troubleshooting-dispatch.md)
+
 
 작업 종료 후 **`fork` 스킬을 직접 호출**한다 (텍스트로 추천만 하지 않는다). Skill(fork) 이:
 - 세션의 잔여 정리(worktree cleanup 등) + 작업 요약을 수행하고,

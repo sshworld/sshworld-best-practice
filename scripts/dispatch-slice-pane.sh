@@ -528,6 +528,17 @@ main() {
     fi
   fi
 
+  # 계보 원장에 자식 기록 (best-effort — 실패해도 dispatch 는 성공으로 둔다).
+  # 회수는 전역 스윕이 아니라 이 원장을 근거로만 한다 → 남의 surface·자기 자신을
+  # 건드릴 수 없다. 📎 scripts/reap-agents.sh
+  if [ "${SKIP_SPAWN_LEDGER:-0}" != "1" ]; then
+    _reaper="$(dirname "${BASH_SOURCE[0]}")/reap-agents.sh"
+    if [ -x "$_reaper" ]; then
+      "$_reaper" record --kind="$DRIVER" --ref="$PANE" \
+        ${CMUX_WORKSPACE_ID:+--ws="$CMUX_WORKSPACE_ID"} --label="$SLICE" >/dev/null 2>&1 || true
+    fi
+  fi
+
   printf '{"pane":"%s","worktree":"%s","branch":"%s/%s","driver":"%s"}\n' \
     "$PANE" "$WORKTREE_ABS" "$BRANCH_TYPE" "$SLICE" "$DRIVER"
 }

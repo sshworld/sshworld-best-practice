@@ -52,6 +52,7 @@ scripts/
 ├── plan-dev-session.sh       # plan-dev 세션 marker 관리 (start/query/clear)
 ├── plan-dev-progress.sh      # plan-dev 진행률 cmux push 헬퍼 (start/tick/show)
 ├── finish-plan-dev.sh        # develop/main 분기 push 자동화 + marker clear
+├── reap-agents.sh            # 자식 계보 원장(record) + 회수(reap/audit) — 원천 보존, 자식만 정리
 ├── trust-dir.sh              # 자식 worktree trust 자동 시딩 — cross-machine bypass (hasTrustDialogAccepted)
 ├── release.sh                # 릴리즈 자동화 — draft/publish/backfill (버전 bump+태그+push+gh release)
 ├── merge-settings.sh         # settings.json 병합 헬퍼 — allow/deny union + hooks dedup (idempotent install)
@@ -168,6 +169,22 @@ claude plugin prune                        # 고아 플러그인 일괄 정리
 13. **Goal Statement**: plan 의 `## Goal Statement` — Phase 1-1 Acceptance criteria 를 측정가능 form(`<!-- machine-checks -->` bash one-liner) 으로 옮긴 것. Phase 3 Verify 에서 모델이 직접 실행해 완료 판정.
 14. **자식 surface 자동 cleanup** (Phase 5 끝): `finish-plan-dev.sh` 가 push 성공 직후 cmux 자식 surface (`cbp-*` 등 state file 등록 surface) 일괄 close. 사용자 수동 정리 0.
 15. **cross-WS dead orphan 자동 정리**: `plan-dev-session.sh start`(Phase 0) 및 `finish-plan-dev.sh`(Phase 5) 가 best-effort 로 `cmux-pane.sh reap-orphans` 를 호출 — 이전 세션이 finish 없이 종료해 잔존하는 dead 자식 surface 를 모든 `~/.cache/cbp/children-*.json` 에 걸쳐 회수. 살아있는 타 세션 자식은 보호, self surface 제외. 우회: `SKIP_CMUX_REAP=1`.
+
+### 자식 회수 — `scripts/reap-agents.sh`
+
+cmux surface · tmux pane · background 세션 · subagent 를 **띄운 곳(원천)이 거둔다.**
+
+```bash
+scripts/reap-agents.sh audit          # 원장 + 세션 현황 (회수 안 함)
+scripts/reap-agents.sh reap           # dry-run (기본)
+scripts/reap-agents.sh reap --apply   # 내 자식만 회수
+scripts/reap-agents.sh reap --apply --orphans   # 부모가 죽은 고아 원장까지
+```
+
+- **왜 필요한가**: Claude 세션 레코드(`~/.claude/sessions/<pid>.json`)에는 **부모 필드가 없다.** spawn 시점에 기록하지 않으면 계보를 알 수 없어 회수가 전역 스윕(`reap-orphans`)으로 밀리고, 그게 남의 surface·자기 자신을 닫는 사고를 낸다.
+- **원장**: `${CBP_LEDGER_DIR:-~/.cache/cbp/ledger}/<origin>.jsonl`. `dispatch-slice-pane.sh` 가 자식을 띄울 때 자동 기록 (`SKIP_SPAWN_LEDGER=1` 우회).
+- **자기 보호가 구조로 보장**: `record` 가 자기 surface·조상 pid 를 **기록 자체를 거부** → 원장에 자신이 없으니 회수 대상이 될 수 없다. `reap` 은 타 세션 원장을 기본으로 안 건드리고, `--orphans` 여도 **origin 이 살아있으면 보존**한다.
+- 기본 dry-run. `REAP_AGENTS_DRY_RUN=1` 은 `--apply` 도 무력화.
 
 ### 보조 — `/architecture-trace`
 

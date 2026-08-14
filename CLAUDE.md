@@ -41,6 +41,8 @@
 - ❌ 검증용 단순 curl / sleep 단독 호출 — Bash 자동 background 진입으로 동기 결과 못 받음. `timeout 5 curl ...` 또는 cmux browser eval 사용.
 - ❌ 테스트에 now 와의 관계를 가정한 절대 날짜 리터럴(2026-01-01 식 start_ts 등) — 시점 지나면 rot. now-offset(relative)으로.
 - ❌ 병렬 슬라이스 통합 시 worktree 점유 브랜치를 rebase 시도 / rebase+cleanup 을 한 `&&` 체인에 — 중간 실패가 미머지 브랜치를 삭제. worktree remove 먼저, cleanup 은 머지 후. disjoint 슬라이스(파일 비충돌)는 rebase 말고 `cherry-pick` 권장.
+- ❌ 자식(cmux surface / tmux pane / bg 세션 / subagent)을 띄우고 **계보를 기록하지 않기** — Claude 세션 레코드엔 부모 필드가 없어서(2026-08-14 실측) spawn 시점에 안 적으면 "누가 내 자식인가" 를 영영 알 수 없고, 회수가 전역 스윕으로 밀린다. spawn=`reap-agents.sh record`, 회수=`reap-agents.sh reap`. **원천은 보존, 자식만 회수.** 📎 [계약](./commands/plan-dev/troubleshooting-dispatch.md)
+- ❌ `_pid_chain | grep -qx "$pid"` 로 자기 보호 판정 — `grep -q` 가 매치 즉시 파이프를 닫아 SIGPIPE(141)가 나고 `set -o pipefail` 이 그걸 파이프라인 결과로 삼아 **매치했는데 거짓**이 된다(자기 보호가 조용히 꺼짐). 파이프 없는 루프로 판정할 것.
 - ❌ 실제 cmux/tmux 를 건드리는 스크립트(`finish-plan-dev.sh` 의 `do_cmux_cleanup` 등)를 테스트에서 우회 선언 없이 실행 — 가드가 `CMUX_WORKSPACE_ID` 존재뿐이라 dispatch 자식 안에서 돌면 자기/형제 surface 를 닫는다(= 자식 자살, 2026-08-13 실측). 해당 스위트는 `export SKIP_PLAN_DEV_CMUX_CLEANUP=1` + `export SKIP_CMUX_REAP=1` 필수. 📎 [진단](./commands/plan-dev/troubleshooting-dispatch.md)
 - ❌ 영속되어야 할 문서를 `.claude/` 아래 두기 — 이 repo 조차 `.gitignore` 에 `.claude/specs/*.spec.md` 가 있고, 회사 repo 는 `.claude/` 를 통째로 ignore 하는 경우가 흔하다. 영속성이 목적인 파일은 `docs/` 로 (개인 vault 도 안 됨 — 코드와 갱신 트리거가 끊겨 rot).
 - ❌ 필수 동작을 선택 단계(`Phase 3.5 — Review (선택)` 등) 안에 배치 — 그 단계를 건너뛰는 세션이 필수 동작을 같이 건너뛴다. 필수는 필수 단계에 (실측 write-back 을 3.5 → 4-0 으로 옮긴 이유).
