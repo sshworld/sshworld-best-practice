@@ -21,19 +21,27 @@ set -u
 [ "${DISABLE_SLICE_DONE_NOTIFY:-0}" = "1" ] && exit 0
 [ "${SKIP_SLICE_DONE_NOTIFY:-0}" = "1" ] && exit 0
 
-[ -z "${CMUX_WORKSPACE_ID:-}" ] && exit 0
+# 게이트 1 — 비-cmux 는 통지 대상이 없다. 이것만 남긴다.
+if [ -z "${CMUX_WORKSPACE_ID:-}" ]; then
+  [ "${CBP_NOTIFY_DEBUG:-0}" = "1" ] && echo "notify-slice-done: skip — CMUX_WORKSPACE_ID 없음" >&2
+  exit 0
+fi
 
-GIT_DIR=$(git rev-parse --git-dir 2>/dev/null) || exit 0
-GIT_COMMON=$(git rev-parse --git-common-dir 2>/dev/null) || exit 0
-[ "$GIT_DIR" = "$GIT_COMMON" ] && exit 0
-
-TOPLEVEL=$(git rev-parse --show-toplevel 2>/dev/null) || exit 0
-case "$TOPLEVEL" in
-  */.worktrees/*) ;;
-  *)
-    [ "${CBP_NOTIFY_ANY_WORKTREE:-0}" = "1" ] || exit 0
-    ;;
-esac
+# ⚠️ 여기 있던 git 게이트 3개(비-git / GIT_DIR==GIT_COMMON / TOPLEVEL 이
+# */.worktrees/* 아님)를 제거했다. 그 셋 때문에 marker 가 **linked worktree
+# 안에서만** 기록됐고, 비-git·일반 체크아웃에서는 조용히 아무것도 안 남아
+# reap fast-path·reap-on-stop·wait-idle 폴백이 동시에 죽었다.
+# 경로 계산은 writer/reader 공용 리졸버로 단일화한다.
+# dirname 등 외부 명령을 쓰지 않는다 — PATH 가 최소화된 환경(jq 부재 테스트 등)에서
+# 경로 계산이 깨져 훅 전체가 조용히 죽는다.
+_RESOLVER="${BASH_SOURCE[0]%/*}/../scripts/cbp-marker-path.sh"
+if [ -r "$_RESOLVER" ]; then
+  # shellcheck source=/dev/null
+  . "$_RESOLVER"
+else
+  [ "${CBP_NOTIFY_DEBUG:-0}" = "1" ] && echo "notify-slice-done: skip — 리졸버 없음: $_RESOLVER" >&2
+  exit 0
+fi
 
 payload=$(cat)
 
@@ -69,12 +77,15 @@ if ! "${CMUX_BIN:-cmux}" notify --title "$title" --workspace "$CMUX_WORKSPACE_ID
 fi
 
 if [ "$verdict" = "✅" ] || [ "$verdict" = "❌" ]; then
-  common_abs=$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null)
-  [ -n "$common_abs" ] || common_abs=$(cd "$GIT_COMMON" 2>/dev/null && pwd)
-  if [ -n "$common_abs" ]; then
-    branch_sanitized=$(printf '%s' "$branch" | tr '/' '_')
-    marker="${common_abs}/cbp-slice-done-${branch_sanitized}"
+  marker_dir=$(cbp_marker_dir)
+  if [ -n "$marker_dir" ] && [ -d "$marker_dir" ]; then
+    # 접미사 키: git 이면 branch, 비-git 이면 surface ref 폴백 (비-git 엔 branch 가 없다)
+    marker_key=$(cbp_marker_key)
+    marker="${marker_dir}/cbp-slice-done-${marker_key}"
     printf '%s\n%s\n' "${CBP_SELF_PANE:-${CMUX_SURFACE_ID:-}}" "${CMUX_WORKSPACE_ID}" > "$marker" 2>/dev/null || true
+    [ "${CBP_NOTIFY_DEBUG:-0}" = "1" ] && echo "notify-slice-done: marker=$marker" >&2
+  else
+    [ "${CBP_NOTIFY_DEBUG:-0}" = "1" ] && echo "notify-slice-done: marker dir 해석 실패" >&2
   fi
 fi
 
