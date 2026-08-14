@@ -123,6 +123,15 @@ HB=$(bash -c "source '$RESOLVER'; cbp_mask_volatile < '$SCR_B'" 2>/dev/null)
 [ -n "$HA" ] || fail "_cbp_mask_volatile 가 없거나 출력이 비었음"
 [ "$HA" = "$HB" ] || fail "변동 라인 마스킹 실패:\n--- A ---\n$HA\n--- B ---\n$HB"
 
+step 10b "본문의 초 단위는 마스킹하지 않는다 — 상태줄에서만"
+SCR_D="$TMP/d.txt"; SCR_E="$TMP/e.txt"
+printf '✻ Cogitated for 1m 2s\n테스트 42s 소요\n' > "$SCR_D"
+printf '✻ Cogitated for 9m 9s\n테스트 58s 소요\n' > "$SCR_E"
+HD=$(bash -c "source '$RESOLVER'; cbp_mask_volatile < '$SCR_D'" 2>/dev/null)
+HE=$(bash -c "source '$RESOLVER'; cbp_mask_volatile < '$SCR_E'" 2>/dev/null)
+[ "$HD" = "$HE" ] && fail "본문의 초 단위 변화를 마스킹이 삼켰다 — 진행 중인데 idle 로 오판한다:\n$HD"
+printf '%s' "$HD" | grep -q '42s' || fail "본문 42s 가 마스킹됨: $HD"
+
 step 11 "본문이 다르면 다른 결과 — 과잉 마스킹 방지"
 SCR_C="$TMP/c.txt"
 sed 's/작업 내용 동일/작업 내용 변경됨/' "$SCR_A" > "$SCR_C"
