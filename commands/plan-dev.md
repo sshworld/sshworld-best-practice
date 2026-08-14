@@ -10,7 +10,6 @@ argument-hint: <짧은 요구사항 한 줄>
 요청: $ARGUMENTS
 
 ## Phase 0 — Session Start (자동)
-
 세션 시작 직후 **즉시** 실행:
 ```bash
 ${CLAUDE_PLUGIN_ROOT}/scripts/plan-dev-session.sh start
@@ -21,7 +20,6 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/plan-dev-session.sh start
 - 우회: `SKIP_PLAN_DEV_FINISH=1` (Phase 5 skip) / detached HEAD 시 exit 2 → 사용자 안내 후 중단.
 
 ## Phase 1 — Plan & Slice
-
 > **🚨 절대 규칙**: plan mode 안에서 작성하고 ExitPlanMode 로 사용자 승인을 받는다.
 
 ### 1-0. Explore (필수, 30초~2분)
@@ -47,7 +45,7 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/plan-dev-session.sh start
 > 💡 **Phase 1-1 ↔ Phase 1-2 연결**: 1-1 의 Acceptance criteria 가 1-2 의 Goal Statement 의 source. 같은 항목을 측정 가능 form (grep/test/명령) 으로만 transform.
 
 ### 1-1.5. 설계 문서 작성 + 승인
-조건부 블록(원인분석 / 구조 델타 / 결정 갈림길 / 기준선) 중 **하나라도 필요하면** `docs/design/<slug>.md` 를 먼저 쓰고 AskUserQuestion 으로 승인 → **2게이트**(설계 승인 → plan 승인). 전부 불필요하면 **fast path**(1게이트). commit type 으로 가르지 않는다. `hotfix` 는 착수 전 **골격만**(증상+가설+즉시조치) 승인하고 원인분석·재발방지는 사후. 승인 후 `${CLAUDE_PLUGIN_ROOT}/scripts/plan-dev-session.sh set-design <절대경로>` 로 latch (Phase 5 게이트 입력). 판정 기준·절차·하네스 한계는 ➜ [설계 문서 가이드](./plan-dev/design-doc.md).
+조건부 블록(원인분석 / 구조 델타 / 결정 갈림길 / 기준선) 중 **하나라도 필요하면** `docs/design/<slug>.md` 를 먼저 쓰고 AskUserQuestion 으로 승인 → **2게이트**(설계 승인 → plan 승인). 전부 불필요하면 **fast path**(1게이트). commit type 으로 가르지 않는다. `hotfix` 는 착수 전 **골격만**(증상+가설+즉시조치) 승인하고 원인분석·재발방지는 사후. 작성 직후 `open <설계문서 경로>` 로 **사용자 화면에 띄운다** — 못 본 상태의 승인은 승인이 아니다. 승인 후 `${CLAUDE_PLUGIN_ROOT}/scripts/plan-dev-session.sh set-design <절대경로>` 로 latch (Phase 5 게이트 입력). 판정 기준·절차·하네스 한계는 ➜ [설계 문서 가이드](./plan-dev/design-doc.md).
 
 ### 1-2. EnterPlanMode → plan 파일 작성
 필수 섹션: **설계 문서 링크**(1-1.5 산출물, fast path 면 Context 한 단락으로 대체) / Explored Files / Assumptions / Vertical Slices / **Slice File Map** / **동작 스펙 (Behavior Spec)** / Verification / **Goal Statement**. plan 의 독자는 implementor/자식 surface — 사람이 판단할 내용은 설계 문서에 두고 plan 엔 링크만.
@@ -117,6 +115,8 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/plan-dev-progress.sh start --total=<N>
 > **진단 기록 가이드**: Phase 2 진행 중 발견한 진단·결정·우회는 plan 파일 (200줄 한도면 별도 `<plan>-notes.md`) 에 즉시 기록. 세션이 중간에 끊겨도 다음 세션이 1턴 만에 컨텍스트 복원 가능.
 
 **의존성 없는 슬라이스는 병렬, 의존 있으면 순차** — subagent(`Agent` 호출, `run_in_background=true`, `isolation="worktree"`)든 dispatch(cmux/tmux)든 **감시 루프 시작 전에 전부 dispatch**(launch lock 이 동시 호출 race 방지, dispatch→회수→다음 dispatch 순차 진행은 병렬 이점 소멸). implementor 는 `<type>/<slug>` worktree 에서 Red→Green→Refactor 후 `✅` 리턴.
+
+> 🚨 **dispatch 후 감시는 의무다.** 통지 체인(done-marker → reap fast-path → `reap-on-stop`)은 **조용히 실패할 수 있다** — 실측: 자식 4개가 전부 완료했는데 부모가 받은 통지 0건. 감시 루프나 백그라운드 watch 를 걸지 않은 채 턴을 종료하지 말 것.
 
 **implementor 실패 시 (`❌` 리턴):**
 1. Rewind → 재시도 (자동, 1회).
