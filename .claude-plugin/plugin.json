@@ -1,6 +1,6 @@
 {
   "name": "sshworld",
-  "version": "1.11.1",
+  "version": "1.11.2",
   "description": "Plan-driven TDD dev workflow: Phase 0~6, cmux/tmux dispatch, vertical slices.",
   "author": {
     "name": "sshworld"
