@@ -395,6 +395,20 @@ main() {
     fi
   fi
 
+  # 비-git 판정은 DRY_RUN 출력보다 **먼저** — dry-run 이 실제 결정과 같은 값을 내야 한다.
+  #
+  # 비-git 디렉토리(문서 트리·Obsidian vault 등)에서는 worktree 격리가 불가능하다.
+  # 예전엔 `git worktree add` 가 실패해 하드 종료했고 우회(--worktree) 안내도 없어,
+  # 비-git 대상에는 문서화된 경로로 dispatch 자체가 불가능했다. 격리는 목적이 아니라
+  # **슬라이스간 파일 충돌 방지 수단**이고 그 충돌은 plan 의 Slice File Map 이 관리한다.
+  local _IS_GIT=1
+  git rev-parse --git-dir >/dev/null 2>&1 || _IS_GIT=0
+  if [ "$_IS_GIT" = "0" ] && [ -z "$WORKTREE" ]; then
+    WORKTREE="$PWD"
+    echo "dispatch: 비-git 디렉토리 — worktree 격리 없이 현재 경로로 진행합니다." >&2
+    echo "  슬라이스가 같은 파일을 쓰면 충돌합니다. plan 의 Slice File Map 을 확인하세요." >&2
+  fi
+
   # DRY_RUN: worktree 생성 없이 결정 JSON 만 출력
   if [ "${DISPATCH_DRY_RUN:-0}" = "1" ]; then
     local worktree_path="${WORKTREE:-.worktrees/$SLICE}"
@@ -413,10 +427,10 @@ main() {
     _dispatch_maybe_cleanup "$WRAPPER"
   fi
 
-  # worktree 결정 / 생성
+  # worktree 결정 / 생성 (비-git 판정은 위 DRY_RUN 앞에서 이미 끝났다)
   [ -z "$WORKTREE" ] && WORKTREE=".worktrees/$SLICE"
 
-  if [ ! -d "$WORKTREE" ]; then
+  if [ "$_IS_GIT" = "1" ] && [ ! -d "$WORKTREE" ]; then
     # 호환성: 기존 slice/<kebab> 브랜치가 있으면 그것을 재사용, 없으면 <type>/<kebab> 신규 생성
     if git show-ref --verify --quiet "refs/heads/slice/$SLICE"; then
       git worktree add "$WORKTREE" "slice/$SLICE" >&2 || die "worktree add 실패 (기존 slice/ 브랜치)"

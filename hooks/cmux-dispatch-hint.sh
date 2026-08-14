@@ -18,7 +18,7 @@ cat <<'EOF'
   direct-edit 가 정말 필요하면(dispatch 자체가 불가한 환경 등 진짜 예외) out-of-band escape:
     CMUX_DIRECT_EDIT_OK=1 <명령>  — ExitPlanMode 게이트(enforce-cmux-dispatch) 1회 통과.
 - 자식 surface 는 cmux 사이드바에서 사용자가 직접 진행 시각화. 회수: ${CLAUDE_PLUGIN_ROOT}/scripts/cmux-pane.sh
-  wait-idle → read-screen | grep ✅/❌.
+  wait-idle → capture | grep ✅/❌.
 - 비-cmux 환경이면 이 안내는 안 뜸 (direct-edit 기본 유지).
 EOF
 exit 0

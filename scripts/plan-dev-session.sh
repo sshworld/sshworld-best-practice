@@ -133,6 +133,12 @@ resolve_base_branch() {
 # subcommand: start
 # ─────────────────────────────────────────
 do_start() {
+  # git 여부는 **여기서** 판정한다.
+  # 예전엔 marker_path() 안의 die 로 처리했는데, 그 함수는 항상 command
+  # substitution 안에서 호출돼 die 가 서브셸만 죽였다 → 본체가 계속 진행해
+  # 뒤의 detached HEAD 분기까지 타서 사실과 다른 진단을 출력했다.
+  git rev-parse --git-common-dir >/dev/null 2>&1 || die "git repo 가 아님"
+
   local base_arg="" quiet=0 total=0
 
   for arg in "$@"; do
