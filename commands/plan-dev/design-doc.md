@@ -135,13 +135,24 @@ slice 는 이 아래의 하위층(구현 편의 분해)이다. 판정 순서:
 ```
 ---
 config:
-  layout: elk          # Obsidian mermaid 11.4.1 확인됨. GitHub 에서 다이어그램이 에러로 뜨면 이 줄 삭제
+  layout: elk          # 렌더러가 elk 를 등록했을 때만 적용. 아니면 조용히 dagre 로 폴백 — 아래 실측 참조
   flowchart:
     nodeSpacing: 60
     rankSpacing: 90    # 여백 체감 대부분이 여기서 나온다 (기본 50)
     curve: stepBefore
 ---
 ```
+
+**렌더러별 실측 (2026-08-14, 같은 그래프 A/B)**
+
+| 렌더러 | elk 등록 | 결과 |
+|---|---|---|
+| Obsidian (`mermaid@11.4.1` + `registerLayoutLoaders`) | O | `flowchart LR` 이 지켜져 **가로 814×376 (비 2.16)** — subgraph 두 개가 나란히 |
+| GitHub | **X** | 조용히 dagre 폴백 → **세로 426×1395 (비 0.31)** — LR 무시, 길게 늘어짐 |
+
+**에러로 뜨지 않는다 — 조용히 나빠진다.** 그래서 "깨지면 지워라" 로는 못 잡는다. 인수인계처럼 GitHub 에서 읽힐 문서라면 subgraph 두 개를 나란히 놓는 구성 자체를 피하고, 다이어그램을 둘로 쪼개는 편이 안전하다.
+
+**라벨에 `<` `>` 금지** — mermaid 가 HTML 태그로 먹어 통째로 사라진다. 실측: `docs/design/&lt;slug&gt;.md` → `docs/design/.md` 로 렌더됨. **`docs/design/[slug].md` 처럼 대괄호를 쓴다.**
 
 - 원본/렌더 분리: mermaid 가 in-repo **원본(진실)**. SVG/FigJam 렌더는 마일스톤 opt-in. **둘이 어긋나면 텍스트가 진실.**
 

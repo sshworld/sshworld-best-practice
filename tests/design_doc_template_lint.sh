@@ -36,8 +36,17 @@ for kw in "rankSpacing" "nodeSpacing" "layout: elk"; do
   grep -F -- "$kw" "$TPL" > /dev/null || fail "design-doc.md missing mermaid config: $kw"
 done
 
-step 6 "elk GitHub 제거 안내"
-grep -F "GitHub" "$TPL" > /dev/null || fail "design-doc.md missing GitHub 언급 (elk 제거 안내)"
+step 6 "렌더러별 elk 실측 안내 (GitHub 은 조용히 dagre 폴백)"
+grep -F "GitHub" "$TPL" > /dev/null || fail "design-doc.md missing GitHub 언급 (렌더러별 실측)"
+grep -F "dagre" "$TPL" > /dev/null || fail "design-doc.md missing dagre 폴백 실측 — '깨지면 지워라' 는 조용한 열화를 못 잡는다"
+
+step 6b "라벨에 <> 금지 규칙 — mermaid 가 HTML 태그로 먹는다"
+grep -F "[slug]" "$TPL" > /dev/null || fail "design-doc.md missing 대괄호 라벨 권장 ([slug])"
+# 실측: 라벨 안 <slug> 는 'docs/design/.md' 로 렌더되어 slug 가 사라진다.
+# 산문에서는 이 문자열을 예시로 언급할 수 있으므로 **mermaid 펜스 안쪽만** 검사한다.
+_MFENCE=$(awk '/^```mermaid$/{f=1;next} /^```$/{f=0} f' "$REPO/docs/design/plan-presentation.md")
+printf '%s' "$_MFENCE" | grep -F "&lt;" > /dev/null \
+  && fail "plan-presentation.md 의 mermaid 라벨에 <> 잔존 — 렌더 시 통째로 사라진다 ([slug] 로 교체)"
 
 step 7 "노드 수 상한 규칙 없음 — 엣지 교차 기준 존재"
 grep -F "노드 5개" "$TPL" > /dev/null && fail "design-doc.md 에 '노드 5개' 상한 규칙 잔존"
