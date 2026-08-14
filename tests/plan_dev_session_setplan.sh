@@ -9,6 +9,12 @@
 
 set -uo pipefail
 
+# ⚠️ 이 스위트는 plan-dev-session.sh start 를 실제 실행한다. start 는 cmux 환경
+# (CMUX_WORKSPACE_ID set)이면 best-effort 로 실제 `cmux-pane.sh reap-orphans` 를
+# 호출한다 — 전 workspace 의 자식 state 를 훑어 dead 판정 surface 를 닫는다.
+# plan-dev 세션 중 이 테스트를 돌리면 살아있는 자식 surface 가 회수될 수 있다.
+export SKIP_CMUX_REAP=1
+
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SCRIPT="$REPO/scripts/plan-dev-session.sh"
 
