@@ -27,7 +27,7 @@ flowchart LR
     B --> C["③ plan 폐기<br/>(자산 안 남음)"]
   end
   subgraph 이후["이후"]
-    D["④ 설계 문서<br/>docs/design/&lt;slug&gt;.md<br/>(사람용, 영속)"] --> E["⑤ plan 파생<br/>(기계 물류 전용)"]
+    D["④ 설계 문서<br/>docs/design/[slug].md<br/>(사람용, 영속)"] --> E["⑤ plan 파생<br/>(기계 물류 전용)"]
     E --> F["⑥ slice 완료"]
     F --> G["⑦ plan 폐기"]
     F -.write-back.-> D
@@ -62,4 +62,5 @@ flowchart LR
 | 실측 write-back 강제 (Phase 5) | latch + 실측 미기입 시 push 차단, 선택지 제시 | `tests/plan_dev_design_latch.sh` T1~T13 OK |
 | 코어 200줄 캡 유지 | `commands/plan-dev.md` ≤ 200 | 200줄 (상세는 `plan-dev/design-doc.md` 로 이관) |
 | 기존 테스트 무회귀 | 전 스위트 계속 통과 | 86개 실행, 실패 0 (게이트 도입으로 `finish` 계열 5개 스위트에 `DISABLE_DESIGN_DOC_GATE=1` 선언 추가 — 계약 변경 반영) |
-| mermaid elk 실렌더 여백 개선 | Obsidian 에서 `rankSpacing: 90` + elk 정렬 육안 확인 | **미검증 — 재발 감시 중** (번들에 `mermaid@11.4.1` + `registerLayoutLoaders`/`elk` 존재는 확인, 실제 렌더 육안 확인은 사용자 몫. GitHub 은 elk 미등록 가능 → 템플릿에 제거 안내 주석) |
+| mermaid elk 실렌더 여백 개선 | Obsidian 에서 `rankSpacing: 90` + elk 정렬 육안 확인 | **검증 완료 (2026-08-14, 브라우저 A/B + GitHub 실렌더 스크린샷)**. elk 적용 시 `flowchart LR` 유지 — **814×376 (비 2.16)**, subgraph 두 개가 나란히. elk 미등록(=GitHub) 시 dagre 폴백 — **426×1395 (비 0.31)**, LR 무시하고 세로로 늘어짐. **에러가 아니라 조용한 열화**라 "깨지면 지워라" 안내로는 못 잡는다 → 안내를 실측 표로 교체 |
+| 다이어그램 라벨 정확성 | 노드 라벨이 소스대로 렌더 | **결함 발견·수정.** `docs/design/&lt;slug&gt;.md` 가 `docs/design/.md` 로 렌더됨 — mermaid 가 `<slug>` 를 HTML 태그로 먹는다. `[slug]` 로 교체하고 규약에 금지 명시 |
