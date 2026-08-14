@@ -1,5 +1,26 @@
 # dispatch 진단 가이드 (문제 발생 시)
 
+## 계보 원장 · 회수 계약 (`scripts/reap-agents.sh`)
+
+**전제**: Claude 세션 레코드(`~/.claude/sessions/<pid>.json`)에는 **부모 필드가 없다** (2026-08-14 실측 — `pid`/`sessionId`/`cwd`/`kind`/`status` 뿐). 데몬 로그의 `spawned-by` 는 데몬 실행자이지 세션 계보가 아니다. 즉 **spawn 시점에 우리가 기록하지 않으면 "누가 내 자식인가" 를 영영 알 수 없고**, 회수는 전역 스윕(`reap-orphans`)에 의존하게 된다 — 그게 자기·형제 surface 를 닫던 사고의 뿌리다.
+
+**계약**:
+
+| 시점 | 동작 |
+|---|---|
+| spawn | `reap-agents.sh record --kind=<cmux\|tmux\|bg\|subagent> --ref=<ref>` — `dispatch-slice-pane.sh` 가 자동 호출 (`SKIP_SPAWN_LEDGER=1` 우회) |
+| 회수 | `reap-agents.sh reap [--apply] [--orphans]` — **원장에 적힌 것만** 회수 |
+| 감사 | `reap-agents.sh audit` — 회수 없이 원장 + 세션 현황만 |
+
+원장 경로는 `${CBP_LEDGER_DIR:-~/.cache/cbp/ledger}/<origin>.jsonl`, `origin` 은 부모 세션 id.
+
+**자기 보호가 구조로 보장된다**:
+- `record` 는 자기 surface(`CMUX_SURFACE_ID`/`CBP_SELF_PANE`)와 조상 pid 를 **기록 자체를 거부**한다 → 원장에 자신이 없으니 회수 대상이 될 수 없다.
+- `reap` 은 타 세션 원장을 기본으로 건드리지 않고, `--orphans` 를 줘도 **origin 이 살아있으면 보존**한다(원천 보존). origin 이 죽은 원장만 고아로 간주해 정리한다.
+- 기본이 dry-run. `--apply` 를 줘야 실제로 나가고, `REAP_AGENTS_DRY_RUN=1` 이 그마저 무력화한다.
+
+**비자명 함정 (구현 중 실측)**: 조상 pid 판정을 `_pid_chain | grep -qx "$pid"` 로 쓰면 안 된다. `grep -q` 가 매치 즉시 파이프를 닫아 `_pid_chain` 이 SIGPIPE(141)로 죽고, `set -o pipefail` 이 그 실패를 파이프라인 결과로 삼아 **매치했는데 조건이 거짓**이 된다 — 자기 보호가 조용히 꺼지는 형태다. 파이프 없는 루프(`_is_ancestor_pid`)로 판정한다.
+
 ## 자식이 작업 중반에 죽는다 — 자식 자살 (2026-08-13 원인 확정)
 
 **증상**: 자식이 정상 작업하다 특정 Bash 호출 직후 응답 없이 사라진다. surface 가 `capture` 에서 `not_found`, 심하면 **형제 자식까지 동시에** 사라진다. 부분 산출물은 worktree 에 남는다.
