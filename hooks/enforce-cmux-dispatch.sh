@@ -49,13 +49,18 @@ PLAN=$(printf '%s' "$PAYLOAD" | python3 -c "import json,sys; d=json.load(sys.std
 
 # 표셀 direct-edit 매치: 파이프로 감싸진 셀에서만 탐지 (산문 오탐 회피)
 if printf '%s' "$PLAN" | grep -Eq '\|[^|]*direct-edit[^|]*\|'; then
-  cat >&2 <<'EOF'
+  # 안내 경로는 **훅이 실제로 소비하는 변수를 그대로 출력**한다.
+  # 예전엔 여기서 경로를 하드코딩해, 비-git 폴백의 `-<sanitized WS>` 접미사가 빠진
+  # 안내가 나갔다. 그대로 touch 하면 훅이 절대 보지 않는 파일이 생겨 재시도해도
+  # 같은 자리에서 다시 차단됐다 (실측으로 밟은 함정).
+  cat >&2 <<EOF
 🛑 [enforce-cmux-dispatch] cmux 환경 plan 의 Slice File Map 에 direct-edit Mode 발견.
    cmux 는 dispatch(cmux) 기본 — 슬라이스를 dispatch-slice-pane.sh --mode=cmux 로 돌려라.
    정말 direct-edit 가 맞으면(정책/문서/하네스 파일 자체 편집 등) 의식적으로 선언:
      CMUX_DIRECT_EDIT_OK=1 <명령>   — 이번 plan 1회 통과
-   또는 skip-once marker-file (git repo 면 git-common-dir, 아니면 $HOME/.cache/cbp 폴백):
-     touch "$(git rev-parse --git-common-dir 2>/dev/null || echo "$HOME/.cache/cbp")/cbp-skip-once-cmux-dispatch"
+   또는 skip-once marker-file (이 훅이 실제로 소비하는 경로):
+     touch "\$_SKIP_ONCE_FILE"
+     # 현재 값: $_SKIP_ONCE_FILE
    우회:
      SKIP_CMUX_DISPATCH_GATE=1          — 1회 우회
      DISABLE_CMUX_DISPATCH_GATE_HOOK=1  — 영구 비활성
