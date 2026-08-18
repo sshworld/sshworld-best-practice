@@ -42,4 +42,18 @@ grep -F "set-design" "$PLAN" > /dev/null || fail "'set-design' 안내 없음"
 step 9 "회귀: plan-dev_mode_lint.sh"
 bash "$REPO/tests/plan-dev_mode_lint.sh" | tail -1 | grep -F "OK" > /dev/null || fail "plan-dev_mode_lint.sh 회귀 실패"
 
+
+# --- 이하 step 은 합본($PLAN)이 아니라 plan-dev.md 만 검사한다.
+# 격리 worktree 에는 형제 슬라이스(design-doc.md 등)의 변경이 없기 때문.
+PLAN_ONLY="$REPO/commands/plan-dev.md"
+
+step 10 "에러 정책 규칙 — 계약의 중단 경로는 동작 스펙에 테스트 케이스가 있어야 한다"
+grep -F "에러 정책" "$PLAN_ONLY" > /dev/null || fail "plan-dev.md 에 '에러 정책' 규칙 없음"
+
+step 11 "Slice File Map 은 머지 물류 — 계약과 구분"
+grep -F "머지 물류" "$PLAN_ONLY" > /dev/null || fail "plan-dev.md 에 'File Map = 머지 물류' 구분 문장 없음"
+
+step 12 "1-1.5 가 인터페이스 계약을 지시"
+grep -F "인터페이스 계약" "$PLAN_ONLY" > /dev/null || fail "plan-dev.md 1-1.5 에 '인터페이스 계약' 지시 없음"
+
 echo "OK"

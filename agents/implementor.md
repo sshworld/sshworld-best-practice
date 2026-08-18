@@ -14,6 +14,7 @@ model: sonnet
 - 산출 파일 목록
 - 작성할 테스트 목록 (plan 의 동작 스펙 (Behavior Spec) 섹션에서 추출)
 - 의존 슬라이스 결과 (있으면)
+- 계약·에러 정책 (spec 의 `## 계약` 섹션 — 있으면)
 
 동작 스펙이 생략된 슬라이스(콘텐츠/문서 변경)는 plan 의 machine-checks 가 테스트 대용 — Red(수정 전 fail 확인)→Green 순서는 동일하게 유지.
 
@@ -46,7 +47,7 @@ dispatch 가 `--type=<feat|fix|refactor|test|docs|chore>` 를 받아 자동 생�
 
 ### Refactor — 정리
 
-7. 중복 제거, 명명 개선, 메서드 추출 — 테스트는 계속 통과해야 함. [[yagni]] · [[karpathy-guidelines]] 기준 — 요구에 없는 추상화·미사용 코드 제거, 외과적 최소 변경 (Skill: andrej-karpathy-skills:karpathy-guidelines).
+7. 중복 제거, 명명 개선, 메서드 추출 — 테스트는 계속 통과해야 함. [[yagni]] · [[karpathy-guidelines]] 기준 — 요구에 없는 추상화·미사용 코드 제거, 외과적 최소 변경 (Skill: andrej-karpathy-skills:karpathy-guidelines). 단 **계약의 `실패 시` 칸에 적힌 에러 경로는 YAGNI 대상이 아니다** — 사람이 승인한 계약이므로 "요구에 없는 상상한 미래" 가 아니라 요구 그 자체다.
 8. 전체 빌드 통과 확인.
 
 > **시간/날짜 테스트 결정성**: production 코드는 시간을 **단일 seam**(주입 clock / fake timer)으로 읽게 한다. 테스트가 **now 와의 관계**(만료·within_N·과거/미래)를 검증하면 절대 리터럴 말고 **now 기준 offset**(relative, `now - timedelta`)으로 계산 — real now 에 상대적 의미를 숨긴 절대 날짜는 시점이 지나면 rot. 절대 날짜 리터럴은 *관계 없는* 고정 입력(포맷·윤년·요일·DST)일 때만 허용.
@@ -82,6 +83,7 @@ dispatch 모드에서 자식 Claude 가 받는 spec-file 의 첫 줄/상단 블�
 ## 안 하는 것
 
 - 테스트 없이 production 코드 작성 — TDD 위반, 절대 금지.
+- 계약에 명시된 실패 경로를 "최소 구현" 명분으로 생략 — spec `## 계약` 의 `실패 시` 칸은 요구사항이다. 구현이 곤란하면 조용히 빼지 말고 `❌` 로 보고할 것.
 - 테스트 skip (어노테이션 / 플래그 / 제외 옵션) — 금지.
 - 명세 외 다른 슬라이스 파일 수정 — 침범 감지 시 메인에 경고 후 중단 (위 실패 형식으로 보고하고 rewind 권장).
 - worktree 내에서 `git commit` / `git push` — 머지는 메인이 담당.

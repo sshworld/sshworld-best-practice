@@ -76,4 +76,28 @@ grep -F -- ".claude/design" "$TPL" > /dev/null || fail "design-doc.md 에 기본
 grep -F -- "개인" "$TPL" > /dev/null || fail "design-doc.md 에 '개인 기록' 프레이밍 없음"
 grep -F -- "CBP_DESIGN_DIR" "$TPL" > /dev/null || fail "design-doc.md 에 CBP_DESIGN_DIR override 설명 없음"
 
+
+step 13 "인터페이스 계약 블록 이름"
+grep -F "인터페이스 계약" "$TPL" > /dev/null || fail "design-doc.md missing 블록: 인터페이스 계약"
+
+step 14 "계약 4칸 헤더"
+for kw in "제공자" "소비자" "시그니처·불변식·소유권" "실패 시"; do
+  grep -F -- "$kw" "$TPL" > /dev/null || fail "design-doc.md missing 계약 칸: $kw"
+done
+
+step 15 "계약 행 + 생략 표기"
+grep -F "계약 생략(슬라이스 1개)" "$TPL" > /dev/null || fail "design-doc.md missing 계약 생략 표기"
+
+step 16 "계약은 게이트 트리거가 아니다 — 트리거 열거는 4개 유지"
+# (0) 게이트 문장 자체를 본다. 파일 전체 grep 이면 (c) 각주의 같은 열거가 대신 통과시켜
+# 가드가 무력화된다 — 지키려는 대상은 (0) 의 판정 문장이다.
+grep -F "조건부 블록(원인분석 / 구조 델타 / 결정 갈림길 / 기준선) 중 **하나라도 필요하면**" "$TPL" > /dev/null \
+  || fail "(0) 게이트 판정 문장의 트리거 열거(4개) 가 훼손됨 — 계약을 트리거에 넣으면 fast path 가 소멸한다"
+grep -F "게이트 트리거가 아니다" "$TPL" > /dev/null \
+  || fail "design-doc.md 에 '계약은 게이트 트리거가 아니다' 근거 없음"
+
+step 17 "섹션 번호 보존 — finish-plan-dev.sh 가 '## 6. 결과' 를 파싱한다"
+grep -F "## 6. 결과" "$TPL" > /dev/null || fail "'## 6. 결과' 소실 — Phase 5 실측 게이트가 깨진다"
+grep -F "## 3.5" "$TPL" > /dev/null || fail "계약 블록이 '## 3.5' 로 삽입되지 않음 (번호 재정렬 금지)"
+
 echo "OK"
