@@ -45,7 +45,7 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/plan-dev-session.sh start
 > 💡 **Phase 1-1 ↔ Phase 1-2 연결**: 1-1 의 Acceptance criteria 가 1-2 의 Goal Statement 의 source. 같은 항목을 측정 가능 form (grep/test/명령) 으로만 transform.
 
 ### 1-1.5. 설계 문서 작성 + 승인
-조건부 블록(원인분석 / 구조 델타 / 결정 갈림길 / 기준선) 중 **하나라도 필요하면** `docs/design/<slug>.md` 를 먼저 쓰고 AskUserQuestion 으로 승인 → **2게이트**(설계 승인 → plan 승인). 전부 불필요하면 **fast path**(1게이트). commit type 으로 가르지 않는다. `hotfix` 는 착수 전 **골격만**(증상+가설+즉시조치) 승인하고 원인분석·재발방지는 사후. 작성 직후 `open <설계문서 경로>` 로 **사용자 화면에 띄운다** — 못 본 상태의 승인은 승인이 아니다. 승인 후 `${CLAUDE_PLUGIN_ROOT}/scripts/plan-dev-session.sh set-design <절대경로>` 로 latch (Phase 5 게이트 입력). 판정 기준·절차·하네스 한계는 ➜ [설계 문서 가이드](./plan-dev/design-doc.md).
+조건부 블록(원인분석 / 구조 델타 / 결정 갈림길 / 기준선) 중 **하나라도 필요하면** `~/.claude/design/<repo>/<slug>.md` 를 먼저 쓰고 AskUserQuestion 으로 승인 → **2게이트**(설계 승인 → plan 승인). 전부 불필요하면 **fast path**(1게이트). commit type 으로 가르지 않는다. 구조 델타를 쓴 세션은 그 하위의 **§3.5 인터페이스 계약**(제공자 / 소비자 / 계약 / 실패 시)도 함께 채운다 — 계약은 별도 게이트 트리거가 아니라 구조 델타의 상세다. `hotfix` 는 착수 전 **골격만**(증상+가설+즉시조치) 승인하고 원인분석·재발방지는 사후. 작성 직후 `open <설계문서 경로>` 로 **사용자 화면에 띄운다** — 못 본 상태의 승인은 승인이 아니다. 승인 후 `${CLAUDE_PLUGIN_ROOT}/scripts/plan-dev-session.sh set-design <절대경로>` 로 latch (Phase 5 게이트 입력). 판정 기준·절차·하네스 한계는 ➜ [설계 문서 가이드](./plan-dev/design-doc.md).
 
 ### 1-2. EnterPlanMode → plan 파일 작성
 필수 섹션: **설계 문서 링크**(1-1.5 산출물, fast path 면 Context 한 단락으로 대체) / Explored Files / Assumptions / Vertical Slices / **Slice File Map** / **동작 스펙 (Behavior Spec)** / Verification / **Goal Statement**. plan 의 독자는 implementor/자식 surface — 사람이 판단할 내용은 설계 문서에 두고 plan 엔 링크만.
@@ -59,6 +59,7 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/plan-dev-session.sh start
 
 - `Mode` — **`Mode 컬럼 필수`**, 빈 셀 금지. 값: `direct-edit` / `dispatch(cmux)` / `dispatch(tmux)` / `workflow`. **기본은 환경 의존** (cmux 환경 = `dispatch(cmux)` 만, escape 포함) — canonical 규칙은 [cmux dispatch 가이드](./plan-dev/cmux-dispatch.md) 참조. `workflow` 는 opt-in (대규모/비시각, ➜ "Workflow 통합" 섹션).
 - `DOC_IMPACT` — `none` / `updated` 중 plan 단계에 미리 결정 (commit 시점에 발견하면 hook 차단 후 재시도 비용).
+- **이 표는 머지 물류다** — 파일 교집합으로 rebase 충돌을 예방하는 것이 목적이고, 슬라이스 간 **계약**(무엇이 오가는가·불변식·소유권·실패 시)은 설계 문서 §3.5 가 담당한다. **파일이 안 겹친다고 계약이 맞는 것은 아니다** — 격리 PASS/통합 FAIL 의 주요 원인.
 
 Slice 정의 시 **type 도 같이 결정**: `feat|fix|refactor|test|docs|chore`. (commit type. **branch prefix 는 `feat`→`feature/`, 그 외 type 그대로** — dispatch 가 자동 매핑. commit 메시지엔 scope 안 씀: `feat: …` 형식.)
 
@@ -70,6 +71,7 @@ Slice 정의 시 **type 도 같이 결정**: `feat|fix|refactor|test|docs|chore`
 - 각 슬라이스의 동작 스펙에 **판정 주체**를 표기한다 — `기계`(테스트/machine-checks 로 판정) 또는 `사람`(육안·실행 검증). 같은 목록 안에서 둘을 구분하지 않으면 사람 검증 항목이 조용히 누락된다.
 
   예: `**S3** (tests/foo.sh) — 판정 주체: 기계` / `**S4** — 판정 주체: 사람. 문장 품질은 육안 판단`
+- **에러 정책 연결**: 설계 문서 §3.5 인터페이스 계약의 `실패 시` 칸에 **중단**으로 적힌 경로는 동작 스펙에 대응 테스트 케이스가 있어야 한다. 계약에만 적고 케이스가 없으면 그 에러 경로는 구현되지 않는다 — implementor 는 **테스트 목록으로 일을 받기 때문**이다.
 
 #### Goal Statement — 측정가능 완료 기준
 **목적**: Phase 1-1 의 Acceptance criteria 를 측정 가능 form 으로 transform 한 체크리스트. **Phase 3 Verify 에서 모델이 직접 실행**해 슬라이스 완료를 판정한다 (자동 loop 아님 — 모델이 매 verify 때 스스로 돌려보고 결과를 확인).
@@ -99,8 +101,6 @@ test -x scripts/foo.sh
 - **opt-in 시 judge panel 격상**: 사용자가 workflow 명시 / 대규모 plan 이면 단일 Plan 대신 `Workflow` 툴로 N개 독립 비평 → 합성 (➜ "Workflow 통합" A).
 
 **충돌 사전 점검**: Slice File Map 의 파일 교집합 존재 시 그 슬라이스들은 의존성 있음으로 분류 — 병렬 X, 순차로 강등하거나 단일 슬라이스로 병합.
-
-> 📎 환경별 Mode 룰 상세: [cmux dispatch 가이드](./plan-dev/cmux-dispatch.md)
 
 ### 1-4. ExitPlanMode → 사용자 승인 (MANDATORY)
 승인 전 Phase 2 진입 금지.
@@ -151,7 +151,7 @@ verifier PASS 후 commit 전 코드 리뷰를 원하면 `reviewer` 에이전트 
 
 ## Phase 4 — Git 추천
 ### 4-0. 설계 문서 실측 write-back (필수 — 1-1.5 를 거친 세션)
-`docs/design/<slug>.md` 의 `## 6. 결과` 에서 `실측` 칸을 채운다. 측정 불가면 `미검증 — 재발 감시 중` 명시 — 빈 칸·`TODO`·괄호 자리표시자는 Phase 5 게이트가 차단. 이게 없으면 문서에 `예상`만 남아 인수인계·이력서 자료로 못 쓴다. 형태 대응은 ➜ [설계 문서 가이드](./plan-dev/design-doc.md).
+`~/.claude/design/<repo>/<slug>.md` 의 `## 6. 결과` 에서 `실측` 칸을 채운다. 측정 불가면 `미검증 — 재발 감시 중` 명시 — 빈 칸·`TODO`·괄호 자리표시자는 Phase 5 게이트가 차단. 이게 없으면 문서에 `예상`만 남아 인수인계·이력서 자료로 못 쓴다. 형태 대응은 ➜ [설계 문서 가이드](./plan-dev/design-doc.md).
 
 ### 4-1. commit-advisor
 `commit-advisor` 에이전트 호출:

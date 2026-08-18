@@ -57,6 +57,7 @@ plan 승인 후 원래 Slice 에 없던 편집 요청도 direct-edit 대신 위�
 #### Spec 파일 위치 (컨벤션)
 
 - **위치/명명**: `.claude/specs/<slug>.spec.md` (slug = `--slice=<slug>` 와 동일 kebab-case, `<slug>.spec.md` 접미사).
+- **계약 섹션**: 슬라이스가 2개 이상이면 spec 에 `## 계약` 섹션 **필수**. 형식은 설계 문서 §3.5 와 같은 4칸 표 — `제공자 | 소비자 | 계약 (시그니처·불변식·소유권) | 실패 시 (중단 / 감수)`. 설계 문서에서 **해당 슬라이스 행만** 옮겨 적는다. 설계 문서는 repo 밖이고 plan 은 폐기물이며 dispatch 는 spec 본문이 아니라 **경로만** 자식에게 보내므로, 이 섹션이 계약이 자식에게 도달하는 **유일한 통로**다.
 - **추적/금지**: commit 가능(`b2ad060` 의 reference spec 들처럼 보존 OK, 일회용도 무방·사용자가 정리) — 단 `/tmp/<slug>-spec.md` 같은 외부 임시 디렉토리는 금지(classifier 가 같은 turn 의 Write 추적 못 해 dispatch 거부될 수 있음).
 
 호출 예:
