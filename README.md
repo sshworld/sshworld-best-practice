@@ -324,6 +324,7 @@ cmux 앱 안에서 실행 중일 때 (`CMUX_WORKSPACE_ID` set) `scripts/cmux-pan
 `scripts/dispatch-slice-pane.sh --mode=cmux` 는 **launch·자식 기동 검증으로 silent 실패를 방지**한다:
 - surface PTY 가 terminal 상태인지 검증(`CBP_LAUNCH_VERIFY_TRIES`, 기본 5회 재시도) — 실패 시 exit 3. 실패 종료 시 (verify-fail die 및 이후 send die 포함) trap 이 best-effort `close-surface` + state 제거를 수행 — 좀비 surface(생성만 되고 state/실surface 로 영구 잔존) 방지.
 - 자식 claude TUI 기동 신호 검증(`DISPATCH_VERIFY_TRIES`, 기본 3회 재시도) — 실패 시 exit 비0. 끝내 실패 시 `--mode=subagent` 폴백 권장.
+- **subagent 폴백 시 spec 은 경로가 아니라 본문을 인라인한다** — `.gitignore` 가 `.claude/specs/*.spec.md` 를 무시해 파일이 격리 worktree 로 따라가지 않는다. 절차(본문 인라인·`isolation="worktree"`·자식 worktree 절대경로)는 [dispatch 트러블슈팅](./commands/plan-dev/troubleshooting-dispatch.md) 의 'subagent 폴백'.
 - `CBP_LAUNCH_DEBUG=1` 로 launch 진단 로깅 활성화 — verify 각 시도의 read-screen 출력, 생성 경로(new-pane/new-split), prev_surface 를 stderr 로 dump. 기본(off) 시 동작·출력 완전 불변(추가 read-screen 호출 없음).
 
 spec prompt 송신은 **자동 `--enter-count=2`** 적용 — Claude TUI paste mode 끝의 첫 Enter 가 newline 으로 처리되어 자식이 spec 받고도 명령 실행 안 하던 이슈 해소.

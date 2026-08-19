@@ -32,7 +32,14 @@ tool=$(printf '%s' "$payload" | jq -r '.tool_name // empty' 2>/dev/null || echo 
 [ "$tool" = "Bash" ] || exit 0
 
 command=$(printf '%s' "$payload" | jq -r '.tool_input.command // empty' 2>/dev/null || echo "")
-if ! printf '%s' "$command" | grep -qE '(^|[[:space:];|&])git[[:space:]]+commit([[:space:]]|$)'; then
+# `git` 과 `commit`(서브커맨드 위치) 사이에 오는 옵션 토큰들
+# (`-C <path>`, `-c k=v`, `--no-pager`, `--git-dir=...` 등)을 허용한다.
+# 각 토큰은 하이픈으로 시작하는 플래그(속성값 `=...` 첨부 가능) 이거나
+# 그 플래그의 인자(하이픈으로 시작하지 않는 값) 여야 한다.
+# `git log --grep=commit` 처럼 commit 이 인자 값(`=commit`)으로만 등장하는
+# 경우는 서브커맨드 위치가 아니므로 매치하지 않는다.
+git_commit_re='(^|[[:space:];|&])git([[:space:]]+(-[A-Za-z0-9_.-]+(=[^[:space:];|&]*)?|[^[:space:];|&=-][^[:space:];|&]*))*[[:space:]]+commit([[:space:]]|$)'
+if ! printf '%s' "$command" | grep -qE "$git_commit_re"; then
   exit 0
 fi
 

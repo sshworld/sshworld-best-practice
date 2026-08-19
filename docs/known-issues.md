@@ -15,13 +15,13 @@
 | 9 | `scripts/dispatch-slice-pane.sh` (cleanup stamp) | 크래시 후 24h 내 재진입 세션은 start_ts 보존으로 cleanup skip — tmux 잔존 자식을 수동 회수해야 함 | 하 |
 | 10 | `hooks/enforce-cmux-context.sh` | quote-blind false-positive — 문자열 리터럴 내부의 tmux 명령도 오검출 가능 | 하 |
 | 11 | `hooks/enforce-plan-mode.sh` | `PLAN_MODE_PLANS_DIR` 이 전역 glob(`~/.claude/plans`) — 다른 프로젝트의 plan 파일로 게이트가 풀리는 cross-project false-allow | 중 |
-| 12 | `hooks/enforce-doc-sync.sh` | `git -C <path> commit` / `git -c k=v commit` 형태 미검출. 커밋 메시지 본문에 `DOC_IMPACT=` 문자열이 있으면 오인 가능 | 중 |
+| 12 | `hooks/enforce-doc-sync.sh` | ~~`git -C <path> commit` / `git -c k=v commit` 형태 미검출~~ **2026-08-19 해결** (서브커맨드 위치 판정 정규식). 잔존: 커밋 메시지 본문에 `DOC_IMPACT=` 문자열이 있으면 오인 가능 | 하 |
 | 13 | `hooks/track-cmux-edit-burst.sh` | 차단된 Write 도 카운트에 포함됨 + count file 에 GC 없음(무한 누적) | 하 |
 | 14 | `hooks/enforce-test-first.sh` | `find .` 전체 스캔 — 대형 repo 에서 지연 발생. `*test*` substring 매치가 `latest.ts` 같은 파일을 테스트로 오인 | 중 |
 | 15 | `commands/plan-dev/` 하위 참조 문서 3개 | 유령 슬래시커맨드로 노출됨 (예: `/sshworld:plan-dev:antipatterns`) — 실제 호출 불가한데 커맨드 목록에 나타날 수 있음 | 하 |
 | 16 | `.claude-plugin/marketplace.json` | `allowCrossMarketplaceDependenciesOn: ["caveman"]` — 용도 불명 죽은 설정 의심 | 하 |
 | 17 | `scripts/cmux-pane.sh` (reap-orphans grace) | `CBP_LAUNCH_VERIFY_TRIES` / `CBP_WARMUP_SLEEP` 를 확대하면 warmup 시간이 reap-orphans grace(기본 30초)를 초과할 수 있음 — 그 경우 정상 launch 중인 surface 가 오살될 위험 | 중 |
-| 18 | cmux dispatch 전반 (2026-07-08 관측) | cmux 자식 세션 4/4 회 crash 관측 — 비결정적 자식 사망 빈도가 높음. subagent 폴백 경로는 검증됨. **2026-07-13~14 v1.5.0 이후 dispatch 4/4 첫 시도 성공 + 자식 3/3 완주 실측 (n 작음, 관찰 지속) — 상→중 하향** | 중 |
+| 18 | cmux dispatch 전반 (2026-07-08 관측) | cmux 자식 세션 4/4 회 crash 관측 — 비결정적 자식 사망 빈도가 높음. **subagent 폴백 경로 2026-08-19 실측 완료** — spec 본문 인라인 + `isolation="worktree"` 로 자식이 TDD 완주(9 테스트 PASS). 그 전 두 세션(08-14·08-18)이 막힌 원인은 `.gitignore` 의 `.claude/specs/*.spec.md` 로 spec 파일이 격리 worktree 에 안 따라간 것 — 파일 전달을 포기하니 해소됐다. 절차: `commands/plan-dev/troubleshooting-dispatch.md` 의 'subagent 폴백'. **2026-07-13~14 v1.5.0 이후 dispatch 4/4 첫 시도 성공 + 자식 3/3 완주 실측 (n 작음, 관찰 지속) — 상→중 하향** | 중 |
 | 19 | `hooks/enforce-doc-sync.sh` (worktree cwd) | subagent 가 worktree 안에서 커밋해도 hook 프로세스가 main repo cwd 에서 `git diff --cached` 를 실행 — staged 없음으로 오탐 차단 (2026-07-08 실측). 우회는 `SKIP_DOC_SYNC=1`. hook 이 `git -C` 로 대상 repo 를 명령에서 유추하거나 `CLAUDE_PROJECT_DIR` 대신 명령 cwd 를 써야 함 | 중 |
 | 20 | `scripts/cmux-pane.sh` (`_send_is_submitted`) | `LC_ALL=C` 환경에서 `[❯>]` bracket expression 이 byte 단위로 해석 — box-drawing 문자(0xE2 선두 바이트)가 오매치될 수 있어 rc1(false-keep)로 이어져 정상 완료 pane 이 안 닫히는 (누수) 케이스 가능 | 중 |
 | 21 | `scripts/cmux-pane.sh` (`_do_reap_one` DONE_PATTERN) | DONE_PATTERN 이 화면 전체를 grep — spec 본문이나 echo 출력에 `✅`/`❌` 리터럴이 우연히 포함되면 조기 reap 가능. pending 체크(`_send_is_submitted`)가 이를 막는 유일한 가드 | 중 |
