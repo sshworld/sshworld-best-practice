@@ -332,6 +332,8 @@ main() {
   # subagent 모드 — 안내만, exit 0
   if [ "$DRIVER_MODE" = "subagent" ]; then
     echo "dispatch: subagent 모드는 dispatch-slice-pane.sh 미사용 — plan-dev Phase 2 의 Agent 호출로 진행" >&2
+    echo "  절차(spec 본문 인라인·worktree 격리·cwd 절대경로): commands/plan-dev/troubleshooting-dispatch.md 의 'subagent 폴백' 섹션" >&2
+    echo "  ⚠️ spec 파일 경로만 넘기지 말 것 — .gitignore 가 .claude/specs/*.spec.md 를 무시해 격리 worktree 로 안 따라간다" >&2
     exit 0
   fi
 

@@ -81,3 +81,36 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/cmux-pane.sh reap-orphans
 ```
 
 우회: `SKIP_CMUX_REAP=1` (plan-dev 자동 호출 skip). `CBP_STATE_DIR` 로 스캔 디렉토리 override.
+
+---
+
+## subagent 폴백 — dispatch 가 불가능한 세션에서
+
+stale `CMUX_WORKSPACE_ID` 로 launch 가 전멸하면(백그라운드 job 세션에서 특히 흔하다) 이 세션에서 cmux dispatch 는 **복구 불가**다. 해소는 새 세션 시작뿐이고, 그 전까지 유일한 격리 실행 경로가 subagent 다.
+
+**🚨 함정 — 파일 복사로 풀지 말 것.** `.gitignore` 가 `.claude/specs/*.spec.md` 를 무시하므로 spec 은 격리 worktree 로 **따라가지 않는다**. 2026-08-14·08-18 두 세션이 여기서 막혔다. 해법은 cp 도 gitignore 예외도 아니라 **spec 본문 인라인**이다 — subagent 는 cmux send 크기 제약이 없어서 프롬프트에 통째로 실을 수 있다.
+
+절차:
+
+1. spec 은 평소대로 `.claude/specs/<slug>.spec.md` 에 쓴다 (사람이 읽을 원본).
+2. `Agent` 호출 시 **본문을 인라인**하고, 원본 **절대경로**를 함께 준다 (자식이 재확인할 때 쓴다 — worktree 밖 Read 는 implementor 계약상 허용된다).
+3. `isolation="worktree"` 로 격리, `run_in_background=true` 로 병렬.
+4. 자식이 보는 "작업 디렉토리" 는 **자식 worktree 의 절대경로**여야 한다 — implementor 의 `pwd` 검증 계약(0단계)이 이 값과 대조한다. 부모 repo 경로를 그대로 넘기면 자식이 즉시 `❌ cwd mismatch` 로 중단한다.
+
+```
+Agent(subagent_type="sshworld:implementor",
+      isolation="worktree", run_in_background=true,
+      prompt="""너는 implementor 다. TDD Red→Green→Refactor.
+작업 디렉토리: <자식 worktree 절대경로>  (시작 즉시 pwd 검증)
+원본 spec(참고): /abs/path/.claude/specs/<slug>.spec.md
+
+--- spec 본문 ---
+<spec 전문 그대로>
+--- /spec 본문 ---
+
+마지막 줄에 `✅ <slice>` 또는 `❌ <slice> <이유>` 만 출력.""")
+```
+
+- 회수는 cmux 계보 원장이 아니라 **Agent 반환값**이다 — `reap` 대상이 아니다.
+- 부모 토큰 통계에 자식이 잡히는 것이 cmux 대비 장점, 사용자 화면 시각화가 없는 것이 단점.
+- **모드를 바꾸는 결정은 사용자 확인 대상**이다 (위 (d) 항목) — cmux 의 핵심 가치인 시각화를 버리는 선택이므로, launch 실패를 실측으로 확인한 뒤 보고하고 진행한다.
