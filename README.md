@@ -208,6 +208,21 @@ scripts/reap-agents.sh reap --apply --orphans   # 부모가 죽은 고아 원장
 /fork
 ```
 
+### 보조 — `/orbit`
+
+Next.js App Router 라우트를 방향 그래프로 보고 **사이클이 닫히는가** 를 점검한다.
+
+```text
+/orbit
+```
+
+- 검사 4종: dangling(끊긴 링크) / orphan(도달 불가) / sink(탈출 불가) / 미폐쇄(들어가는 흐름은 있는데 나가는 흐름이 안 닫힘).
+- **왜 필요한가**: 이 결함들은 빌드도 테스트도 못 잡는다. 프레임워크가 조용히 폴백하고, 링크가 없는 것은 에러가 아니다 — 사람이 클릭해보기 전까지 안 드러난다.
+- 산출물은 **보고서**다. 스킬이 파일을 고치지 않는다.
+- Next.js App Router 전용.
+- 자체 픽스처(`skills/orbit/fixture/`)로 검증한다 — 결함 4종이 심겨 있고, 오탐 유발 요소 3종(공통 레이아웃 Nav / 네비 상수 파일 / middleware 리다이렉트)도 함께 있어 "안 잡아야 할 걸 안 잡았나" 까지 본다. 픽스처는 빌드하지 않는다(정적 분석 대상).
+- **상시 규칙**: "새 페이지 추가 시 링크도 함께" 류 두 줄짜리 상시 규칙은 `skills/orbit/SKILL.md` 안의 복사용 섹션에 있고, 그걸 대상 Next 프로젝트의 CLAUDE.md 에 붙여넣어 쓴다. 이 repo 의 CLAUDE.md 에는 넣지 않는다 — 여기엔 Next 코드가 없다.
+
 ---
 
 ## Workflow 통합 (dynamic workflows)
