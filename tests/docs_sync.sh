@@ -10,7 +10,7 @@ CLAUDE="$REPO/CLAUDE.md"
 step() { echo "[$1] $2"; }
 fail() { echo "❌ FAIL: $1" >&2; exit 1; }
 
-for kw in "tmux-orchestrate" "parallel-consult" "limit-child-panes" "CLAUDE_MAX_CHILD_PANES" "tmux-pane.sh" "dispatch-slice-pane.sh" "Workflow 통합" ".claude/workflows" "reap" "CBP_LAUNCH_DEBUG" "CBP_REAP_IGNORE_PENDING" "인터페이스 계약"; do
+for kw in "tmux-orchestrate" "parallel-consult" "limit-child-panes" "CLAUDE_MAX_CHILD_PANES" "tmux-pane.sh" "dispatch-slice-pane.sh" "Workflow 통합" ".claude/workflows" "reap" "CBP_LAUNCH_DEBUG" "CBP_REAP_IGNORE_PENDING" "인터페이스 계약" "orbit"; do
   grep -F -- "$kw" "$README" > /dev/null || fail "README missing: $kw"
 done
 echo "[1] README 키워드 OK"
