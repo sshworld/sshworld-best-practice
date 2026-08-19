@@ -95,7 +95,8 @@ stale `CMUX_WORKSPACE_ID` 로 launch 가 전멸하면(백그라운드 job 세션
 1. spec 은 평소대로 `.claude/specs/<slug>.spec.md` 에 쓴다 (사람이 읽을 원본).
 2. `Agent` 호출 시 **본문을 인라인**하고, 원본 **절대경로**를 함께 준다 (자식이 재확인할 때 쓴다 — worktree 밖 Read 는 implementor 계약상 허용된다).
 3. `isolation="worktree"` 로 격리, `run_in_background=true` 로 병렬.
-4. 자식이 보는 "작업 디렉토리" 는 **자식 worktree 의 절대경로**여야 한다 — implementor 의 `pwd` 검증 계약(0단계)이 이 값과 대조한다. 부모 repo 경로를 그대로 넘기면 자식이 즉시 `❌ cwd mismatch` 로 중단한다.
+4. **작업 디렉토리는 부모가 지정할 수 없다** — `isolation="worktree"` 를 쓰면 worktree 경로를 하네스가 정하므로 프롬프트 작성 시점에 그 값을 모른다(dispatch 스크립트는 부모가 `git worktree add` 하니 알 수 있었다 — 여기서 갈린다). 따라서 절대경로를 적지 말고 **"시작 즉시 `pwd` 로 확인하고 그 안에서만 작업, 밖으로 `cd` 금지"** 로 지시한다. 대신 **부모 repo 절대경로를 명시하고 "여기를 직접 수정하지 말라"** 고 못박는다 — implementor 의 `pwd` 검증 계약(0단계)은 이 형태로 만족된다.
+   - 2026-08-19 실측에서 드러난 지점이다. 절차 초안은 "자식 worktree 절대경로를 넘겨라" 였는데 실제로 넘길 수가 없었다.
 
 ```
 Agent(subagent_type="sshworld:implementor",
