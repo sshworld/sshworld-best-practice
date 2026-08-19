@@ -41,7 +41,8 @@ step 6 "known-issues #18 의 '검증됨' 오기 제거"
 grep -F "subagent 폴백 경로는 검증됨" "$KNOWN" > /dev/null \
   && fail "known-issues 에 'subagent 폴백 경로는 검증됨' 잔존 — 2026-08-14·08-18 두 번 막혔다"
 
-step 7 "known-issues 가 미검증 상태를 명시"
-grep -F "미검증" "$KNOWN" > /dev/null || fail "known-issues #18 에 폴백 미검증 상태 표기 없음"
+step 7 "known-issues 가 폴백 상태를 절차 문서와 함께 근거로 표기"
+grep -F "troubleshooting-dispatch.md" "$KNOWN" > /dev/null \
+  || fail "known-issues #18 이 폴백 절차 문서를 안 가리킴 — 상태만 적고 근거를 안 주면 다음 세션이 또 처음부터 헤맨다"
 
 echo "OK"

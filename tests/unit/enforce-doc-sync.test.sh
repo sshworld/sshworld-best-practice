@@ -60,10 +60,60 @@ t_non_commit_command_allows() {
   rm -rf "$repo"; [ "$ec" = "0" ]
 }
 
+# S1: `git -C <path> commit` → 옵션 토큰 있어도 감지되어 차단(2)
+t_git_dash_C_commit_blocks() {
+  local repo; repo=$(mk_repo_with_staged)
+  local p; p=$(make_payload 'git -C /tmp/x commit -m "x"')
+  local ec=0
+  ( cd "$repo" && echo "$p" | bash "$HOOK" ) || ec=$?
+  rm -rf "$repo"; [ "$ec" = "2" ]
+}
+
+# S1: `git -c k=v commit` → 감지되어 차단(2)
+t_git_dash_c_kv_commit_blocks() {
+  local repo; repo=$(mk_repo_with_staged)
+  local p; p=$(make_payload 'git -c user.name=x commit -m "x"')
+  local ec=0
+  ( cd "$repo" && echo "$p" | bash "$HOOK" ) || ec=$?
+  rm -rf "$repo"; [ "$ec" = "2" ]
+}
+
+# S1: `git --no-pager -C <path> commit` → 여러 옵션 토큰 조합도 감지되어 차단(2)
+t_git_no_pager_dash_C_commit_blocks() {
+  local repo; repo=$(mk_repo_with_staged)
+  local p; p=$(make_payload 'git --no-pager -C /tmp/x commit -m "x"')
+  local ec=0
+  ( cd "$repo" && echo "$p" | bash "$HOOK" ) || ec=$?
+  rm -rf "$repo"; [ "$ec" = "2" ]
+}
+
+# S1: `git -C <path> commit` + DOC_IMPACT=none → 감지는 되지만 통과(0)
+t_git_dash_C_commit_doc_impact_none_allows() {
+  local repo; repo=$(mk_repo_with_staged)
+  local p; p=$(make_payload 'DOC_IMPACT=none git -C /tmp/x commit -m "x"')
+  local ec=0
+  ( cd "$repo" && echo "$p" | bash "$HOOK" ) || ec=$?
+  rm -rf "$repo"; [ "$ec" = "0" ]
+}
+
+# S1: 오탐 방지 — `git log --grep=commit` 은 commit 이 서브커맨드 위치가 아니므로 통과(0)
+t_git_log_grep_commit_false_positive_allows() {
+  local repo; repo=$(mk_repo_with_staged)
+  local p; p=$(make_payload 'git log --grep=commit')
+  local ec=0
+  ( cd "$repo" && echo "$p" | bash "$HOOK" ) || ec=$?
+  rm -rf "$repo"; [ "$ec" = "0" ]
+}
+
 run "SKIP_DOC_SYNC=1 포함 → allow(0)"                    t_skip_doc_sync_command_allows
 run "미포함 + DOC_IMPACT 미지정 → block(2) (기존 동작)"  t_no_skip_no_doc_impact_blocks
 run "DOC_IMPACT=none → allow(0) (기존 동작 유지)"         t_doc_impact_none_allows
 run "git commit 아님 → allow(0)"                          t_non_commit_command_allows
+run "git -C <path> commit → block(2)"                     t_git_dash_C_commit_blocks
+run "git -c k=v commit → block(2)"                        t_git_dash_c_kv_commit_blocks
+run "git --no-pager -C <path> commit → block(2)"          t_git_no_pager_dash_C_commit_blocks
+run "git -C <path> commit + DOC_IMPACT=none → allow(0)"   t_git_dash_C_commit_doc_impact_none_allows
+run "오탐방지: git log --grep=commit → allow(0)"          t_git_log_grep_commit_false_positive_allows
 
 echo "PASS=$PASS FAIL=$FAIL"
 [ "$FAIL" -eq 0 ] && echo "✅ all pass" || { echo "❌ FAILED: ${FAILED[*]}"; exit 1; }
