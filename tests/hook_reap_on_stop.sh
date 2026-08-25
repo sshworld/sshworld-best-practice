@@ -225,7 +225,10 @@ t7_disabled_or_unset_ws_noop() {
   rc=$?
   { [ "$rc" -eq 0 ] && [ ! -f "$calls_file" ]; } || ok=0
 
-  out=$(cd "$parent" && env -u CMUX_WORKSPACE_ID CBP_PANE_BIN="$pane_bin" PANE_CALLS_FILE="$calls_file" PANE_MODE="reaped" \
+  # 개발 머신은 실제 Orca 세션이라 CMUX_WORKSPACE_ID 만 unset 하면 ORCA_WORKSPACE_ID
+  # 앰비언트로 kind=orca 로 샌다 — 진짜 "멀티플렉서 없음" 을 보려면 같이 지운다.
+  out=$(cd "$parent" && env -u CMUX_WORKSPACE_ID -u ORCA_WORKSPACE_ID -u ORCA_TERMINAL_HANDLE -u TERM_PROGRAM \
+    CBP_PANE_BIN="$pane_bin" PANE_CALLS_FILE="$calls_file" PANE_MODE="reaped" \
     "$HOOK" < /dev/null 2>/dev/null)
   rc=$?
   { [ "$rc" -eq 0 ] && [ ! -f "$calls_file" ]; } || ok=0
