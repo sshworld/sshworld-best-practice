@@ -22,8 +22,11 @@
 # 환경변수:
 #   ORCA_BIN                     — orca 바이너리 경로 (디폴트 PATH 의 orca). 테스트에서
 #                                  fake orca 스크립트로 override 하면 실 orca 미필요.
-#   CBP_TITLE_PREFIX              — launch 가 붙이는 title prefix (디폴트 cbp-). cleanup/
-#                                  reap-orphans 가 "우리가 띄운 자식" 식별하는 유일한 근거.
+#   CBP_TITLE_PREFIX              — launch 가 붙이는 title prefix (디폴트 cbp-). 사람이 보기
+#                                  좋은 표시용일 뿐 — 자식 claude TUI 가 기동하면서 title 을
+#                                  자기 것으로 덮어써(실측 2026-08-25) cleanup/reap-orphans 의
+#                                  식별 근거로 쓸 수 없다. 식별은 reap-agents.sh 원장(kind=orca)
+#                                  기반 — CBP_LEDGER_DIR / CBP_ORIGIN_ID 로 테스트 샌드박싱.
 #   FORCE_SELF_KILL=1             — kill 의 자기 terminal 검사 우회.
 #   CLAUDE_FAKE_SELF_ORCA_HANDLE  — 테스트용: 현재 terminal handle 강제 주입
 #                                  (ORCA_TERMINAL_HANDLE 보다 우선).
@@ -55,7 +58,7 @@ usage() {
 orca-pane <command> [args]
 
 commands:
-  launch [<cmd>]                                terminal 띄움. stdout=term_<uuid> 핸들 한 줄.
+  launch [<cmd>] [--title=<text>]               terminal 띄움. stdout=term_<uuid> 핸들 한 줄.
   send <text> --pane=<term_*> [--enter=false] [--delay=<sec>] [--enter-count=<n>]
                                                 텍스트 전송 후 Enter (--enter-count=N 회, 기본 1, 0이면 생략)
   capture --pane=<term_*> [--lines=<n>]         terminal 화면 tail stdout
@@ -65,12 +68,12 @@ commands:
                                                 --for=tui-idle 이면 native `orca terminal wait` 사용.
   kill --pane=<term_*>                          terminal 종료 (자기 terminal 거부)
   list                                          terminal 목록 JSON
-  cleanup                                       cbp- prefix terminal 일괄 정리 (자기 terminal 보존)
+  cleanup                                       원장(kind=orca) 에 있는 terminal 일괄 정리 (자기 terminal 보존)
   status                                        terminal 목록 텍스트
   reap --pane=<term_*> [--idle=<sec>] [--timeout=<sec>]
                                                 done-marker 있으면 wait-idle 스킵 후 바로 capture.
                                                 완료(✅/❌) 감지 시 close, 아니면 보존.
-  reap-orphans                                  orphaned:true && cbp- prefix terminal 일괄 정리.
+  reap-orphans                                  orphaned:true && 원장(kind=orca) terminal 일괄 정리.
 USAGE
   exit 2
 }
@@ -201,9 +204,38 @@ if isinstance(node, list):
 }
 
 # ----------------------------------------------------------------
+# 원장(reap-agents.sh) 에서 kind=orca 인 ref 목록 (한 줄에 하나). 원장 파일이나
+# reap-agents.sh 자체가 없으면 조용히 빈 목록 — cleanup/reap-orphans 를 실패시키지 않는다.
+# CBP_LEDGER_DIR / CBP_ORIGIN_ID 는 reap-agents.sh 가 그대로 읽으므로 여기선 그냥 흘려보낸다.
+_orca_ledger_refs() {
+  local reaper="${BASH_SOURCE[0]%/*}/reap-agents.sh"
+  [ -x "$reaper" ] || return 0
+  "$reaper" list 2>/dev/null | python3 -c '
+import json, sys
+for line in sys.stdin:
+    line = line.strip()
+    if not line:
+        continue
+    try:
+        d = json.loads(line)
+    except Exception:
+        continue
+    if d.get("kind") == "orca" and d.get("ref"):
+        print(d["ref"])
+' 2>/dev/null
+  return 0
+}
+
 do_launch() {
-  local cmd="${1:-}"
-  local title="${CBP_TITLE_PREFIX}$(date +%s)-$$"
+  local cmd="" title_override=""
+  local a
+  for a in "$@"; do
+    case "$a" in
+      --title=*) title_override="${a#*=}" ;;
+      *) [ -z "$cmd" ] && cmd="$a" ;;
+    esac
+  done
+  local title="${CBP_TITLE_PREFIX}${title_override:-$(date +%s)-$$}"
 
   if ! _orca_run terminal create --worktree active --title "$title"; then
     die "launch: terminal create 실패 — $_ORCA_ERR" 3
@@ -378,22 +410,23 @@ do_cleanup() {
     return 0
   fi
 
+  local ledger_refs
+  ledger_refs=$(_orca_ledger_refs)
+
   local handles
-  handles=$(printf '%s' "$_ORCA_RAW" | python3 -c '
-import json, sys
+  handles=$(printf '%s' "$_ORCA_RAW" | LEDGER_REFS="$ledger_refs" python3 -c '
+import json, os, sys
 try:
     d = json.load(sys.stdin)
 except Exception:
     sys.exit(0)
 terms = (d.get("result") or {}).get("terminals") or []
-prefix = sys.argv[1]
+refs = set(os.environ.get("LEDGER_REFS", "").splitlines())
 for t in terms:
-    title = t.get("title") or ""
-    if title.startswith(prefix):
-        h = t.get("handle")
-        if h:
-            print(h)
-' "$CBP_TITLE_PREFIX")
+    h = t.get("handle")
+    if h and h in refs:
+        print(h)
+')
 
   local h
   while IFS= read -r h; do
@@ -497,25 +530,25 @@ do_reap_orphans() {
   fi
 
   local self_handle="${ORCA_TERMINAL_HANDLE:-}"
+  local ledger_refs
+  ledger_refs=$(_orca_ledger_refs)
+
   local rows
-  rows=$(printf '%s' "$_ORCA_RAW" | python3 -c '
-import json, sys
+  rows=$(printf '%s' "$_ORCA_RAW" | LEDGER_REFS="$ledger_refs" python3 -c '
+import json, os, sys
 try:
     d = json.load(sys.stdin)
 except Exception:
     sys.exit(0)
 terms = (d.get("result") or {}).get("terminals") or []
-prefix = sys.argv[1]
+refs = set(os.environ.get("LEDGER_REFS", "").splitlines())
 for t in terms:
-    title = t.get("title") or ""
-    if not title.startswith(prefix):
-        continue
     if not t.get("orphaned"):
         continue
     h = t.get("handle")
-    if h:
+    if h and h in refs:
         print(h)
-' "$CBP_TITLE_PREFIX")
+')
 
   local h
   while IFS= read -r h; do

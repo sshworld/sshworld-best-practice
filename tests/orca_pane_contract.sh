@@ -12,7 +12,7 @@
 #   5) capture: tail[] 3개 배열을 개행으로 join
 #   6) kill: 자기 handle 거부, FORCE_SELF_KILL=1 이면 진행
 #   7) reap: done-marker 존재 시 wait-idle 스킵(fake show 는 절대 idle 안 됨) 하고 즉시 reaped
-#   8) reap-orphans: orphaned:false terminal 은 close 호출 안 함
+#   8) reap-orphans: 원장(kind=orca) 에 있어도 orphaned:false terminal 은 close 호출 안 함
 
 set -uo pipefail
 
@@ -245,14 +245,22 @@ printf '%s\n' "$out7" | grep -q "^reaped $pane7\$" || fail "reap 출력이 'reap
 echo "ok: reap(marker fast-path) → $out7, elapsed=${elapsed7}s"
 
 # ============================================================================
-step 8 "reap-orphans: orphaned:false terminal 은 close 호출 안 함"
+step 8 "reap-orphans: 원장(kind=orca) 에 있어도 orphaned:false terminal 은 close 호출 안 함"
 d8="$TMP/c8"; mkdir -p "$d8"
 orca8=$(make_fake_orca "$d8")
 closelog8="$d8/close.log"; : > "$closelog8"
 
-list8='[{"handle":"term_orphan1","title":"cbp-orphan","orphaned":true,"connected":false},{"handle":"term_alive1","title":"cbp-alive","orphaned":false,"connected":true}]'
+list8='[{"handle":"term_orphan1","title":"x","orphaned":true,"connected":false},{"handle":"term_alive1","title":"x","orphaned":false,"connected":true}]'
+
+# 두 handle 모두 원장(kind=orca) 에 기록 — orphaned 여부만으로 close/보존이 갈리는지 증명.
+d8ledger="$d8/ledger"
+CBP_LEDGER_DIR="$d8ledger" CBP_ORIGIN_ID="origin-c8" \
+  "$REPO/scripts/reap-agents.sh" record --kind=orca --ref=term_orphan1 >/dev/null
+CBP_LEDGER_DIR="$d8ledger" CBP_ORIGIN_ID="origin-c8" \
+  "$REPO/scripts/reap-agents.sh" record --kind=orca --ref=term_alive1 >/dev/null
 
 out8=$(ORCA_BIN="$orca8" ORCA_FAKE_LIST_JSON="$list8" ORCA_FAKE_CLOSE_LOG="$closelog8" \
+  CBP_LEDGER_DIR="$d8ledger" CBP_ORIGIN_ID="origin-c8" \
   "$WRAPPER" reap-orphans 2>"$d8/err")
 rc8=$?
 [ "$rc8" -eq 0 ] || fail "reap-orphans 실패 rc=$rc8 stderr=$(cat "$d8/err")"

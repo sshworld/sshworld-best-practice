@@ -40,7 +40,8 @@ esac
 # 현재 자식 수 합산 카운트
 # 1) tmux: 관리 세션 'tmux-pane-mgr' 기준 (tmux 없으면 0)
 # 2) cmux: cbp- prefix workspace 카운트 (cmux 없거나 ping 실패 시 0)
-# 3) orca: cbp- prefix terminal 카운트, 자기 terminal 제외 (orca 없으면 0)
+# 3) orca: 원장(reap-agents.sh, kind=orca) ref ∩ 살아있는 terminal, 자기 terminal 제외
+#    (orca 또는 reap-agents.sh 없으면 0 — title 은 자식이 덮어써 식별 근거로 못 씀, 실측 2026-08-25)
 LIMIT="${CLAUDE_MAX_CHILD_PANES:-99}"
 TMUX_COUNT=0
 CMUX_COUNT=0
@@ -80,13 +81,29 @@ if command -v "$CMUX_BIN_FOR_HOOK" > /dev/null 2>&1; then
 fi
 
 ORCA_BIN_FOR_HOOK="${ORCA_BIN:-orca}"
-if command -v "$ORCA_BIN_FOR_HOOK" > /dev/null 2>&1; then
+REAP_AGENTS_FOR_HOOK="${REAP_AGENTS_BIN:-$(dirname "${BASH_SOURCE[0]}")/../scripts/reap-agents.sh}"
+if command -v "$ORCA_BIN_FOR_HOOK" > /dev/null 2>&1 && [ -x "$REAP_AGENTS_FOR_HOOK" ]; then
   ORCA_JSON=$("$ORCA_BIN_FOR_HOOK" terminal list --worktree active --json 2>/dev/null)
   if [ -n "$ORCA_JSON" ]; then
-    # cbp- prefix title 카운트, 자기 terminal(ORCA_TERMINAL_HANDLE) 제외.
-    # grep -c 와 같은 함정(매치 0 이면 exit 1) 을 피하려 python3 가 항상 정수 한 줄만 찍는다.
-    ORCA_COUNT=$(printf '%s' "$ORCA_JSON" | python3 -c "
+    # 원장(kind=orca) 의 ref 목록 — title 은 자식 claude TUI 가 덮어써 식별 근거로 쓸 수
+    # 없다(실측 2026-08-25). 원장 없으면 빈 목록 → count=0 (훅이 세션을 막지 않음).
+    LEDGER_REFS_FOR_HOOK=$("$REAP_AGENTS_FOR_HOOK" list 2>/dev/null | python3 -c '
 import json, sys
+for line in sys.stdin:
+    line = line.strip()
+    if not line:
+        continue
+    try:
+        d = json.loads(line)
+    except Exception:
+        continue
+    if d.get("kind") == "orca" and d.get("ref"):
+        print(d["ref"])
+' 2>/dev/null)
+    # 원장 ref ∩ 살아있는 terminal handle, 자기 terminal(ORCA_TERMINAL_HANDLE) 제외.
+    # grep -c 와 같은 함정(매치 0 이면 exit 1) 을 피하려 python3 가 항상 정수 한 줄만 찍는다.
+    ORCA_COUNT=$(printf '%s' "$ORCA_JSON" | LEDGER_REFS="$LEDGER_REFS_FOR_HOOK" python3 -c "
+import json, os, sys
 self_handle = sys.argv[1] if len(sys.argv) > 1 else ''
 try:
     d = json.load(sys.stdin)
@@ -97,10 +114,11 @@ if not d.get('ok'):
     print(0)
     sys.exit(0)
 terms = (d.get('result') or {}).get('terminals') or []
+refs = set(os.environ.get('LEDGER_REFS', '').splitlines())
 count = 0
 for t in terms:
-    title = t.get('title') or ''
-    if title.startswith('cbp-') and t.get('handle') != self_handle:
+    h = t.get('handle')
+    if h and h in refs and h != self_handle:
         count += 1
 print(count)
 " "${ORCA_TERMINAL_HANDLE:-}" 2>/dev/null)

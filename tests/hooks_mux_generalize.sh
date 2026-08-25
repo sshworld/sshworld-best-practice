@@ -192,18 +192,33 @@ MARKER8=$(ls "$MDIR8"/cbp-slice-done-* 2>/dev/null | head -1)
 
 # ─────────────────────────────────────────────────────────────────
 # 9. limit-child-panes: orca N개 cbp- 터미널 카운트 + LIMIT 경계 + non-cbp 미카운트
-step 9 "limit-child-panes: orca cbp- 터미널 카운트 (경계값 + non-cbp 제외)"
+step 9 "limit-child-panes: orca 자식 카운트 = 원장 ∩ 살아있는 terminal"
 
+# 계약 변경 (2026-08-25): 자식 claude TUI 가 터미널 제목을 즉시 덮어쓰므로 title prefix 로는
+# 자식을 식별할 수 없다(실측). 카운트 근거는 계보 원장(reap-agents.sh, kind=orca) 이고,
+# 그중 지금도 살아있는 terminal 만 센다. 상세 케이스는 tests/orca_child_identity.sh.
+LEDGER9="$TMP/ledger9"
+mkdir -p "$LEDGER9"
+cat > "$LEDGER9/origin9.jsonl" <<'JSONL'
+{"kind":"orca","ref":"term_1","ws":null,"pid":null,"label":"s-a","origin":"origin9","ts":1}
+{"kind":"orca","ref":"term_2","ws":null,"pid":null,"label":"s-b","origin":"origin9","ts":2}
+{"kind":"orca","ref":"term_3","ws":null,"pid":null,"label":"s-c","origin":"origin9","ts":3}
+{"kind":"orca","ref":"term_self","ws":null,"pid":null,"label":"self","origin":"origin9","ts":4}
+{"kind":"orca","ref":"term_dead","ws":null,"pid":null,"label":"dead","origin":"origin9","ts":5}
+JSONL
+
+# 살아있는 terminal 목록: 원장의 term_1..3 + self + 원장에 없는 term_x.
+# term_dead 는 원장에 있지만 목록에 없다 → 세면 안 된다.
 FAKE_ORCA9="$TMP/fake-orca9.sh"
 cat > "$FAKE_ORCA9" <<'EOF'
 #!/usr/bin/env bash
 cat <<JSON
 {"ok":true,"result":{"terminals":[
-  {"handle":"term_1","title":"cbp-a"},
-  {"handle":"term_2","title":"cbp-b"},
-  {"handle":"term_3","title":"cbp-c"},
-  {"handle":"term_self","title":"cbp-self"},
-  {"handle":"term_x","title":"not-cbp"}
+  {"handle":"term_1","title":"◑ Claude Sonnet with bypass permissions"},
+  {"handle":"term_2","title":"◑ Claude Sonnet with bypass permissions"},
+  {"handle":"term_3","title":"◑ Claude Sonnet with bypass permissions"},
+  {"handle":"term_self","title":"◑ parent"},
+  {"handle":"term_x","title":"cbp-남의터미널"}
 ]}}
 JSON
 EOF
@@ -211,42 +226,36 @@ chmod +x "$FAKE_ORCA9"
 
 PAYLOAD9=$(printf '{"tool_name":"Bash","tool_input":{"command":"./scripts/orca-pane.sh launch zsh"}}')
 
-# 개발 머신에 이미 tmux-pane-mgr 세션이 떠 있을 수 있어(다른 병렬 작업 잔존) TMUX_COUNT 가
-# 0 이 아닐 수 있다. 고정 LIMIT 경계로 검증하지 않고, 차단 메시지에 찍히는 실측
-# "orca child: N" / "total: T" 를 파싱해 ambient 상태와 무관하게 검증한다.
-# LIMIT=0 은 항상 차단이므로 메시지를 뽑아내는 용도로만 쓴다.
+# 개발 머신에 tmux-pane-mgr 세션이 떠 있을 수 있어 TMUX_COUNT 가 0 이 아닐 수 있다.
+# 고정 LIMIT 경계 대신 차단 메시지의 실측 "orca child: N" / "total: T" 를 파싱한다.
 RC=0
 printf '%s' "$PAYLOAD9" | env "${SCRUB[@]}" CMUX_BIN="/nonexistent-cmux-for-test" ORCA_BIN="$FAKE_ORCA9" \
+  CBP_LEDGER_DIR="$LEDGER9" CBP_ORIGIN_ID="origin9" \
   ORCA_TERMINAL_HANDLE="term_self" CLAUDE_MAX_CHILD_PANES=0 "$LIMIT_PANES" >/dev/null 2>"$TMP/err9a" || RC=$?
 [ "$RC" = "2" ] || fail "case9a: LIMIT=0 은 항상 차단이어야 함, got $RC"
 ORCA_N=$(grep -oE 'orca child: [0-9]+' "$TMP/err9a" | grep -oE '[0-9]+')
 TOTAL_N=$(grep -oE 'total: [0-9]+' "$TMP/err9a" | grep -oE '[0-9]+')
-[ "$ORCA_N" = "3" ] || fail "case9a: cbp- 3개(자기 term_self 제외, not-cbp 제외) 기대, got orca child=$ORCA_N ($(cat "$TMP/err9a"))"
+[ "$ORCA_N" = "3" ] || fail "case9a: 원장 3개(self 제외, 죽은 ref 제외, 원장 밖 term_x 제외) 기대, got orca child=$ORCA_N ($(cat "$TMP/err9a"))"
+echo "ok: case9a: 원장 ∩ 살아있는 terminal = 3 (self·dead·원장밖 전부 제외)"
 
-# 동일 fake + LIMIT=TOTAL_N+1(실측 total 기준 경계 +1) → 통과
+# 동일 fake + LIMIT=TOTAL_N+1 → 통과
 RC=0
 printf '%s' "$PAYLOAD9" | env "${SCRUB[@]}" CMUX_BIN="/nonexistent-cmux-for-test" ORCA_BIN="$FAKE_ORCA9" \
+  CBP_LEDGER_DIR="$LEDGER9" CBP_ORIGIN_ID="origin9" \
   ORCA_TERMINAL_HANDLE="term_self" CLAUDE_MAX_CHILD_PANES="$((TOTAL_N + 1))" "$LIMIT_PANES" >/dev/null 2>/dev/null || RC=$?
 [ "$RC" = "0" ] || fail "case9b: LIMIT=total+1 → exit 0 expected, got $RC"
+echo "ok: case9b: 상한 초과 아니면 통과"
 
-# cbp- 접두 아닌 터미널만 있는 fake → orca child 카운트가 0 이어야 함
-FAKE_ORCA9C="$TMP/fake-orca9c.sh"
-cat > "$FAKE_ORCA9C" <<'EOF'
-#!/usr/bin/env bash
-cat <<JSON
-{"ok":true,"result":{"terminals":[
-  {"handle":"term_1","title":"not-cbp-a"},
-  {"handle":"term_2","title":"random-title"}
-]}}
-JSON
-EOF
-chmod +x "$FAKE_ORCA9C"
+# 원장이 비어 있으면(자식 없음) orca 기여 0 — 제목이 cbp- 여도 세지 않는다
+LEDGER9E="$TMP/ledger9empty"; mkdir -p "$LEDGER9E"
 RC=0
-printf '%s' "$PAYLOAD9" | env "${SCRUB[@]}" CMUX_BIN="/nonexistent-cmux-for-test" ORCA_BIN="$FAKE_ORCA9C" \
+printf '%s' "$PAYLOAD9" | env "${SCRUB[@]}" CMUX_BIN="/nonexistent-cmux-for-test" ORCA_BIN="$FAKE_ORCA9" \
+  CBP_LEDGER_DIR="$LEDGER9E" CBP_ORIGIN_ID="origin9" \
   ORCA_TERMINAL_HANDLE="" CLAUDE_MAX_CHILD_PANES=0 "$LIMIT_PANES" >/dev/null 2>"$TMP/err9c" || RC=$?
 [ "$RC" = "2" ] || fail "case9c: LIMIT=0 은 항상 차단이어야 함, got $RC"
 ORCA_N_C=$(grep -oE 'orca child: [0-9]+' "$TMP/err9c" | grep -oE '[0-9]+')
-[ "$ORCA_N_C" = "0" ] || fail "case9c: non-cbp 터미널은 카운트되면 안 됨, got orca child=$ORCA_N_C ($(cat "$TMP/err9c"))"
+[ "$ORCA_N_C" = "0" ] || fail "case9c: 원장이 비면 카운트 0 이어야 함(제목 무관), got orca child=$ORCA_N_C ($(cat "$TMP/err9c"))"
+echo "ok: case9c: 원장 비면 0 — title 은 더 이상 근거가 아니다"
 
 echo ""
 echo "✅ hooks_mux_generalize: all cases pass"
