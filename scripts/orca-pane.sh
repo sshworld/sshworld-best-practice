@@ -59,6 +59,13 @@ orca-pane <command> [args]
 
 commands:
   launch [<cmd>] [--title=<text>]               terminal 띄움. stdout=term_<uuid> 핸들 한 줄.
+  launch --worktree-mode [--name=<slug>] [--base=<ref>] [<cmd>]
+                                                워크트리 카드 모드. 현재 repo 가 orca 에 kind=git
+                                                로 등록돼 있으면 새 워크트리+자식 터미널을 만든다.
+                                                아니면(folder/미등록) 조용히 탭 모드로 폴백(stderr 1줄).
+                                                stdout 계약은 탭 모드와 동일(term_<uuid> 단일 토큰).
+                                                worktree/branch 는 stderr 에 `worktree=<path>` /
+                                                `branch=<branch>` 로 각 1줄.
   send <text> --pane=<term_*> [--enter=false] [--delay=<sec>] [--enter-count=<n>]
                                                 텍스트 전송 후 Enter (--enter-count=N 회, 기본 1, 0이면 생략)
   capture --pane=<term_*> [--lines=<n>]         terminal 화면 tail stdout
@@ -203,6 +210,23 @@ if isinstance(node, list):
 ' "$path" 2>/dev/null
 }
 
+# $_ORCA_RAW 의 result.terminals[] 첫 원소 handle (없으면 빈 문자열). launch --worktree-mode 의
+# 3중 폴백(agentTerminalHandle → startupTerminal.handle → terminal list) 마지막 단계용.
+_orca_first_terminal_handle() {
+  printf '%s' "$_ORCA_RAW" | python3 -c '
+import json, sys
+try:
+    d = json.load(sys.stdin)
+except Exception:
+    sys.exit(0)
+terms = (d.get("result") or {}).get("terminals") or []
+if terms:
+    h = terms[0].get("handle")
+    if h:
+        print(h)
+'
+}
+
 # ----------------------------------------------------------------
 # 원장(reap-agents.sh) 에서 kind=orca 인 ref 목록 (한 줄에 하나). 원장 파일이나
 # reap-agents.sh 자체가 없으면 조용히 빈 목록 — cleanup/reap-orphans 를 실패시키지 않는다.
@@ -227,15 +251,34 @@ for line in sys.stdin:
 }
 
 do_launch() {
-  local cmd="" title_override=""
+  local cmd="" title_override="" worktree_mode=0 wt_name="" wt_base=""
   local a
   for a in "$@"; do
     case "$a" in
-      --title=*) title_override="${a#*=}" ;;
+      --title=*)       title_override="${a#*=}" ;;
+      --worktree-mode) worktree_mode=1 ;;
+      --name=*)        wt_name="${a#*=}" ;;
+      --base=*)        wt_base="${a#*=}" ;;
+      # 워크트리 생성 시엔 미사용 — 자식 명령 결정은 dispatch 의 build_child_cmd 책임,
+      # 터미널은 기존 send 경로로 채운다(코드 경로 분기 최소화, spec 작업1 참조).
+      --child-cmd=*)   : ;;
       *) [ -z "$cmd" ] && cmd="$a" ;;
     esac
   done
   local title="${CBP_TITLE_PREFIX}${title_override:-$(date +%s)-$$}"
+
+  if [ "$worktree_mode" = "1" ]; then
+    do_launch_worktree "$wt_name" "$wt_base" "$title" "$cmd"
+    return $?
+  fi
+
+  _orca_launch_tab "$title" "$cmd"
+}
+
+# 기존 탭 모드 launch 본체 — worktree-mode 폴백도 이 경로를 그대로 재사용한다
+# (동작·stdout 계약 불변 보장).
+_orca_launch_tab() {
+  local title="$1" cmd="$2"
 
   if ! _orca_run terminal create --worktree active --title "$title"; then
     die "launch: terminal create 실패 — $_ORCA_ERR" 3
@@ -247,6 +290,89 @@ do_launch() {
   [ -z "$handle" ] && die "launch: 응답에 handle 없음 — $_ORCA_RAW" 3
 
   # cmd 있으면 새 terminal 로 전달 (cmux-pane.sh do_launch 의 cmd 전달과 동일 관례)
+  if [ -n "$cmd" ]; then
+    do_send "$cmd" --pane="$handle" >/dev/null
+  fi
+
+  printf '%s\n' "$handle"
+}
+
+# --worktree-mode 전용: 현재 repo 가 orca 에 kind=git 로 등록돼 있을 때만 새 워크트리를
+# 만든다. folder-kind/미등록 repo 는 폴백 대상(정상 시나리오) — 실패로 처리하지 않는다.
+# ⚠️ 미등록 repo 를 절대 자동 등록(repo add)하지 않는다 — CLI 로 되돌릴 수 없다(spec 참조).
+do_launch_worktree() {
+  local name="$1" base="$2" title="$3" cmd="$4"
+
+  if ! _orca_run worktree current; then
+    echo "orca-pane: worktree current 조회 실패 — 탭 모드로 폴백 ($_ORCA_ERR)" >&2
+    _orca_launch_tab "$title" "$cmd"
+    return $?
+  fi
+  local repo_id
+  repo_id=$(_orca_get 'result.worktree.repoId')
+  if [ -z "$repo_id" ]; then
+    echo "orca-pane: worktree current 응답에 repoId 없음 — 탭 모드로 폴백" >&2
+    _orca_launch_tab "$title" "$cmd"
+    return $?
+  fi
+
+  if ! _orca_run repo list; then
+    echo "orca-pane: repo list 조회 실패 — 탭 모드로 폴백 ($_ORCA_ERR)" >&2
+    _orca_launch_tab "$title" "$cmd"
+    return $?
+  fi
+  local kind
+  kind=$(printf '%s' "$_ORCA_RAW" | REPO_ID="$repo_id" python3 -c '
+import json, os, sys
+try:
+    d = json.load(sys.stdin)
+except Exception:
+    sys.exit(0)
+rid = os.environ.get("REPO_ID", "")
+for r in (d.get("result") or {}).get("repos") or []:
+    if r.get("id") == rid:
+        print(r.get("kind", ""))
+        break
+' 2>/dev/null)
+
+  if [ "$kind" != "git" ]; then
+    echo "orca-pane: repo kind='${kind:-미등록}' (git 아님) — 탭 모드로 폴백" >&2
+    _orca_launch_tab "$title" "$cmd"
+    return $?
+  fi
+
+  local wt_name="${name:-$(date +%s)-$$}"
+  local create_args=(worktree create --repo "id:$repo_id" --name "$wt_name" \
+    --parent-worktree active --setup skip --comment "$wt_name" --workspace-status in-progress)
+  [ -n "$base" ] && create_args+=(--base-branch "$base")
+
+  if ! _orca_run "${create_args[@]}"; then
+    die "launch: worktree create 실패 — $_ORCA_ERR" 3
+  fi
+
+  local handle
+  handle=$(_orca_get 'result.agentTerminalHandle')
+  handle=$(printf '%s' "$handle" | tr -d '[:space:]')
+  if [ -z "$handle" ]; then
+    handle=$(_orca_get 'result.startupTerminal.handle')
+    handle=$(printf '%s' "$handle" | tr -d '[:space:]')
+  fi
+  if [ -z "$handle" ]; then
+    local wt_id
+    wt_id=$(_orca_get 'result.worktree.id')
+    if [ -n "$wt_id" ] && _orca_run terminal list --worktree "id:$wt_id"; then
+      handle=$(_orca_first_terminal_handle)
+      handle=$(printf '%s' "$handle" | tr -d '[:space:]')
+    fi
+  fi
+  [ -z "$handle" ] && die "launch: 워크트리 자식 터미널 handle 을 찾을 수 없음 — $_ORCA_RAW" 3
+
+  local wt_path wt_branch
+  wt_path=$(_orca_get 'result.worktree.path')
+  wt_branch=$(_orca_get 'result.worktree.branch')
+  [ -n "$wt_path" ] && echo "worktree=$wt_path" >&2
+  [ -n "$wt_branch" ] && echo "branch=$wt_branch" >&2
+
   if [ -n "$cmd" ]; then
     do_send "$cmd" --pane="$handle" >/dev/null
   fi
