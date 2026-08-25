@@ -18,7 +18,7 @@ FALSE_BIN="$(which false)"
 
 pass=0
 fail_count=0
-total=15
+total=17
 
 check() {
   local desc="$1" expected="$2" actual="$3"
@@ -125,18 +125,32 @@ result=$(env -i \
 check_contains "--mode=auto + CMUX_BIN=true (ping 성공) → driver=cmux" '"driver":"cmux"' "$result"
 
 # ----------------------------------------------------------------
-# 7. --mode=auto + 둘 다 unset (CMUX_BIN=false → ping 실패) → exit 2
+# 7. --mode=auto + 둘 다 unset (CMUX_BIN=false → ping 실패, ORCA_BIN=false → status 실패) → exit 2
+# env -i 로 orca 관련 주입 변수(ORCA_TERMINAL_HANDLE/ORCA_WORKSPACE_ID/TERM_PROGRAM)는
+# 이미 제거되지만, PATH 는 상속되므로 실제 orca 설치 머신에서 orca status probe 가
+# 성공해 'orca' 로 새는(오탐) 것을 막기 위해 ORCA_BIN 도 명시적으로 false 로 고정한다.
 exit_code=0
-env -i \
+stderr7=$(env -i \
   DISPATCH_DRY_RUN=1 \
   DISPATCH_SKIP_CLEANUP=1 \
   DISPATCH_CHILD_CMD=: \
   CMUX_BIN="$FALSE_BIN" \
+  ORCA_BIN="$FALSE_BIN" \
   PATH="$PATH" \
   HOME="${HOME:-/tmp}" \
-  bash "$DISPATCH" --slice=t --spec-file="$SPEC_FILE" --mode=auto 2>/dev/null \
+  bash "$DISPATCH" --slice=t --spec-file="$SPEC_FILE" --mode=auto 2>&1 >/dev/null) \
   || exit_code=$?
 check "--mode=auto + no env → exit 2" "2" "$exit_code"
+# "auto 감지" 만으로는 catch-all(알 수 없는 결과) 분기도 매치되어 오탐을 놓친다.
+# "환경 아님" 은 진짜 "멀티플렉서 아님" 분기에만 있는 고유 문구.
+check_contains "--mode=auto + no env → '환경 아님' (genuine die, catch-all 아님)" "환경 아님" "$stderr7"
+if echo "$stderr7" | grep -qF "알 수 없는 결과"; then
+  echo "FAIL: catch-all(알 수 없는 결과) 분기로 샌 것으로 보임 — orca 오탐 가능성: $stderr7" >&2
+  fail_count=$((fail_count + 1))
+else
+  echo "ok: catch-all(알 수 없는 결과) 분기로 새지 않음"
+  pass=$((pass + 1))
+fi
 
 # ----------------------------------------------------------------
 # 8. --mode=subagent → exit 0 + stderr 안내

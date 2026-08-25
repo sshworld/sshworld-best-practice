@@ -14,7 +14,7 @@
 #
 # 사용:
 #   reap-agents.sh origin
-#   reap-agents.sh record --kind=cmux --ref=surface:42 [--ws=<ws>] [--pid=<pid>] [--label=<t>]
+#   reap-agents.sh record --kind=cmux|tmux|orca|bg|subagent --ref=surface:42 [--ws=<ws>] [--pid=<pid>] [--label=<t>]
 #   reap-agents.sh list [--origin=<id>]
 #   reap-agents.sh reap [--apply] [--orphans] [--idle-hours=<n>]
 #   reap-agents.sh audit          # 회수 안 하고 현황만 (bg 세션 전체 포함)
@@ -23,7 +23,7 @@
 #   CBP_LEDGER_DIR      원장 디렉토리 override (테스트용)
 #   CBP_ORIGIN_ID       origin 강제 지정 (테스트용)
 #   CBP_SESSIONS_DIR    Claude 세션 레코드 디렉토리 override (기본 ~/.claude/sessions)
-#   CMUX_BIN / TMUX_BIN 바이너리 override (기본 cmux / tmux)
+#   CMUX_BIN / TMUX_BIN / ORCA_BIN  바이너리 override (기본 cmux / tmux / orca)
 #   REAP_AGENTS_DRY_RUN=1  --apply 를 무시하고 항상 dry-run
 #
 # 종료코드: 0 정상 / 2 사용법·치명오류
@@ -34,6 +34,7 @@ LEDGER_DIR="${CBP_LEDGER_DIR:-$HOME/.cache/cbp/ledger}"
 SESSIONS_DIR="${CBP_SESSIONS_DIR:-$HOME/.claude/sessions}"
 CMUX_BIN="${CMUX_BIN:-cmux}"
 TMUX_BIN="${TMUX_BIN:-tmux}"
+ORCA_BIN="${ORCA_BIN:-orca}"
 
 usage() {
   sed -n '2,30p' "$0" | sed 's/^# \{0,1\}//'
@@ -106,7 +107,7 @@ do_record() {
     esac
   done
   [ -n "$kind" ] && [ -n "$ref" ] || { echo "reap-agents: record 는 --kind 와 --ref 필수" >&2; exit 2; }
-  case "$kind" in cmux|tmux|bg|subagent) ;; *) echo "reap-agents: 알 수 없는 kind: $kind" >&2; exit 2 ;; esac
+  case "$kind" in cmux|tmux|bg|subagent|orca) ;; *) echo "reap-agents: 알 수 없는 kind: $kind" >&2; exit 2 ;; esac
 
   # 자기 자신 기록 거부 — 원장에 자신이 없으면 자살이 구조적으로 불가능하다.
   if [ -n "${CMUX_SURFACE_ID:-}" ] && [ "$ref" = "$CMUX_SURFACE_ID" ]; then
@@ -114,6 +115,9 @@ do_record() {
   fi
   if [ -n "${CBP_SELF_PANE:-}" ] && [ "$ref" = "$CBP_SELF_PANE" ]; then
     echo "reap-agents: self pane 기록 거부 ($ref)" >&2; exit 2
+  fi
+  if [ -n "${ORCA_TERMINAL_HANDLE:-}" ] && [ "$ref" = "$ORCA_TERMINAL_HANDLE" ]; then
+    echo "reap-agents: self terminal 기록 거부 ($ref)" >&2; exit 2
   fi
   if _is_ancestor_pid "$pid"; then
     echo "reap-agents: 조상 pid 기록 거부 ($pid)" >&2; exit 2
@@ -172,6 +176,7 @@ _reap_one() {
   case "$kind" in
     cmux)     cmd="$CMUX_BIN close-surface --surface $ref"; [ -n "$ws" ] && cmd="$cmd --workspace $ws" ;;
     tmux)     cmd="$TMUX_BIN kill-pane -t $ref" ;;
+    orca)     cmd="$ORCA_BIN terminal close --terminal $ref --json" ;;
     bg)       [ -n "$pid" ] || { echo "  skip(bg, pid 없음) $ref"; return 0; }
               cmd="kill $pid" ;;
     subagent) echo "  skip(subagent — 인프로세스, 별도 회수 불필요) $ref"; return 0 ;;
@@ -223,6 +228,9 @@ do_reap() {
       # 2차 방어선: 어떤 경로로든 자기 자신이면 절대 회수하지 않는다.
       if [ -n "${CMUX_SURFACE_ID:-}" ] && [ "$ref" = "$CMUX_SURFACE_ID" ]; then
         echo "  keep(self surface) $ref"; continue
+      fi
+      if [ -n "${ORCA_TERMINAL_HANDLE:-}" ] && [ "$ref" = "$ORCA_TERMINAL_HANDLE" ]; then
+        echo "  keep(self terminal) $ref"; continue
       fi
       if _is_ancestor_pid "$pid"; then
         echo "  keep(self pid chain) $pid"; continue

@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# dispatch-slice-pane.sh — implementor 슬라이스를 tmux/cmux pane/workspace 에서 실행하기 위한 spawner.
+# dispatch-slice-pane.sh — implementor 슬라이스를 tmux/cmux/orca pane/workspace 에서 실행하기 위한 spawner.
 #
 # 사용:
 #   dispatch-slice-pane.sh --slice=<kebab> --spec-file=.claude/specs/<kebab>.spec.md \
-#                          [--worktree=<path>] [--mode=tmux|cmux|pane|auto|subagent] \
+#                          [--worktree=<path>] [--mode=tmux|cmux|orca|pane|auto|subagent] \
 #                          [--model=<alias>] [--type=feat|fix|refactor|test|docs|chore]
 #
 # 권장 spec-file 위치: .claude/specs/<slug>.spec.md (kebab-case slug + .spec.md 접미사).
@@ -13,18 +13,19 @@
 #   tmux      — tmux pane dispatch (tmux-cli 또는 tmux-pane.sh wrapper)
 #   pane      — tmux 의 alias (기존 호환)
 #   cmux      — cmux workspace dispatch (cmux-pane.sh wrapper)
-#   auto      — detect-pane-env.sh 결과로 자동 선택 (tmux > cmux > error)
+#   orca      — orca terminal dispatch (orca-pane.sh wrapper)
+#   auto      — detect-pane-env.sh 결과로 자동 선택 (tmux > cmux > orca > error)
 #   subagent  — 안내 메시지만 출력 후 exit 0 (subagent 모드는 이 스크립트 불필요)
 #   (미지정)  — pane (tmux) 이 기본값 (기존 호환)
 #
 # 동작:
 #   1. driver 결정 (--mode 또는 detect_pane_env)
-#   2. wrapper 결정 (tmux: tmux-cli 또는 tmux-pane.sh / cmux: cmux-pane.sh)
+#   2. wrapper 결정 (tmux: tmux-cli 또는 tmux-pane.sh / cmux: cmux-pane.sh / orca: orca-pane.sh)
 #   3. git worktree 준비 (<type>/<kebab> 브랜치, 기본 경로 .worktrees/<kebab>)
 #   4. pane/workspace 띄움 (zsh) → cd <worktree> → 자식 명령 실행
 #   5. spec 파일 경로를 Read 지시 prompt 로 전송 (본문 inline 전송 금지)
 #   6. stdout 한 줄 JSON:
-#        일반:  {"pane":"...","worktree":"...","branch":"<type>/<kebab>","driver":"tmux|cmux"}
+#        일반:  {"pane":"...","worktree":"...","branch":"<type>/<kebab>","driver":"tmux|cmux|orca"}
 #        DRY:   {"driver":"...","wrapper":"...","worktree":"...","branch":"<type>/<kebab>"}
 #
 # 자식 명령 결정 우선순위 (build_child_cmd):
@@ -52,7 +53,7 @@ set -uo pipefail
 usage() {
   cat >&2 <<'USAGE'
 dispatch-slice-pane.sh --slice=<kebab> --spec-file=.claude/specs/<kebab>.spec.md \
-                       [--worktree=<path>] [--mode=tmux|cmux|pane|auto|subagent] \
+                       [--worktree=<path>] [--mode=tmux|cmux|orca|pane|auto|subagent] \
                        [--model=<alias>] [--type=feat|fix|refactor|test|docs|chore]
 
 권장 spec-file 위치: .claude/specs/<slug>.spec.md (kebab-case + .spec.md).
@@ -60,7 +61,8 @@ dispatch-slice-pane.sh --slice=<kebab> --spec-file=.claude/specs/<kebab>.spec.md
 모드:
   tmux / pane  tmux pane dispatch (기본, 기존 호환)
   cmux         cmux workspace dispatch
-  auto         환경 자동 감지 (TMUX > CMUX > 에러)
+  orca         orca terminal dispatch
+  auto         환경 자동 감지 (TMUX > CMUX > ORCA > 에러)
   subagent     안내만 출력 후 exit 0 (plan-dev 기본 흐름에서 직접 호출 불필요)
 
 환경변수:
@@ -78,15 +80,16 @@ USAGE
 
 die() { echo "dispatch: $*" >&2; exit "${2:-1}"; }
 
-# cmux wrapper launch stdout 검증. 인자: pane_ref. stdout: 트림된 ref (성공 시), exit 1 (실패 시).
-# cmux-pane.sh launch 는 "surface:N" 또는 "workspace:N" 단일 토큰 한 줄을 stdout 으로 반환하는 계약.
-# 위반 시 fail-fast (silent tail -1 같은 recovery 는 다음 버그를 덮음).
-# tmux pane ref (session:window.pane 형식) 는 별도 분기에서 처리 — 이 함수는 cmux 전용.
+# cmux/orca wrapper launch stdout 검증. 인자: pane_ref. stdout: 트림된 ref (성공 시), exit 1 (실패 시).
+# cmux-pane.sh launch 는 "surface:N" 또는 "workspace:N", orca-pane.sh launch 는 "term_<uuid>"
+# 단일 토큰 한 줄을 stdout 으로 반환하는 계약. 위반 시 fail-fast (silent tail -1 같은 recovery 는
+# 다음 버그를 덮음). tmux pane ref (session:window.pane 형식) 는 별도 분기에서 처리 — 이 함수는
+# cmux/orca 전용.
 validate_pane_ref() {
   local pane="$1"
   pane=$(printf '%s' "$pane" | tr -d '\r\n')
   case "$pane" in
-    surface:*|workspace:*) printf '%s' "$pane"; return 0 ;;
+    surface:*|workspace:*|term_*) printf '%s' "$pane"; return 0 ;;
     *) return 1 ;;
   esac
 }
@@ -357,6 +360,9 @@ main() {
     cmux)
       DRIVER="cmux"
       ;;
+    orca)
+      DRIVER="orca"
+      ;;
     auto)
       # detect-pane-env.sh 로 환경 자동 감지
       local env_result
@@ -364,12 +370,13 @@ main() {
       case "$env_result" in
         tmux)    DRIVER="tmux" ;;
         cmux)    DRIVER="cmux" ;;
-        default) die "auto 감지: tmux/cmux 환경 아님 — --mode=subagent (plan-dev 기본) 또는 --mode=tmux/cmux 를 명시하세요" 2 ;;
+        orca)    DRIVER="orca" ;;
+        default) die "auto 감지: tmux/cmux/orca 환경 아님 — --mode=subagent (plan-dev 기본) 또는 --mode=tmux/cmux/orca 를 명시하세요" 2 ;;
         *)       die "auto 감지: 알 수 없는 결과 '$env_result'" 2 ;;
       esac
       ;;
     *)
-      die "알 수 없는 --mode: $DRIVER_MODE (tmux|cmux|pane|auto|subagent 중 하나)" 2
+      die "알 수 없는 --mode: $DRIVER_MODE (tmux|cmux|orca|pane|auto|subagent 중 하나)" 2
       ;;
   esac
 
@@ -394,6 +401,17 @@ main() {
       WRAPPER="$SCRIPT_DIR/cmux-pane.sh"
     else
       die "cmux-pane.sh 미발견 — scripts/cmux-pane.sh 확인" 2
+    fi
+  elif [ "$DRIVER" = "orca" ]; then
+    local orca_bin="${ORCA_BIN:-orca}"
+    # "echo" 는 테스트 mock — 존재 검사 skip. DRY_RUN 도 실제 spawn 없으니 skip.
+    if [ "${DISPATCH_DRY_RUN:-0}" != "1" ] && [ "$orca_bin" != "echo" ] && [ "$orca_bin" != "$( (command -v echo) 2>/dev/null || true)" ]; then
+      command -v "$orca_bin" > /dev/null 2>&1 || die "orca 미설치 — ORCA_BIN 경로 확인" 2
+    fi
+    if [ -x "$SCRIPT_DIR/orca-pane.sh" ]; then
+      WRAPPER="$SCRIPT_DIR/orca-pane.sh"
+    else
+      die "orca-pane.sh 미발견 — scripts/orca-pane.sh 확인" 2
     fi
   fi
 
@@ -462,11 +480,11 @@ main() {
   # (launch cmd 인자 제거: nested zsh 회피. grid 경로는 send 시퀀스로 처리)
   local PANE PANE_RAW
   PANE_RAW=$("$WRAPPER" launch) || die "wrapper launch 실패"
-  # cmux: surface:N / workspace:N 단일 토큰 strict 계약.
+  # cmux: surface:N / workspace:N, orca: term_<uuid> — 단일 토큰 strict 계약.
   # tmux: session:window.pane 형식 (driver 외부) — CRLF 트림 + 빈값 거부만.
-  if [ "$DRIVER" = "cmux" ]; then
+  if [ "$DRIVER" = "cmux" ] || [ "$DRIVER" = "orca" ]; then
     PANE=$(validate_pane_ref "$PANE_RAW") || \
-      die "wrapper launch 계약 위반: PANE='$PANE_RAW' (expected surface:N 또는 workspace:N 단일 토큰). wrapper 의 stdout 격리 확인."
+      die "wrapper launch 계약 위반: PANE='$PANE_RAW' (expected surface:N / workspace:N / term_<uuid> 단일 토큰). wrapper 의 stdout 격리 확인."
   else
     PANE=$(printf '%s' "$PANE_RAW" | tr -d '\r\n')
     [ -z "$PANE" ] && die "wrapper launch 실패: pane ref 가 비어있음"
@@ -485,9 +503,9 @@ main() {
   "$WRAPPER" send "$CHILD_CMD" --pane="$PANE" --delay=0.3 >/dev/null || die "send child 실패"
   "$WRAPPER" wait-idle --pane="$PANE" --idle=1 --timeout=15 >/dev/null 2>&1 || true
 
-  # ── cmux 자식 기동 검증 (DISPATCH_VERIFY != 0, DRIVER=cmux 일 때만) ──
+  # ── cmux/orca 자식 기동 검증 (DISPATCH_VERIFY != 0, DRIVER=cmux|orca 일 때만) ──
   local VERIFY_TRIES="${DISPATCH_VERIFY_TRIES:-3}"
-  if [ "$DRIVER" = "cmux" ] && [ "${DISPATCH_VERIFY:-1}" != "0" ]; then
+  if { [ "$DRIVER" = "cmux" ] || [ "$DRIVER" = "orca" ]; } && [ "${DISPATCH_VERIFY:-1}" != "0" ]; then
     local tui_ok=0
     local vtry=1
     while [ "$vtry" -le "$VERIFY_TRIES" ]; do
@@ -508,8 +526,8 @@ main() {
     if [ "$tui_ok" -eq 0 ]; then
       # 검증 실패 — surface 정리 best-effort 후 명확 실패
       "$WRAPPER" kill --pane="$PANE" >/dev/null 2>&1 || true
-      echo "dispatch: cmux dispatch 자식 기동/생존 검증 실패 (pane=$PANE, tries=$VERIFY_TRIES)" >&2
-      echo "dispatch: cmux PTY 불안정 가능. subagent 모드로 폴백 권장:" >&2
+      echo "dispatch: $DRIVER dispatch 자식 기동/생존 검증 실패 (pane=$PANE, tries=$VERIFY_TRIES)" >&2
+      echo "dispatch: $DRIVER PTY 불안정 가능. subagent 모드로 폴백 권장:" >&2
       echo "  plan-dev Phase 2 의 Agent(subagent_type=implementor) 호출 또는" >&2
       echo "  dispatch-slice-pane.sh --mode=subagent." >&2
       echo "dispatch: worktree=$WORKTREE_ABS 는 부모가 정리하세요 (git worktree remove --force)." >&2
@@ -522,15 +540,15 @@ main() {
   SPEC_FILE_ABS="$(cd "$(dirname "$SPEC_FILE")" && pwd)/$(basename "$SPEC_FILE")"
   local SPEC_PROMPT
   SPEC_PROMPT=$(build_spec_prompt "$SPEC_FILE_ABS" "$SLICE")
-  if [ "$DRIVER" = "cmux" ]; then
+  if [ "$DRIVER" = "cmux" ] || [ "$DRIVER" = "orca" ]; then
     "$WRAPPER" send "$SPEC_PROMPT" --pane="$PANE" --delay=0.5 --enter-count=2 >/dev/null || die "send spec-prompt 실패"
   else
     "$WRAPPER" send "$SPEC_PROMPT" --pane="$PANE" --delay=0.5 >/dev/null || die "send spec-prompt 실패"
   fi
   "$WRAPPER" wait-idle --pane="$PANE" --idle=2 --timeout=8 >/dev/null 2>&1 || true
 
-  # ── SPEC 후 surface 생존 확인 (cmux + verify on) ──
-  if [ "$DRIVER" = "cmux" ] && [ "${DISPATCH_VERIFY:-1}" != "0" ]; then
+  # ── SPEC 후 surface 생존 확인 (cmux/orca + verify on) ──
+  if { [ "$DRIVER" = "cmux" ] || [ "$DRIVER" = "orca" ]; } && [ "${DISPATCH_VERIFY:-1}" != "0" ]; then
     local post_cap
     post_cap=$("$WRAPPER" capture --pane="$PANE" 2>/dev/null) || {
       echo "dispatch: spec 전송 후 surface 사망 감지 (pane=$PANE)" >&2
@@ -550,8 +568,11 @@ main() {
   if [ "${SKIP_SPAWN_LEDGER:-0}" != "1" ]; then
     _reaper="$(dirname "${BASH_SOURCE[0]}")/reap-agents.sh"
     if [ -x "$_reaper" ]; then
+      _ledger_ws=""
+      [ "$DRIVER" = "cmux" ] && _ledger_ws="${CMUX_WORKSPACE_ID:-}"
+      [ "$DRIVER" = "orca" ] && _ledger_ws="${ORCA_WORKSPACE_ID:-}"
       "$_reaper" record --kind="$DRIVER" --ref="$PANE" \
-        ${CMUX_WORKSPACE_ID:+--ws="$CMUX_WORKSPACE_ID"} --label="$SLICE" >/dev/null 2>&1 || true
+        ${_ledger_ws:+--ws="$_ledger_ws"} --label="$SLICE" >/dev/null 2>&1 || true
     fi
   fi
 
