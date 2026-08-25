@@ -9,7 +9,10 @@
 > 🚀 **환경별 기본 Mode 룰**:
 > - **cmux 환경(`CMUX_WORKSPACE_ID` set)**: **dispatch(cmux) 만** — plan Slice File Map 에 `direct-edit` 표셀 넣으면 `enforce-cmux-dispatch` hook 이 **ExitPlanMode 차단**. 각 슬라이스는 `${CLAUDE_PLUGIN_ROOT}/scripts/dispatch-slice-pane.sh --mode=cmux` 로 자식 surface 에 띄워 작업 (사용자가 cmux 사이드바에서 진행 시각화). SessionStart 의 `cmux-dispatch-hint` advisory 가 이를 상기시킴.
 >   - cmux 에서 `direct-edit` 가 정말 필요하면 **plan 콘텐츠가 아니라 out-of-band env**: `CMUX_DIRECT_EDIT_OK=1` 로 ExitPlanMode 게이트를 의식적으로 1회 통과. "정책/문서/하네스 파일이라서 direct-edit" 라는 일반화는 잘못됨 — 자기수정도 dispatch 기본. escape 는 dispatch 자체가 불가한 환경 등 진짜 예외만.
-> - **비-cmux 환경**: `direct-edit` 가 기본, dispatch 가 opt-in (시각화/격리 가치 시).
+> - **orca 환경(Orca 데스크톱 앱, cmux 형제 — `ORCA_TERMINAL_HANDLE`/`ORCA_WORKSPACE_ID`/`TERM_PROGRAM=Orca`)**: **dispatch(orca) 만** — 각 슬라이스는 `${CLAUDE_PLUGIN_ROOT}/scripts/dispatch-slice-pane.sh --mode=orca` 로 자식을 **현재 워크스페이스의 새 탭**으로 띄운다(cmux 의 grid split 과 달리 탭 단위). 회수는 `${CLAUDE_PLUGIN_ROOT}/scripts/orca-pane.sh reap`. escape 는 cmux 와 동일 원리 — 진짜 dispatch 불가 환경일 때만.
+> - **비-cmux/orca 환경**: `direct-edit` 가 기본, dispatch 가 opt-in (시각화/격리 가치 시).
+>
+> orca 는 자식을 `orca terminal create --worktree active` 로 **현재 워크스페이스 탭**으로 띄운다. `orca worktree create`(자식 카드, 별도 워크스페이스) 는 **의도적으로 쓰지 않는다** — folder-kind 워크스페이스에서는 자식이 별개 프로젝트처럼 보여 "같은 작업의 자식" 이라는 목적을 못 채운다는 게 라이브 실험으로 확인됐다. 또한 orca CLI 에는 `notify` 명령이 없고 자식별 진행률 pill 도 없다 — 완료 통지는 `orca worktree set --comment` 로 격하.
 >
 > cmux dispatch 경로(`${CLAUDE_PLUGIN_ROOT}/scripts/dispatch-slice-pane.sh --mode=cmux`)는 항상 보존.
 >
@@ -27,6 +30,7 @@
 | `--mode=subagent` | Agent(implementor) — 부모 token-stats 추적 ✓, cmux 화면 분할 ✗ |
 | `--mode=pane` / `--mode=tmux` | tmux pane dispatch |
 | `--mode=cmux` | cmux workspace dispatch (부모 workspace 안 grid split — 사용자가 attach/시각화) |
+| `--mode=orca` | orca terminal dispatch (현재 워크스페이스의 새 **탭** — 사용자가 사이드바에서 확인). 회수 `orca-pane.sh reap` |
 | `Workflow` 툴 (mode=workflow) | dispatch-slice-pane **미경유** — 부모가 `Workflow` 툴로 `pipeline(slices,...)` fan-out. 비시각·대규모·자동 verify. opt-in. `/workflows` 트리로 관찰. ➜ "Workflow 통합" 섹션 참조 |
 
 **cmux dispatch (cmux 환경 기본)**: cmux 환경에서는 슬라이스 기본 mode. `--mode=cmux` 면 부모 workspace 안에 자식 surface 가 grid 분할되어 사용자가 화면에서 직접 진행 확인. 자식 토큰은 부모 token-stats 로 추적 안 됨 (trade-off — 비-cmux 면 subagent mode 가 토큰 추적). cmux 에서 direct-edit 가 정말 필요하면 plan Mode 컬럼이 아니라 `CMUX_DIRECT_EDIT_OK=1` escape — "이 파일은 정책/문서라서 direct-edit" 라는 일반화는 잘못됨. **자기수정(plan-dev 자신의 hook·문서 편집)도 cmux 환경에서는 dispatch(cmux) 기본**. 진짜 예외(dispatch 자체가 불가한 환경)일 때만 escape 사용.
@@ -50,6 +54,8 @@
 
 강제 회수: `CBP_REAP_IGNORE_PENDING=1`. 요약 줄: `reaped N / kept M / pending P`.
 
+**orca 는 동일 계약을 `${CLAUDE_PLUGIN_ROOT}/scripts/orca-pane.sh reap --pane=term_<uuid>`(탭 단위)으로 제공** — done-marker/화면 감지로 close, 미완료면 보존. ⚠️ orca CLI 는 `ok:false` 를 exit code 0 으로도 반환할 수 있어, `orca-pane.sh` 는 exit code 가 아니라 항상 응답 JSON 의 `.ok` 만 신뢰한다.
+
 #### 애드혹 dispatch (Slice File Map 밖 편집)
 
 plan 승인 후 원래 Slice 에 없던 편집 요청도 direct-edit 대신 위와 동일한 `dispatch-slice-pane.sh` 흐름으로 짧은 인라인 spec dispatch — 상세는 `commands/plan-dev.md` 의 "Phase 2 — 애드혹 편집" 참조.
@@ -66,8 +72,8 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/dispatch-slice-pane.sh \
   --slice=<kebab> \
   --type=<feat|fix|refactor|test|docs|chore> \
   --spec-file=.claude/specs/<kebab>.spec.md \
-  [--mode=auto|cmux|tmux|subagent]   [--model=<alias>]
-# stdout: {"pane":"...","worktree":"...","branch":"<type>/<slug>","driver":"tmux|cmux"}
+  [--mode=auto|cmux|tmux|orca|subagent]   [--model=<alias>]
+# stdout: {"pane":"...","worktree":"...","branch":"<type>/<slug>","driver":"tmux|cmux|orca"}
 ```
 
 `--type` 미지정 시 `DISPATCH_DEFAULT_TYPE` env → 없으면 `feat`. `--model` 미지정 시 `DISPATCH_DEFAULT_MODEL` env → 없으면 `sonnet`. `--mode` 미지정 시 `DISPATCH_DEFAULT_MODE` env → 없으면 `auto`.

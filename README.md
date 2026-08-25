@@ -47,8 +47,10 @@ hooks/
 scripts/
 ├── tmux-pane.sh              # 얇은 tmux wrapper — launch/send/capture/wait-idle/kill/list/status
 ├── cmux-pane.sh              # 얇은 cmux wrapper — launch/send/capture/kill/reap/list/cleanup/status + state file 헬퍼
-├── detect-pane-env.sh        # 터미널 환경 감지 — tmux | cmux | default
-├── dispatch-slice-pane.sh    # implementor 슬라이스를 tmux/cmux pane 으로 dispatch (plan-dev --mode=pane)
+├── detect-pane-env.sh        # 터미널 환경 감지 — tmux | cmux | orca | default
+├── orca-pane.sh              # 얇은 Orca(stablyai 데스크톱 앱) wrapper — launch/send/capture/wait-idle/kill/list/cleanup/status/reap/reap-orphans
+├── open-doc.sh                # 문서를 사용자 화면에 열기 — orca 면 내장 에디터(file open), 아니면 OS 기본(open/xdg-open)
+├── dispatch-slice-pane.sh    # implementor 슬라이스를 tmux/cmux/orca pane 으로 dispatch (plan-dev --mode=pane|cmux|orca)
 ├── plan-dev-session.sh       # plan-dev 세션 marker 관리 (start/query/clear)
 ├── plan-dev-progress.sh      # plan-dev 진행률 cmux push 헬퍼 (start/tick/show)
 ├── finish-plan-dev.sh        # develop/main 분기 push 자동화 + marker clear
@@ -288,9 +290,10 @@ Workflow agent 는 **cmux surface 가 아니다** — 다른 런타임이라 한
 |---|---|
 | TMUX 안 (`$TMUX` set) | tmux pane dispatch |
 | cmux 안 (`$CMUX_WORKSPACE_ID` set) | cmux workspace dispatch (부모 workspace 안 grid split — 사용자 화면에 자식 surface 분할 가시화) |
-| 둘 다 아님 (default) | die — `--mode=subagent` 명시 권장 |
+| orca 안 (`$ORCA_TERMINAL_HANDLE`/`$ORCA_WORKSPACE_ID`/`TERM_PROGRAM=Orca`) | orca terminal dispatch (현재 워크스페이스의 새 **탭** — cmux 의 grid split 과 달리 탭 단위) |
+| 셋 다 아님 (default) | die — `--mode=subagent` 명시 권장 |
 
-명시 가능 모드: `subagent`(Agent tool, 토큰 추적 ✓), `tmux`/`pane`, `cmux`, `auto`. `--mode=cmux` 사용 시 사용자가 cmux 화면 분할 + attach 로 작업을 직접 시각화 가능 (단점: 자식 토큰은 부모 token-stats 로 추적 안 됨).
+명시 가능 모드: `subagent`(Agent tool, 토큰 추적 ✓), `tmux`/`pane`, `cmux`, `orca`, `auto`. `--mode=cmux`/`--mode=orca` 사용 시 사용자가 각각 cmux 화면 분할 / orca 탭으로 작업을 직접 시각화 가능 (단점: 자식 토큰은 부모 token-stats 로 추적 안 됨). orca 는 자식을 `orca terminal create --worktree active` 로 띄운다 — `orca worktree create`(별도 워크스페이스 카드) 는 folder-kind 워크스페이스에서 자식이 별개 프로젝트로 보여 쓰지 않는다.
 
 ### 직접 호출 (수동)
 
@@ -684,6 +687,9 @@ cmux dispatch 자식이 작업을 마치면 부모 사이드바에 cmux 알림 �
 | `CMUX_CONTEXT_HOOK_STRICT=1` | off | enforce-cmux-context.sh strict 모드 — cmux 안 tmux 계열 명령 차단(exit 2) |
 | `SKIP_CMUX_CONTEXT_HOOK=1` | off | enforce-cmux-context.sh 1회 우회 (advisory 억제) |
 | `DISABLE_CMUX_CONTEXT_HOOK=1` | off | enforce-cmux-context.sh 영구 비활성화 |
+| `ORCA_BIN=<path>` | `orca` | orca-pane.sh / open-doc.sh / detect-pane-env.sh 가 사용할 orca 바이너리 경로 (테스트 mock 에 사용) |
+| `OPEN_DOC_DRY_RUN=1` | off | open-doc.sh 가 실제로 안 열고 실행하려던 OS 기본 오프너 명령 한 줄만 stdout 출력 (테스트가 실창 안 띄우게) |
+| `CBP_DESIGN_LINK=<path>` | `.claude/design` | open-doc.sh 가 orca 워크스페이스 밖 경로 재시도에 쓰는 **워크스페이스-상대** 심링크 경로. 이미 존재하는 심링크일 때만 사용 — 자동 생성하지 않음 |
 
 ---
 

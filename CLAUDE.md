@@ -30,7 +30,7 @@
 
 ## 환경변수
 
-전체 표는 **README.md 가 canonical home**(상세 각 스크립트 `--help` 참조). 자주 참조하는 것: `CLAUDE_MAX_CHILD_PANES`(`hooks/limit-child-panes.sh` 상한), `TMUX_PANE_NO_LAYOUT`(`scripts/tmux-pane.sh` 레이아웃 자동적용 끄기), `DISPATCH_DEFAULT_MODEL`(`scripts/dispatch-slice-pane.sh` 자식 model 디폴트), `CBP_LAUNCH_DEBUG`/`CBP_REAP_IGNORE_PENDING`(`scripts/cmux-pane.sh` launch 진단 / `reap` 강제회수).
+전체 표는 **README.md 가 canonical home**(상세 각 스크립트 `--help` 참조). 자주 참조하는 것: `CLAUDE_MAX_CHILD_PANES`(`hooks/limit-child-panes.sh` 상한), `TMUX_PANE_NO_LAYOUT`(`scripts/tmux-pane.sh` 레이아웃 자동적용 끄기), `DISPATCH_DEFAULT_MODEL`(`scripts/dispatch-slice-pane.sh` 자식 model 디폴트), `CBP_LAUNCH_DEBUG`/`CBP_REAP_IGNORE_PENDING`(`scripts/cmux-pane.sh` launch 진단 / `reap` 강제회수), `ORCA_BIN`(`scripts/orca-pane.sh`·`scripts/open-doc.sh` orca 바이너리 경로), `OPEN_DOC_DRY_RUN`(`scripts/open-doc.sh` 실제로 안 열고 결정만 출력), `CBP_DESIGN_LINK`(`scripts/open-doc.sh` 가 orca 재시도에 쓰는 워크스페이스-상대 심링크 경로).
 
 관련 스크립트/스킬: `scripts/tmux-pane.sh`, `scripts/dispatch-slice-pane.sh`, `scripts/cmux-pane.sh`(reap 포함), `hooks/limit-child-panes.sh`, `skills/tmux-orchestrate`, `commands/parallel-consult.md`, `.claude/workflows/*.mjs` — 상세는 [docs/contributing.md](./docs/contributing.md).
 
@@ -43,6 +43,7 @@
 - ❌ 병렬 슬라이스 통합 시 worktree 점유 브랜치를 rebase 시도 / rebase+cleanup 을 한 `&&` 체인에 — 중간 실패가 미머지 브랜치를 삭제. worktree remove 먼저, cleanup 은 머지 후. disjoint 슬라이스(파일 비충돌)는 rebase 말고 `cherry-pick` 권장.
 - ❌ 자식(cmux surface / tmux pane / bg 세션 / subagent)을 띄우고 **계보를 기록하지 않기** — Claude 세션 레코드엔 부모 필드가 없어서(2026-08-14 실측) spawn 시점에 안 적으면 "누가 내 자식인가" 를 영영 알 수 없고, 회수가 전역 스윕으로 밀린다. spawn=`reap-agents.sh record`, 회수=`reap-agents.sh reap`. **원천은 보존, 자식만 회수.** 📎 [계약](./commands/plan-dev/troubleshooting-dispatch.md)
 - ❌ `_pid_chain | grep -qx "$pid"` 로 자기 보호 판정 — `grep -q` 가 매치 즉시 파이프를 닫아 SIGPIPE(141)가 나고 `set -o pipefail` 이 그걸 파이프라인 결과로 삼아 **매치했는데 거짓**이 된다(자기 보호가 조용히 꺼짐). 파이프 없는 루프로 판정할 것.
+- ❌ **개발 머신이 실제 Orca 세션**이므로, `ORCA_*`/`TERM_PROGRAM` 을 scrub 하지 않은 테스트는 엉뚱한 이유로 통과·실패한다 — 이번 작업에서 이 계열 구멍이 6곳 나왔고, 그중 2곳은 테스트가 실제 live Orca 워크스페이스에 `orca worktree set` 을 호출하고 있었다.
 - ❌ 실제 cmux/tmux 를 건드리는 스크립트(`finish-plan-dev.sh` 의 `do_cmux_cleanup` 등)를 테스트에서 우회 선언 없이 실행 — 가드가 `CMUX_WORKSPACE_ID` 존재뿐이라 dispatch 자식 안에서 돌면 자기/형제 surface 를 닫는다(= 자식 자살, 2026-08-13 실측). 해당 스위트는 `export SKIP_PLAN_DEV_CMUX_CLEANUP=1` + `export SKIP_CMUX_REAP=1` 필수. 📎 [진단](./commands/plan-dev/troubleshooting-dispatch.md)
 - ❌ **개인 작업 기록(설계 문서)을 repo 에 커밋** — 공개 저장소면 그대로 공개되고, 팀 저장소면 타인에게 읽기·유지를 강요한다. 기본은 repo 밖 `~/.claude/design/<repo>/`(홈의 `~/.claude/` 이지 **repo 안 `.claude/` 가 아니다** — 후자는 repo 별 gitignore 로 소실된다). 팀과 공유할 문서만 `CBP_DESIGN_DIR` 로 repo 안 경로를 명시.
 - ❌ 필수 동작을 선택 단계(`Phase 3.5 — Review (선택)` 등) 안에 배치 — 그 단계를 건너뛰는 세션이 필수 동작을 같이 건너뛴다. 필수는 필수 단계에 (실측 write-back 을 3.5 → 4-0 으로 옮긴 이유).

@@ -45,7 +45,7 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/plan-dev-session.sh start
 > 💡 **Phase 1-1 ↔ Phase 1-2 연결**: 1-1 의 Acceptance criteria 가 1-2 의 Goal Statement 의 source. 같은 항목을 측정 가능 form (grep/test/명령) 으로만 transform.
 
 ### 1-1.5. 설계 문서 작성 + 승인
-조건부 블록(원인분석 / 구조 델타 / 결정 갈림길 / 기준선) 중 **하나라도 필요하면** `~/.claude/design/<repo>/<slug>.md` 를 먼저 쓰고 AskUserQuestion 으로 승인 → **2게이트**(설계 승인 → plan 승인). 전부 불필요하면 **fast path**(1게이트). commit type 으로 가르지 않는다. 구조 델타를 쓴 세션은 그 하위의 **§3.5 인터페이스 계약**(제공자 / 소비자 / 계약 / 실패 시)도 함께 채운다 — 계약은 별도 게이트 트리거가 아니라 구조 델타의 상세다. `hotfix` 는 착수 전 **골격만**(증상+가설+즉시조치) 승인하고 원인분석·재발방지는 사후. 작성 직후 `open <설계문서 경로>` 로 **사용자 화면에 띄운다** — 못 본 상태의 승인은 승인이 아니다. 승인 후 `${CLAUDE_PLUGIN_ROOT}/scripts/plan-dev-session.sh set-design <절대경로>` 로 latch (Phase 5 게이트 입력). 판정 기준·절차·하네스 한계는 ➜ [설계 문서 가이드](./plan-dev/design-doc.md).
+조건부 블록(원인분석 / 구조 델타 / 결정 갈림길 / 기준선) 중 **하나라도 필요하면** `~/.claude/design/<repo>/<slug>.md` 를 먼저 쓰고 AskUserQuestion 으로 승인 → **2게이트**(설계 승인 → plan 승인). 전부 불필요하면 **fast path**(1게이트). commit type 으로 가르지 않는다. 구조 델타를 쓴 세션은 그 하위의 **§3.5 인터페이스 계약**(제공자 / 소비자 / 계약 / 실패 시)도 함께 채운다 — 계약은 별도 게이트 트리거가 아니라 구조 델타의 상세다. `hotfix` 는 착수 전 **골격만**(증상+가설+즉시조치) 승인하고 원인분석·재발방지는 사후. 작성 직후 `${CLAUDE_PLUGIN_ROOT}/scripts/open-doc.sh <설계문서 경로>` 로 **사용자 화면에 띄운다**(orca 세션이면 내장 에디터로 연다) — 못 본 상태의 승인은 승인이 아니다. 승인 후 `${CLAUDE_PLUGIN_ROOT}/scripts/plan-dev-session.sh set-design <절대경로>` 로 latch (Phase 5 게이트 입력). 판정 기준·절차·하네스 한계는 ➜ [설계 문서 가이드](./plan-dev/design-doc.md).
 
 ### 1-2. EnterPlanMode → plan 파일 작성
 필수 섹션: **설계 문서 링크**(1-1.5 산출물, fast path 면 Context 한 단락으로 대체) / Explored Files / Assumptions / Vertical Slices / **Slice File Map** / **동작 스펙 (Behavior Spec)** / Verification / **Goal Statement**. plan 의 독자는 implementor/자식 surface — 사람이 판단할 내용은 설계 문서에 두고 plan 엔 링크만.
@@ -57,7 +57,7 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/plan-dev-session.sh start
 | S1 | scripts/foo.sh, README.md | direct-edit | updated |
 | S2 | .claude/agents/bar.md | dispatch (cmux, 사용자 시각화 요청) | none |
 
-- `Mode` — **`Mode 컬럼 필수`**, 빈 셀 금지. 값: `direct-edit` / `dispatch(cmux)` / `dispatch(tmux)` / `workflow`. **기본은 환경 의존** (cmux 환경 = `dispatch(cmux)` 만, escape 포함) — canonical 규칙은 [cmux dispatch 가이드](./plan-dev/cmux-dispatch.md) 참조. `workflow` 는 opt-in (대규모/비시각, ➜ "Workflow 통합" 섹션).
+- `Mode` — **`Mode 컬럼 필수`**, 빈 셀 금지. 값: `direct-edit` / `dispatch(cmux)` / `dispatch(tmux)` / `dispatch(orca)` / `workflow`. **기본은 환경 의존** (cmux/orca 환경 = 각각 `dispatch(cmux)`/`dispatch(orca)` 만, escape 포함) — canonical 규칙은 [cmux dispatch 가이드](./plan-dev/cmux-dispatch.md) 참조. `workflow` 는 opt-in (대규모/비시각, ➜ "Workflow 통합" 섹션).
 - `DOC_IMPACT` — `none` / `updated` 중 plan 단계에 미리 결정 (commit 시점에 발견하면 hook 차단 후 재시도 비용).
 - **이 표는 머지 물류다** — 파일 교집합으로 rebase 충돌을 예방하는 것이 목적이고, 슬라이스 간 **계약**(무엇이 오가는가·불변식·소유권·실패 시)은 설계 문서 §3.5 가 담당한다. **파일이 안 겹친다고 계약이 맞는 것은 아니다** — 격리 PASS/통합 FAIL 의 주요 원인.
 
