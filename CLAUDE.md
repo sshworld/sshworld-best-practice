@@ -30,7 +30,7 @@
 
 ## 환경변수
 
-전체 표는 **README.md 가 canonical home**(상세 각 스크립트 `--help` 참조). 자주 참조하는 것: `CLAUDE_MAX_CHILD_PANES`(`hooks/limit-child-panes.sh` 상한), `TMUX_PANE_NO_LAYOUT`(`scripts/tmux-pane.sh` 레이아웃 자동적용 끄기), `DISPATCH_DEFAULT_MODEL`(`scripts/dispatch-slice-pane.sh` 자식 model 디폴트), `CBP_LAUNCH_DEBUG`/`CBP_REAP_IGNORE_PENDING`(`scripts/cmux-pane.sh` launch 진단 / `reap` 강제회수), `ORCA_BIN`(`scripts/orca-pane.sh`·`scripts/open-doc.sh` orca 바이너리 경로), `OPEN_DOC_DRY_RUN`(`scripts/open-doc.sh` 실제로 안 열고 결정만 출력), `CBP_DESIGN_LINK`(`scripts/open-doc.sh` 가 orca 재시도에 쓰는 워크스페이스-상대 심링크 경로).
+전체 표는 **README.md 가 canonical home**(상세 각 스크립트 `--help` 참조). 자주 참조하는 것: `CLAUDE_MAX_CHILD_PANES`(`hooks/limit-child-panes.sh` 상한), `TMUX_PANE_NO_LAYOUT`(`scripts/tmux-pane.sh` 레이아웃 자동적용 끄기), `DISPATCH_DEFAULT_MODEL`(`scripts/dispatch-slice-pane.sh` 자식 model 디폴트), `CBP_LAUNCH_DEBUG`/`CBP_REAP_IGNORE_PENDING`(`scripts/cmux-pane.sh` launch 진단 / `reap` 강제회수), `ORCA_BIN`(`scripts/orca-pane.sh`·`scripts/open-doc.sh` orca 바이너리 경로), `OPEN_DOC_DRY_RUN`(`scripts/open-doc.sh` 실제로 안 열고 결정만 출력), `CBP_DESIGN_LINK`(`scripts/open-doc.sh` 가 orca 재시도에 쓰는 워크스페이스-상대 심링크 경로), `ORCA_WORKTREE_MODE=0`(`scripts/dispatch-slice-pane.sh` orca 워크트리 카드 모드 끄기 — 기본 on, folder-kind 워크스페이스면 자동으로 탭 폴백).
 
 관련 스크립트/스킬: `scripts/tmux-pane.sh`, `scripts/dispatch-slice-pane.sh`, `scripts/cmux-pane.sh`(reap 포함), `hooks/limit-child-panes.sh`, `skills/tmux-orchestrate`, `commands/parallel-consult.md`, `.claude/workflows/*.mjs` — 상세는 [docs/contributing.md](./docs/contributing.md).
 

@@ -690,6 +690,7 @@ cmux dispatch 자식이 작업을 마치면 부모 사이드바에 cmux 알림 �
 | `ORCA_BIN=<path>` | `orca` | orca-pane.sh / open-doc.sh / detect-pane-env.sh 가 사용할 orca 바이너리 경로 (테스트 mock 에 사용) |
 | `OPEN_DOC_DRY_RUN=1` | off | open-doc.sh 가 실제로 안 열고 실행하려던 OS 기본 오프너 명령 한 줄만 stdout 출력 (테스트가 실창 안 띄우게) |
 | `CBP_DESIGN_LINK=<path>` | `.claude/design` | open-doc.sh 가 orca 워크스페이스 밖 경로 재시도에 쓰는 **워크스페이스-상대** 심링크 경로. 이미 존재하는 심링크일 때만 사용 — 자동 생성하지 않음 |
+| `ORCA_WORKTREE_MODE=0` | on | `--mode=orca` 의 워크트리 카드 모드 끄기. 기본(on)은 세션이 **git-kind 로 등록된 단일-repo orca 워크스페이스**면 `orca worktree create` 로 자식을 독립 카드로 띄우고, folder-kind·미등록이면 조용히 탭 모드로 폴백한다. `0` 이면 항상 `git worktree add` + 탭 |
 
 ---
 
