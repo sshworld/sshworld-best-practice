@@ -1,16 +1,18 @@
 #!/usr/bin/env bash
-# Stop hook — cmux dispatch 자식(별도 claude 인스턴스) 작업 완료 시
-# (a) cmux notify 패널로 즉시 알리고 (b) done-marker 파일을 남겨
+# Stop hook — cmux/orca dispatch 자식(별도 claude 인스턴스) 작업 완료 시
+# (a) 알림 채널로 즉시 알리고 (b) done-marker 파일을 남겨
 # 부모 reap 이 fast-path 신호로 쓰게 한다.
+# 알림: cmux → cmux notify 패널. orca → orca worktree set --comment (notify 명령 자체가 없음,
+#       실패해도 무해 — best-effort nicety).
 #
-# done-marker 계약 (reap fast-path / reap-on-stop 과 공유 — 경로 변경 금지):
+# done-marker 계약 (reap fast-path / reap-on-stop 과 공유 — 경로/형식 변경 금지):
 #   경로: <git-common-dir>/cbp-slice-done-<branch sanitized: / → _>
-#   line1: surface ref — dispatch 가 자식 셸에 주입한 $CBP_SELF_PANE(surface:N, 정확한
-#          wrapper-namespace ref) 우선, 없으면 $CMUX_SURFACE_ID 폴백(cmux 실측 UUID 일 수
-#          있음 — wrapper 의 UUID --surface 라우팅이 belt 로 커버). 둘 다 unset 이면 빈 줄.
-#   line2: $CMUX_WORKSPACE_ID — 타 cmux workspace 의 부모가 같은 marker 를
-#          오사용(reap)하는 것을 막는 가드. 소비 측(_cbp_find_done_marker)이
-#          line2 존재 && 자기 CMUX_WORKSPACE_ID 와 다르면 skip.
+#   line1: surface/terminal ref — dispatch 가 자식 셸에 주입한 $CBP_SELF_PANE(surface:N, 정확한
+#          wrapper-namespace ref) 우선, 없으면 cmux 는 $CMUX_SURFACE_ID, orca 는
+#          $ORCA_TERMINAL_HANDLE 폴백. 셋 다 unset 이면 빈 줄.
+#   line2: $CMUX_WORKSPACE_ID (cmux) 또는 $ORCA_WORKSPACE_ID (orca) — 타 workspace 의
+#          부모가 같은 marker 를 오사용(reap)하는 것을 막는 가드. 소비 측이
+#          line2 존재 && 자기 워크스페이스 id 와 다르면 skip.
 #
 # 우회: SKIP_SLICE_DONE_NOTIFY=1 (1회) / DISABLE_SLICE_DONE_NOTIFY=1 (영구)
 # 비-dispatch worktree 오발화 차단 escape: CBP_NOTIFY_ANY_WORKTREE=1
@@ -21,9 +23,16 @@ set -u
 [ "${DISABLE_SLICE_DONE_NOTIFY:-0}" = "1" ] && exit 0
 [ "${SKIP_SLICE_DONE_NOTIFY:-0}" = "1" ] && exit 0
 
-# 게이트 1 — 비-cmux 는 통지 대상이 없다. 이것만 남긴다.
-if [ -z "${CMUX_WORKSPACE_ID:-}" ]; then
-  [ "${CBP_NOTIFY_DEBUG:-0}" = "1" ] && echo "notify-slice-done: skip — CMUX_WORKSPACE_ID 없음" >&2
+# 게이트 1 — 멀티플렉서 밖(tmux 포함)은 통지 대상이 없다. 이것만 남긴다.
+# 종류 판정은 직접 신호만 본다: 이 훅은 dispatch 된 자식에서만 의미가 있고,
+# 그 경우 launcher 가 CMUX_WORKSPACE_ID/ORCA_WORKSPACE_ID 를 셸에 직접 주입하므로
+# ping/status 프로브가 필요 없다 (매 turn 마다 발화하는 Stop hook 이라 특히 피해야 함).
+if [ -n "${CMUX_WORKSPACE_ID:-}" ]; then
+  MUX_KIND="cmux"
+elif [ -n "${ORCA_WORKSPACE_ID:-}" ]; then
+  MUX_KIND="orca"
+else
+  [ "${CBP_NOTIFY_DEBUG:-0}" = "1" ] && echo "notify-slice-done: skip — 멀티플렉서 신호 없음" >&2
   exit 0
 fi
 
@@ -72,8 +81,17 @@ case "$verdict" in
   *)    title="🔔 ${branch} turn 종료" ;;
 esac
 
-if ! "${CMUX_BIN:-cmux}" notify --title "$title" --workspace "$CMUX_WORKSPACE_ID" >/dev/null 2>&1; then
-  echo "notify-slice-done: cmux notify 실패 (우회: DISABLE_SLICE_DONE_NOTIFY=1)" >&2
+if [ "$MUX_KIND" = "cmux" ]; then
+  if ! "${CMUX_BIN:-cmux}" notify --title "$title" --workspace "$CMUX_WORKSPACE_ID" >/dev/null 2>&1; then
+    echo "notify-slice-done: cmux notify 실패 (우회: DISABLE_SLICE_DONE_NOTIFY=1)" >&2
+  fi
+  self_ref_fallback="${CMUX_SURFACE_ID:-}"
+  ws_id="${CMUX_WORKSPACE_ID}"
+else
+  # orca 는 notify 명령이 없다 — 워크스페이스 카드 코멘트로 대체 (best-effort, 실패 무해).
+  "${ORCA_BIN:-orca}" worktree set --worktree active --comment "$title" --json >/dev/null 2>&1 || true
+  self_ref_fallback="${ORCA_TERMINAL_HANDLE:-}"
+  ws_id="${ORCA_WORKSPACE_ID}"
 fi
 
 if [ "$verdict" = "✅" ] || [ "$verdict" = "❌" ]; then
@@ -82,7 +100,7 @@ if [ "$verdict" = "✅" ] || [ "$verdict" = "❌" ]; then
     # 접미사 키: git 이면 branch, 비-git 이면 surface ref 폴백 (비-git 엔 branch 가 없다)
     marker_key=$(cbp_marker_key)
     marker="${marker_dir}/cbp-slice-done-${marker_key}"
-    printf '%s\n%s\n' "${CBP_SELF_PANE:-${CMUX_SURFACE_ID:-}}" "${CMUX_WORKSPACE_ID}" > "$marker" 2>/dev/null || true
+    printf '%s\n%s\n' "${CBP_SELF_PANE:-$self_ref_fallback}" "$ws_id" > "$marker" 2>/dev/null || true
     [ "${CBP_NOTIFY_DEBUG:-0}" = "1" ] && echo "notify-slice-done: marker=$marker" >&2
   else
     [ "${CBP_NOTIFY_DEBUG:-0}" = "1" ] && echo "notify-slice-done: marker dir 해석 실패" >&2

@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# dispatch-slice-pane.sh — implementor 슬라이스를 tmux/cmux pane/workspace 에서 실행하기 위한 spawner.
+# dispatch-slice-pane.sh — implementor 슬라이스를 tmux/cmux/orca pane/workspace 에서 실행하기 위한 spawner.
 #
 # 사용:
 #   dispatch-slice-pane.sh --slice=<kebab> --spec-file=.claude/specs/<kebab>.spec.md \
-#                          [--worktree=<path>] [--mode=tmux|cmux|pane|auto|subagent] \
+#                          [--worktree=<path>] [--mode=tmux|cmux|orca|pane|auto|subagent] \
 #                          [--model=<alias>] [--type=feat|fix|refactor|test|docs|chore]
 #
 # 권장 spec-file 위치: .claude/specs/<slug>.spec.md (kebab-case slug + .spec.md 접미사).
@@ -13,18 +13,19 @@
 #   tmux      — tmux pane dispatch (tmux-cli 또는 tmux-pane.sh wrapper)
 #   pane      — tmux 의 alias (기존 호환)
 #   cmux      — cmux workspace dispatch (cmux-pane.sh wrapper)
-#   auto      — detect-pane-env.sh 결과로 자동 선택 (tmux > cmux > error)
+#   orca      — orca terminal dispatch (orca-pane.sh wrapper)
+#   auto      — detect-pane-env.sh 결과로 자동 선택 (tmux > cmux > orca > error)
 #   subagent  — 안내 메시지만 출력 후 exit 0 (subagent 모드는 이 스크립트 불필요)
 #   (미지정)  — pane (tmux) 이 기본값 (기존 호환)
 #
 # 동작:
 #   1. driver 결정 (--mode 또는 detect_pane_env)
-#   2. wrapper 결정 (tmux: tmux-cli 또는 tmux-pane.sh / cmux: cmux-pane.sh)
+#   2. wrapper 결정 (tmux: tmux-cli 또는 tmux-pane.sh / cmux: cmux-pane.sh / orca: orca-pane.sh)
 #   3. git worktree 준비 (<type>/<kebab> 브랜치, 기본 경로 .worktrees/<kebab>)
 #   4. pane/workspace 띄움 (zsh) → cd <worktree> → 자식 명령 실행
 #   5. spec 파일 경로를 Read 지시 prompt 로 전송 (본문 inline 전송 금지)
 #   6. stdout 한 줄 JSON:
-#        일반:  {"pane":"...","worktree":"...","branch":"<type>/<kebab>","driver":"tmux|cmux"}
+#        일반:  {"pane":"...","worktree":"...","branch":"<type>/<kebab>","driver":"tmux|cmux|orca"}
 #        DRY:   {"driver":"...","wrapper":"...","worktree":"...","branch":"<type>/<kebab>"}
 #
 # 자식 명령 결정 우선순위 (build_child_cmd):
@@ -46,13 +47,20 @@
 #                                    기본값: bypassPermissions. DISPATCH_CHILD_CMD set 시 무시.
 #   DISPATCH_VERIFY=0               cmux 자식 기동 검증 전체 스킵 (기본: on). 기존 동작 보존 시 사용.
 #   DISPATCH_VERIFY_TRIES=<n>       claude TUI 기동 검증 최대 재시도 횟수 (기본: 3).
+#   ORCA_WORKTREE_MODE=0            DRIVER=orca 일 때 워크트리 카드 모드(orca 가 워크트리+자식
+#                                    터미널을 만듦) 를 끄고 기존 git worktree add 경로로 강제
+#                                    (기본: on). --worktree 인자를 직접 주면 이 모드는 자동 skip.
+#
+# ⚠️ 워크트리 카드 모드의 브랜치명은 <type>/<kebab> 규약을 못 지킨다(orca 가
+#   <git-username>/<name> 으로 강제, 슬래시도 뭉갠다) — 의도된 수용. 이 브랜치는 슬라이스
+#   작업 중에만 쓰고 버려지며, 최종 push 브랜치는 commit-advisor 규약을 그대로 따른다.
 
 set -uo pipefail
 
 usage() {
   cat >&2 <<'USAGE'
 dispatch-slice-pane.sh --slice=<kebab> --spec-file=.claude/specs/<kebab>.spec.md \
-                       [--worktree=<path>] [--mode=tmux|cmux|pane|auto|subagent] \
+                       [--worktree=<path>] [--mode=tmux|cmux|orca|pane|auto|subagent] \
                        [--model=<alias>] [--type=feat|fix|refactor|test|docs|chore]
 
 권장 spec-file 위치: .claude/specs/<slug>.spec.md (kebab-case + .spec.md).
@@ -60,7 +68,8 @@ dispatch-slice-pane.sh --slice=<kebab> --spec-file=.claude/specs/<kebab>.spec.md
 모드:
   tmux / pane  tmux pane dispatch (기본, 기존 호환)
   cmux         cmux workspace dispatch
-  auto         환경 자동 감지 (TMUX > CMUX > 에러)
+  orca         orca terminal dispatch
+  auto         환경 자동 감지 (TMUX > CMUX > ORCA > 에러)
   subagent     안내만 출력 후 exit 0 (plan-dev 기본 흐름에서 직접 호출 불필요)
 
 환경변수:
@@ -78,15 +87,16 @@ USAGE
 
 die() { echo "dispatch: $*" >&2; exit "${2:-1}"; }
 
-# cmux wrapper launch stdout 검증. 인자: pane_ref. stdout: 트림된 ref (성공 시), exit 1 (실패 시).
-# cmux-pane.sh launch 는 "surface:N" 또는 "workspace:N" 단일 토큰 한 줄을 stdout 으로 반환하는 계약.
-# 위반 시 fail-fast (silent tail -1 같은 recovery 는 다음 버그를 덮음).
-# tmux pane ref (session:window.pane 형식) 는 별도 분기에서 처리 — 이 함수는 cmux 전용.
+# cmux/orca wrapper launch stdout 검증. 인자: pane_ref. stdout: 트림된 ref (성공 시), exit 1 (실패 시).
+# cmux-pane.sh launch 는 "surface:N" 또는 "workspace:N", orca-pane.sh launch 는 "term_<uuid>"
+# 단일 토큰 한 줄을 stdout 으로 반환하는 계약. 위반 시 fail-fast (silent tail -1 같은 recovery 는
+# 다음 버그를 덮음). tmux pane ref (session:window.pane 형식) 는 별도 분기에서 처리 — 이 함수는
+# cmux/orca 전용.
 validate_pane_ref() {
   local pane="$1"
   pane=$(printf '%s' "$pane" | tr -d '\r\n')
   case "$pane" in
-    surface:*|workspace:*) printf '%s' "$pane"; return 0 ;;
+    surface:*|workspace:*|term_*) printf '%s' "$pane"; return 0 ;;
     *) return 1 ;;
   esac
 }
@@ -260,6 +270,53 @@ except Exception:
   return 0
 }
 
+# orca 워크트리 카드 모드 가능 여부 판정 — 현재 repo 가 orca 에 kind="git" 로 등록돼
+# 있는지만 확인한다(읽기 전용, 부수효과 없음 — DRY_RUN 에서도 안전하게 호출 가능).
+# 미등록/folder-kind/조회 실패는 전부 "불가"(1) — 폴백은 이 함수 호출부가 아니라
+# orca-pane.sh launch --worktree-mode 자신도 동일 판정을 반복해 최종 결정한다(이중 방어,
+# 이 함수는 DRY_RUN JSON 표시·git-worktree-add 분기용 사전 힌트일 뿐).
+# 반환: 0 = git-kind(가능) / 1 = 아니거나 확인 불가.
+_dispatch_orca_worktree_capable() {
+  local orca_bin="${ORCA_BIN:-orca}"
+  command -v "$orca_bin" >/dev/null 2>&1 || return 1
+
+  local cur
+  cur=$("$orca_bin" worktree current --json 2>/dev/null) || return 1
+  local repo_id
+  repo_id=$(printf '%s' "$cur" | python3 -c '
+import json, sys
+try:
+    d = json.load(sys.stdin)
+except Exception:
+    sys.exit(0)
+if not d.get("ok"):
+    sys.exit(0)
+rid = ((d.get("result") or {}).get("worktree") or {}).get("repoId")
+if rid:
+    print(rid)
+' 2>/dev/null)
+  [ -z "$repo_id" ] && return 1
+
+  local lst
+  lst=$("$orca_bin" repo list --json 2>/dev/null) || return 1
+  local kind
+  kind=$(printf '%s' "$lst" | REPO_ID="$repo_id" python3 -c '
+import json, os, sys
+try:
+    d = json.load(sys.stdin)
+except Exception:
+    sys.exit(0)
+if not d.get("ok"):
+    sys.exit(0)
+rid = os.environ.get("REPO_ID", "")
+for r in (d.get("result") or {}).get("repos") or []:
+    if r.get("id") == rid:
+        print(r.get("kind", ""))
+        break
+' 2>/dev/null)
+  [ "$kind" = "git" ]
+}
+
 # launch 시작 시 cmux edit-burst 카운터 리셋 (track-cmux-edit-burst hook 과 연동)
 _cmux_burst_reset() {
   [ -z "${CMUX_WORKSPACE_ID:-}" ] && return 0
@@ -303,6 +360,12 @@ main() {
       *)              die "unknown arg: $1" 2 ;;
     esac
   done
+
+  # orca 워크트리 카드 모드 자격: --worktree 를 인자로 직접 준 경우엔 그 경로를 존중하고
+  # orca 자동 워크트리 생성은 skip (아래 WORKTREE_MODE 계산에서 사용, 원본 인자 상태를
+  # 이후 비-git 폴백의 WORKTREE=$PWD 대입 전에 고정해둔다).
+  local _WORKTREE_ARG_GIVEN=0
+  [ -n "$WORKTREE" ] && _WORKTREE_ARG_GIVEN=1
 
   # --mode 결정: arg > env DISPATCH_DEFAULT_MODE > auto (환경 자동 감지)
   [ -z "$DRIVER_MODE" ] && DRIVER_MODE="${DISPATCH_DEFAULT_MODE:-auto}"
@@ -357,6 +420,9 @@ main() {
     cmux)
       DRIVER="cmux"
       ;;
+    orca)
+      DRIVER="orca"
+      ;;
     auto)
       # detect-pane-env.sh 로 환경 자동 감지
       local env_result
@@ -364,12 +430,13 @@ main() {
       case "$env_result" in
         tmux)    DRIVER="tmux" ;;
         cmux)    DRIVER="cmux" ;;
-        default) die "auto 감지: tmux/cmux 환경 아님 — --mode=subagent (plan-dev 기본) 또는 --mode=tmux/cmux 를 명시하세요" 2 ;;
+        orca)    DRIVER="orca" ;;
+        default) die "auto 감지: tmux/cmux/orca 환경 아님 — --mode=subagent (plan-dev 기본) 또는 --mode=tmux/cmux/orca 를 명시하세요" 2 ;;
         *)       die "auto 감지: 알 수 없는 결과 '$env_result'" 2 ;;
       esac
       ;;
     *)
-      die "알 수 없는 --mode: $DRIVER_MODE (tmux|cmux|pane|auto|subagent 중 하나)" 2
+      die "알 수 없는 --mode: $DRIVER_MODE (tmux|cmux|orca|pane|auto|subagent 중 하나)" 2
       ;;
   esac
 
@@ -395,6 +462,17 @@ main() {
     else
       die "cmux-pane.sh 미발견 — scripts/cmux-pane.sh 확인" 2
     fi
+  elif [ "$DRIVER" = "orca" ]; then
+    local orca_bin="${ORCA_BIN:-orca}"
+    # "echo" 는 테스트 mock — 존재 검사 skip. DRY_RUN 도 실제 spawn 없으니 skip.
+    if [ "${DISPATCH_DRY_RUN:-0}" != "1" ] && [ "$orca_bin" != "echo" ] && [ "$orca_bin" != "$( (command -v echo) 2>/dev/null || true)" ]; then
+      command -v "$orca_bin" > /dev/null 2>&1 || die "orca 미설치 — ORCA_BIN 경로 확인" 2
+    fi
+    if [ -x "$SCRIPT_DIR/orca-pane.sh" ]; then
+      WRAPPER="$SCRIPT_DIR/orca-pane.sh"
+    else
+      die "orca-pane.sh 미발견 — scripts/orca-pane.sh 확인" 2
+    fi
   fi
 
   # 비-git 판정은 DRY_RUN 출력보다 **먼저** — dry-run 이 실제 결정과 같은 값을 내야 한다.
@@ -411,13 +489,21 @@ main() {
     echo "  슬라이스가 같은 파일을 쓰면 충돌합니다. plan 의 Slice File Map 을 확인하세요." >&2
   fi
 
+  # orca 워크트리 카드 모드 결정 — DRY_RUN 표시와 실제 실행 분기가 같은 값을 봐야 하므로
+  # 여기서 한 번만 계산한다(읽기 전용 프로브, DRY_RUN 에서도 안전).
+  # --worktree 인자 직접 지정 / ORCA_WORKTREE_MODE=0 / DRIVER!=orca / repo kind!=git 이면 "git".
+  local WORKTREE_MODE="git"
+  if [ "$DRIVER" = "orca" ] && [ "$_WORKTREE_ARG_GIVEN" = "0" ] && [ "${ORCA_WORKTREE_MODE:-1}" != "0" ]; then
+    _dispatch_orca_worktree_capable && WORKTREE_MODE="orca"
+  fi
+
   # DRY_RUN: worktree 생성 없이 결정 JSON 만 출력
   if [ "${DISPATCH_DRY_RUN:-0}" = "1" ]; then
     local worktree_path="${WORKTREE:-.worktrees/$SLICE}"
     local trust_flag="true"
     [ "${SKIP_DISPATCH_TRUST:-0}" = "1" ] && trust_flag="false"
-    printf '{"driver":"%s","wrapper":"%s","worktree":"%s","branch":"%s/%s","trust_seeded":%s}\n' \
-      "$DRIVER" "$WRAPPER" "$worktree_path" "$BRANCH_TYPE" "$SLICE" "$trust_flag"
+    printf '{"driver":"%s","wrapper":"%s","worktree":"%s","branch":"%s/%s","trust_seeded":%s,"worktree_mode":"%s"}\n' \
+      "$DRIVER" "$WRAPPER" "$worktree_path" "$BRANCH_TYPE" "$SLICE" "$trust_flag" "$WORKTREE_MODE"
     exit 0
   fi
 
@@ -432,19 +518,42 @@ main() {
   # worktree 결정 / 생성 (비-git 판정은 위 DRY_RUN 앞에서 이미 끝났다)
   [ -z "$WORKTREE" ] && WORKTREE=".worktrees/$SLICE"
 
-  if [ "$_IS_GIT" = "1" ] && [ ! -d "$WORKTREE" ]; then
-    # 호환성: 기존 slice/<kebab> 브랜치가 있으면 그것을 재사용, 없으면 <type>/<kebab> 신규 생성
-    if git show-ref --verify --quiet "refs/heads/slice/$SLICE"; then
-      git worktree add "$WORKTREE" "slice/$SLICE" >&2 || die "worktree add 실패 (기존 slice/ 브랜치)"
-    elif git show-ref --verify --quiet "refs/heads/$BRANCH_TYPE/$SLICE"; then
-      git worktree add "$WORKTREE" "$BRANCH_TYPE/$SLICE" >&2 || die "worktree add 실패 (기존 branch)"
-    else
-      git worktree add -b "$BRANCH_TYPE/$SLICE" "$WORKTREE" HEAD >&2 || die "worktree add 실패 (신규 브랜치)"
+  local WORKTREE_ABS=""
+  local PANE PANE_RAW
+
+  # 워크트리 카드 모드 — orca 가 launch 안에서 워크트리 + 자식 터미널을 함께 만든다.
+  # 우리가 먼저 git worktree add 를 하면 같은 슬라이스에 워크트리가 2개 생기므로 생략한다.
+  if [ "$DRIVER" = "orca" ] && [ "$WORKTREE_MODE" = "orca" ]; then
+    local _base_ref
+    _base_ref=$(git rev-parse --abbrev-ref HEAD 2>/dev/null)
+    local _wt_err
+    _wt_err="$(mktemp)"
+    PANE_RAW=$("$WRAPPER" launch --worktree-mode "--name=$SLICE" "--base=$_base_ref" 2>"$_wt_err") \
+      || { local _e; _e=$(cat "$_wt_err"); rm -f "$_wt_err"; die "wrapper launch(--worktree-mode) 실패 — $_e"; }
+    local _wt_path
+    _wt_path=$(grep -m1 '^worktree=' "$_wt_err" | cut -d= -f2-)
+    rm -f "$_wt_err"
+    if [ -n "$_wt_path" ]; then
+      WORKTREE_ABS="$_wt_path"
+      WORKTREE="$WORKTREE_ABS"
     fi
+    # _wt_path 가 비었으면 wrapper 내부에서 탭 모드로 폴백된 것(레이스 등) — 아래
+    # 일반(git) 경로가 WORKTREE_ABS 를 채운다. PANE_RAW 는 이미 확보됐으니 재사용.
   fi
 
-  local WORKTREE_ABS
-  WORKTREE_ABS="$(cd "$WORKTREE" && pwd)"
+  if [ -z "$WORKTREE_ABS" ]; then
+    if [ "$_IS_GIT" = "1" ] && [ ! -d "$WORKTREE" ]; then
+      # 호환성: 기존 slice/<kebab> 브랜치가 있으면 그것을 재사용, 없으면 <type>/<kebab> 신규 생성
+      if git show-ref --verify --quiet "refs/heads/slice/$SLICE"; then
+        git worktree add "$WORKTREE" "slice/$SLICE" >&2 || die "worktree add 실패 (기존 slice/ 브랜치)"
+      elif git show-ref --verify --quiet "refs/heads/$BRANCH_TYPE/$SLICE"; then
+        git worktree add "$WORKTREE" "$BRANCH_TYPE/$SLICE" >&2 || die "worktree add 실패 (기존 branch)"
+      else
+        git worktree add -b "$BRANCH_TYPE/$SLICE" "$WORKTREE" HEAD >&2 || die "worktree add 실패 (신규 브랜치)"
+      fi
+    fi
+    WORKTREE_ABS="$(cd "$WORKTREE" && pwd)"
+  fi
 
   # worktree trust 자동 시딩 — cross-machine bypass 자동화 (trust 다이얼로그 회피)
   if [ "${SKIP_DISPATCH_TRUST:-0}" != "1" ]; then
@@ -458,15 +567,17 @@ main() {
   local CHILD_CMD
   CHILD_CMD=$(build_child_cmd "${DISPATCH_CHILD_CMD:-}" "interactive" "$MODEL" "${DISPATCH_DEFAULT_MODEL:-}" "${DISPATCH_PERMISSION_MODE:-}")
 
-  # pane/workspace 띄우기 — cmd 없이 빈 surface 생성, 이후 send 로 cd + 자식 명령 전달
+  # pane/workspace 띄우기 — 워크트리 카드 모드는 위에서 이미 launch 완료(PANE_RAW 확보).
+  # 그 외엔 cmd 없이 빈 surface 생성, 이후 send 로 cd + 자식 명령 전달
   # (launch cmd 인자 제거: nested zsh 회피. grid 경로는 send 시퀀스로 처리)
-  local PANE PANE_RAW
-  PANE_RAW=$("$WRAPPER" launch) || die "wrapper launch 실패"
-  # cmux: surface:N / workspace:N 단일 토큰 strict 계약.
+  if [ -z "${PANE_RAW:-}" ]; then
+    PANE_RAW=$("$WRAPPER" launch) || die "wrapper launch 실패"
+  fi
+  # cmux: surface:N / workspace:N, orca: term_<uuid> — 단일 토큰 strict 계약.
   # tmux: session:window.pane 형식 (driver 외부) — CRLF 트림 + 빈값 거부만.
-  if [ "$DRIVER" = "cmux" ]; then
+  if [ "$DRIVER" = "cmux" ] || [ "$DRIVER" = "orca" ]; then
     PANE=$(validate_pane_ref "$PANE_RAW") || \
-      die "wrapper launch 계약 위반: PANE='$PANE_RAW' (expected surface:N 또는 workspace:N 단일 토큰). wrapper 의 stdout 격리 확인."
+      die "wrapper launch 계약 위반: PANE='$PANE_RAW' (expected surface:N / workspace:N / term_<uuid> 단일 토큰). wrapper 의 stdout 격리 확인."
   else
     PANE=$(printf '%s' "$PANE_RAW" | tr -d '\r\n')
     [ -z "$PANE" ] && die "wrapper launch 실패: pane ref 가 비어있음"
@@ -485,9 +596,9 @@ main() {
   "$WRAPPER" send "$CHILD_CMD" --pane="$PANE" --delay=0.3 >/dev/null || die "send child 실패"
   "$WRAPPER" wait-idle --pane="$PANE" --idle=1 --timeout=15 >/dev/null 2>&1 || true
 
-  # ── cmux 자식 기동 검증 (DISPATCH_VERIFY != 0, DRIVER=cmux 일 때만) ──
+  # ── cmux/orca 자식 기동 검증 (DISPATCH_VERIFY != 0, DRIVER=cmux|orca 일 때만) ──
   local VERIFY_TRIES="${DISPATCH_VERIFY_TRIES:-3}"
-  if [ "$DRIVER" = "cmux" ] && [ "${DISPATCH_VERIFY:-1}" != "0" ]; then
+  if { [ "$DRIVER" = "cmux" ] || [ "$DRIVER" = "orca" ]; } && [ "${DISPATCH_VERIFY:-1}" != "0" ]; then
     local tui_ok=0
     local vtry=1
     while [ "$vtry" -le "$VERIFY_TRIES" ]; do
@@ -508,8 +619,8 @@ main() {
     if [ "$tui_ok" -eq 0 ]; then
       # 검증 실패 — surface 정리 best-effort 후 명확 실패
       "$WRAPPER" kill --pane="$PANE" >/dev/null 2>&1 || true
-      echo "dispatch: cmux dispatch 자식 기동/생존 검증 실패 (pane=$PANE, tries=$VERIFY_TRIES)" >&2
-      echo "dispatch: cmux PTY 불안정 가능. subagent 모드로 폴백 권장:" >&2
+      echo "dispatch: $DRIVER dispatch 자식 기동/생존 검증 실패 (pane=$PANE, tries=$VERIFY_TRIES)" >&2
+      echo "dispatch: $DRIVER PTY 불안정 가능. subagent 모드로 폴백 권장:" >&2
       echo "  plan-dev Phase 2 의 Agent(subagent_type=implementor) 호출 또는" >&2
       echo "  dispatch-slice-pane.sh --mode=subagent." >&2
       echo "dispatch: worktree=$WORKTREE_ABS 는 부모가 정리하세요 (git worktree remove --force)." >&2
@@ -522,15 +633,15 @@ main() {
   SPEC_FILE_ABS="$(cd "$(dirname "$SPEC_FILE")" && pwd)/$(basename "$SPEC_FILE")"
   local SPEC_PROMPT
   SPEC_PROMPT=$(build_spec_prompt "$SPEC_FILE_ABS" "$SLICE")
-  if [ "$DRIVER" = "cmux" ]; then
+  if [ "$DRIVER" = "cmux" ] || [ "$DRIVER" = "orca" ]; then
     "$WRAPPER" send "$SPEC_PROMPT" --pane="$PANE" --delay=0.5 --enter-count=2 >/dev/null || die "send spec-prompt 실패"
   else
     "$WRAPPER" send "$SPEC_PROMPT" --pane="$PANE" --delay=0.5 >/dev/null || die "send spec-prompt 실패"
   fi
   "$WRAPPER" wait-idle --pane="$PANE" --idle=2 --timeout=8 >/dev/null 2>&1 || true
 
-  # ── SPEC 후 surface 생존 확인 (cmux + verify on) ──
-  if [ "$DRIVER" = "cmux" ] && [ "${DISPATCH_VERIFY:-1}" != "0" ]; then
+  # ── SPEC 후 surface 생존 확인 (cmux/orca + verify on) ──
+  if { [ "$DRIVER" = "cmux" ] || [ "$DRIVER" = "orca" ]; } && [ "${DISPATCH_VERIFY:-1}" != "0" ]; then
     local post_cap
     post_cap=$("$WRAPPER" capture --pane="$PANE" 2>/dev/null) || {
       echo "dispatch: spec 전송 후 surface 사망 감지 (pane=$PANE)" >&2
@@ -550,8 +661,11 @@ main() {
   if [ "${SKIP_SPAWN_LEDGER:-0}" != "1" ]; then
     _reaper="$(dirname "${BASH_SOURCE[0]}")/reap-agents.sh"
     if [ -x "$_reaper" ]; then
+      _ledger_ws=""
+      [ "$DRIVER" = "cmux" ] && _ledger_ws="${CMUX_WORKSPACE_ID:-}"
+      [ "$DRIVER" = "orca" ] && _ledger_ws="${ORCA_WORKSPACE_ID:-}"
       "$_reaper" record --kind="$DRIVER" --ref="$PANE" \
-        ${CMUX_WORKSPACE_ID:+--ws="$CMUX_WORKSPACE_ID"} --label="$SLICE" >/dev/null 2>&1 || true
+        ${_ledger_ws:+--ws="$_ledger_ws"} --label="$SLICE" >/dev/null 2>&1 || true
     fi
   fi
 

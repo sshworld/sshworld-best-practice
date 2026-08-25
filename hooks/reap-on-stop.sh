@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 # Stop hook (부모 세션 전용) — turn 경계마다 done-marker(cbp-slice-done-*) 를 소비해
-# 완료된 cmux 자식 surface 를 자동 reap. notify-slice-done 이 남긴 신호를 부모가
-# 감시 루프 없이도 소비하게 한다.
+# 완료된 cmux/orca 자식 surface·terminal 을 자동 reap. notify-slice-done 이 남긴 신호를
+# 부모가 감시 루프 없이도 소비하게 한다.
 #
 # marker 계약 (fast-path 와 공유 — 경로/내용 변경 금지):
 #   경로: <git-common-dir>/cbp-slice-done-<branch sanitized: / → _>
-#   line1: 자식 $CMUX_SURFACE_ID (빈 값이면 skip)
-#   line2: 자식 $CMUX_WORKSPACE_ID (있으면 자기 ws 와 다를 때 skip — 타 workspace 오사용 방지,
-#          없으면(구버전 1줄 marker) 기존 동작 유지)
+#   line1: 자식 $CMUX_SURFACE_ID 또는 $ORCA_TERMINAL_HANDLE (빈 값이면 skip)
+#   line2: 자식 $CMUX_WORKSPACE_ID 또는 $ORCA_WORKSPACE_ID (있으면 자기 ws 와 다를 때
+#          skip — 타 workspace 오사용 방지, 없으면(구버전 1줄 marker) 기존 동작 유지)
 #
 # 우회: SKIP_REAP_ON_STOP=1 (1회) / DISABLE_REAP_ON_STOP=1 (영구)
 # 어떤 실패도 세션을 막지 않음 — 모든 경로 exit 0.
@@ -16,7 +16,18 @@ set -u
 [ "${DISABLE_REAP_ON_STOP:-0}" = "1" ] && exit 0
 [ "${SKIP_REAP_ON_STOP:-0}" = "1" ] && exit 0
 
-[ -z "${CMUX_WORKSPACE_ID:-}" ] && exit 0
+# 멀티플렉서 종류 판정 (직접 신호만 — 매 turn 마다 발화하는 Stop hook 이라 프로브 회피).
+if [ -n "${CMUX_WORKSPACE_ID:-}" ]; then
+  MUX_KIND="cmux"
+  CUR_WS="${CMUX_WORKSPACE_ID}"
+  SELF_REF="${CMUX_SURFACE_ID:-}"
+elif [ -n "${ORCA_WORKSPACE_ID:-}" ]; then
+  MUX_KIND="orca"
+  CUR_WS="${ORCA_WORKSPACE_ID}"
+  SELF_REF="${ORCA_TERMINAL_HANDLE:-}"
+else
+  exit 0
+fi
 
 # marker 경로는 writer(hooks/notify-slice-done.sh) 와 **같은 리졸버**로 구한다.
 # 예전엔 여기서 독립 계산했고 비-git 이면 exit 0 이라, writer 가 남긴 marker 를
@@ -42,7 +53,12 @@ markers=("$COMMON_ABS"/cbp-slice-done-*)
 shopt -u nullglob
 [ "${#markers[@]}" -eq 0 ] && exit 0
 
-PANE_BIN="${CBP_PANE_BIN:-$(dirname "${BASH_SOURCE[0]}")/../scripts/cmux-pane.sh}"
+if [ "$MUX_KIND" = "orca" ]; then
+  DEFAULT_PANE_BIN="$(dirname "${BASH_SOURCE[0]}")/../scripts/orca-pane.sh"
+else
+  DEFAULT_PANE_BIN="$(dirname "${BASH_SOURCE[0]}")/../scripts/cmux-pane.sh"
+fi
+PANE_BIN="${CBP_PANE_BIN:-$DEFAULT_PANE_BIN}"
 
 reaped_list=()
 pending_list=()
@@ -56,11 +72,11 @@ for marker in "${markers[@]}"; do
   [ -z "$ref" ] && continue
 
   ws=$(sed -n '2p' "$marker" 2>/dev/null)
-  if [ -n "$ws" ] && [ "$ws" != "${CMUX_WORKSPACE_ID:-}" ]; then
+  if [ -n "$ws" ] && [ "$ws" != "$CUR_WS" ]; then
     continue
   fi
 
-  [ "$ref" = "${CMUX_SURFACE_ID:-}" ] && continue
+  [ "$ref" = "$SELF_REF" ] && continue
 
   count=$((count + 1))
 

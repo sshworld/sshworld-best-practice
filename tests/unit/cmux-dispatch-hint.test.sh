@@ -19,7 +19,11 @@ t_cmux_exit0() {
 
 t_non_cmux_no_output() {
   local out ec
-  out=$(env -u CMUX_WORKSPACE_ID bash "$HOOK" 2>/dev/null); ec=$?
+  # 개발 머신이 실제 Orca 세션이라 CMUX_WORKSPACE_ID 만 지우면 ORCA_* 앰비언트로 새
+  # kind=orca 배너가 나온다 — 진짜 "비-mux" 를 보려면 같이 지운다.
+  out=$(env -u CMUX_WORKSPACE_ID -u CMUX_SURFACE_ID -u CMUX_SOCKET -u CMUX_SOCKET_PASSWORD \
+    -u ORCA_TERMINAL_HANDLE -u ORCA_WORKSPACE_ID -u TERM_PROGRAM -u TMUX \
+    bash "$HOOK" 2>/dev/null); ec=$?
   [ "$ec" = "0" ] && [ -z "$out" ]
 }
 

@@ -26,7 +26,9 @@ echo "tmpdir=$tmpdir"
 
 echo "spec body" > "$tmpdir/spec.md"
 
-# 공통 호출 헬퍼 — DRY_RUN, env 격리 (TMUX/CMUX_* 모두 unset 후 필요 시 set)
+# 공통 호출 헬퍼 — DRY_RUN, env 격리 (TMUX/CMUX_*/ORCA_*/TERM_PROGRAM 모두 unset 후 필요 시 set)
+# ORCA_BIN 은 실제 orca 설치 머신에서 orca status probe 가 성공해 auto 감지가 'orca' 로
+# 새는 것(오탐)을 막기 위해 존재하지 않는 경로로 고정한다 (CMUX_BIN=/bin/false 와 동일 목적).
 run() {
   # $1 = "extra env"  $2 = "extra args"
   local extra_env="$1"
@@ -34,7 +36,9 @@ run() {
   cd "$tmpdir"
   # shellcheck disable=SC2086
   env -u TMUX -u CMUX_WORKSPACE_ID -u CMUX_SURFACE_ID -u CMUX_SOCKET -u CMUX_SOCKET_PASSWORD \
+      -u ORCA_TERMINAL_HANDLE -u ORCA_WORKSPACE_ID -u TERM_PROGRAM \
       CMUX_BIN=/bin/false \
+      ORCA_BIN=/nonexistent/orca-bin-not-installed \
       DISPATCH_DRY_RUN=1 \
       $extra_env \
       "$DISPATCH" \
@@ -62,8 +66,11 @@ echo "  driver=$drv OK"
 step C "디폴트 + 환경 모두 unset (default) → exit 2 (die)"
 out=$(run "" "" 2>&1) && ec=0 || ec=$?
 [ "$ec" = 2 ] || fail "expected exit 2 (default 환경 die), got $ec (out=$out)"
-echo "$out" | grep -q "auto 감지" || fail "expected 'auto 감지' in stderr, got: $out"
-echo "  exit=2 + 'auto 감지' OK"
+# "auto 감지" 만으로는 catch-all(알 수 없는 결과) 분기도 매치되어 오탐을 놓친다.
+# "환경 아님" 은 진짜 "멀티플렉서 아님" 분기에만 있는 고유 문구.
+echo "$out" | grep -q "환경 아님" || fail "expected '환경 아님' (tmux/cmux/orca 미감지 die) in stderr, got: $out"
+echo "$out" | grep -q "알 수 없는 결과" && fail "catch-all(알 수 없는 결과) 분기로 샌 것으로 보임 — orca 오탐 가능성: $out"
+echo "  exit=2 + '환경 아님' OK"
 
 step D "--mode=tmux 명시 → driver=tmux (env 무시)"
 out=$(run "CMUX_WORKSPACE_ID=ws-1" "--mode=tmux")

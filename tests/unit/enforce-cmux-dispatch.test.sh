@@ -29,10 +29,14 @@ t_b_ok_env_allows() {
   [ "$?" = "0" ]
 }
 
-# (c) CMUX_WORKSPACE_ID unset + direct-edit plan → exit 0 (non-cmux)
+# (c) 멀티플렉서 신호 전부 unset + direct-edit plan → exit 0 (non-mux)
+# 개발 머신이 실제 Orca 세션이라 CMUX_WORKSPACE_ID 만 지우면 ORCA_* 앰비언트로
+# kind=orca 로 새서 차단되어 버린다 — 진짜 "비-mux" 를 보려면 같이 지운다.
 t_c_non_cmux_allows() {
   local p; p=$(mk_payload "ExitPlanMode" "$DIRECT_EDIT_PLAN")
-  env -u CMUX_WORKSPACE_ID bash "$HOOK" <<<"$p"
+  env -u CMUX_WORKSPACE_ID -u CMUX_SURFACE_ID -u CMUX_SOCKET -u CMUX_SOCKET_PASSWORD \
+    -u ORCA_TERMINAL_HANDLE -u ORCA_WORKSPACE_ID -u TERM_PROGRAM \
+    bash "$HOOK" <<<"$p"
   [ "$?" = "0" ]
 }
 

@@ -94,9 +94,10 @@ ls "$MDIR7"/cbp-slice-done-* >/dev/null 2>&1 || fail "일반 체크아웃에서 
 step 8 "비-cmux 에서는 기록하지 않는다 — 게이트 1 유지"
 MDIR8="$TMP/md8"; mkdir -p "$MDIR8"
 T=$(mk_transcript nocmux)
-# ⚠️ 테스트가 cmux 안에서 돌면 CMUX_WORKSPACE_ID 가 상속된다 — 명시적으로 지운다.
-(cd "$GITREPO" && mk_payload "$T" | env -u CMUX_WORKSPACE_ID CBP_MARKER_DIR="$MDIR8" \
-  CMUX_BIN=/usr/bin/true bash "$NOTIFY" >/dev/null 2>&1)
+# ⚠️ 테스트가 cmux/orca 안에서 돌면 CMUX_WORKSPACE_ID/ORCA_* 가 상속된다 — 명시적으로 지운다.
+# (개발 머신은 실제 Orca 세션이라 ORCA_* 를 안 지우면 실제 `orca worktree set` 이 나간다.)
+(cd "$GITREPO" && mk_payload "$T" | env -u CMUX_WORKSPACE_ID -u ORCA_WORKSPACE_ID -u ORCA_TERMINAL_HANDLE -u TERM_PROGRAM \
+  CBP_MARKER_DIR="$MDIR8" CMUX_BIN=/usr/bin/true bash "$NOTIFY" >/dev/null 2>&1)
 ls "$MDIR8"/cbp-slice-done-* >/dev/null 2>&1 && fail "비-cmux 인데 marker 가 생김"
 
 step 9 "writer 가 쓴 marker 를 reap-on-stop 이 같은 경로에서 찾는다"

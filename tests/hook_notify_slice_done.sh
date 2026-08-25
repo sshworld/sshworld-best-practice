@@ -180,7 +180,10 @@ t4_parent_repo_notifies() {
   [ "$rc" -eq 0 ] && [ -f "$tmpdir/cmux.calls" ]
 }
 
-# T5: CMUX_WORKSPACE_ID unset → 무동작
+# T5: 멀티플렉서 신호 전부 unset → 무동작
+# (개발 머신이 실제 Orca 세션이라 CMUX_WORKSPACE_ID 만 unset 하면 ORCA_* 앰비언트로
+# kind=orca 로 새는데, 그러면 실제 `orca worktree set` 이 라이브 워크스페이스에 나간다 —
+# 반드시 ORCA_*/TERM_PROGRAM 까지 같이 scrub.)
 t5_no_cmux_workspace_noop() {
   local pair parent wt tmpdir transcript json_file cmux_bin rc=0
   pair=$(setup_repo_with_worktree)
@@ -192,7 +195,8 @@ t5_no_cmux_workspace_noop() {
   json_file="$tmpdir/stdin.json"
   printf '{"transcript_path":"%s"}\n' "$transcript" > "$json_file"
 
-  (cd "$wt" && unset CMUX_WORKSPACE_ID; CMUX_BIN="$cmux_bin" CMUX_SURFACE_ID="surf1" \
+  (cd "$wt" && env -u CMUX_WORKSPACE_ID -u ORCA_WORKSPACE_ID -u ORCA_TERMINAL_HANDLE -u TERM_PROGRAM \
+    CMUX_BIN="$cmux_bin" CMUX_SURFACE_ID="surf1" \
     "$HOOK" < "$json_file" >/dev/null 2>&1)
   rc=$?
 

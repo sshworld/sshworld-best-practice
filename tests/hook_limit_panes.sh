@@ -9,6 +9,10 @@ HOOK="$REPO/hooks/limit-child-panes.sh"
 step() { echo "[$1] $2"; }
 fail() { echo "❌ FAIL: $1" >&2; exit 1; }
 
+# hook 이 이제 orca 카운트도 시도한다 — 개발 머신엔 실 orca 가 PATH 에 있으므로
+# 실측 호출을 피하려 존재하지 않는 경로로 강제(= "orca 미가용" 분기, count=0).
+export ORCA_BIN="/nonexistent-orca-binary-for-test"
+
 [ -x "$HOOK" ] || fail "hook not executable"
 
 # PreToolUse Bash hook 은 stdin 으로 JSON 을 받는다.

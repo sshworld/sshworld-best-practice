@@ -2,8 +2,16 @@
 # cmux-pane_notify.sh — notify / set-status subcommand 검증
 #
 # 실제 cmux 호출 없음 — CMUX_BIN=echo stub 또는 PROGRESS_DRY_RUN=1.
+#
+# ⚠️ 이 스위트가 "cmux 환경" 을 성립시키는 유일한 근거는 CMUX_BIN 스텁의 ping 성공이다
+# (cmux-pane.sh 의 _skip_if_non_cmux 가 detect-pane-env.sh 결과 != cmux 면 통째로 exit 0).
+# detect-pane-env 는 orca 주입 변수를 cmux ping 보다 **앞서** 검사하므로, 개발 머신이
+# 실제 Orca 세션이면 주변 ORCA_*/TERM_PROGRAM 이 먼저 잡혀 detect 가 orca 를 반환하고
+# 모든 케이스가 빈 출력으로 무너진다. 스위트 시작 시 명시적으로 걷어낸다.
 
 set -uo pipefail
+
+unset ORCA_TERMINAL_HANDLE ORCA_WORKSPACE_ID ORCA_WORKTREE_ID ORCA_PANE_KEY ORCA_TAB_ID TERM_PROGRAM 2>/dev/null || true
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SCRIPT="$REPO/scripts/cmux-pane.sh"

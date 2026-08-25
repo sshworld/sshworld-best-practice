@@ -22,10 +22,13 @@ run() {
 
 [ -x "$HOOK" ] || { echo "hook not executable: $HOOK" >&2; exit 1; }
 
-# T1: CMUX_WORKSPACE_ID unset → stdout empty, exit 0
+# T1: 멀티플렉서 신호 전부 unset → stdout empty, exit 0
+# (개발 머신이 실제 Orca 세션이라 ORCA_* 앰비언트 env 가 항상 존재 — 반드시 같이 scrub)
 t1_unset_no_output() {
   local out rc=0
-  out=$(unset CMUX_WORKSPACE_ID 2>/dev/null; "$HOOK" 2>/dev/null) || rc=$?
+  out=$(env -u CMUX_WORKSPACE_ID -u CMUX_SURFACE_ID -u CMUX_SOCKET -u CMUX_SOCKET_PASSWORD \
+    -u ORCA_TERMINAL_HANDLE -u ORCA_WORKSPACE_ID -u TERM_PROGRAM -u TMUX \
+    "$HOOK" 2>/dev/null) || rc=$?
   [ "$rc" -eq 0 ] && [ -z "$out" ]
 }
 
