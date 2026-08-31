@@ -342,8 +342,12 @@ for r in (d.get("result") or {}).get("repos") or []:
   fi
 
   local wt_name="${name:-$(date +%s)-$$}"
+  # ⚠️ --workspace-status 를 여기 넣지 말 것. `worktree create` 에 없는 플래그이고
+  # (`worktree set` 전용) 넣으면 orca 가 `Unknown flag --workspace-status for command:
+  # worktree create` 로 죽어 dispatch 전체가 실패한다. 버전 문제가 아니라 처음부터 없었다.
+  # 카드 상태는 create 가 이미 in-progress 로 만들어 주므로 지정할 필요도 없다 (실측).
   local create_args=(worktree create --repo "id:$repo_id" --name "$wt_name" \
-    --parent-worktree active --setup skip --comment "$wt_name" --workspace-status in-progress)
+    --parent-worktree active --setup skip --comment "$wt_name")
   [ -n "$base" ] && create_args+=(--base-branch "$base")
 
   if ! _orca_run "${create_args[@]}"; then

@@ -35,6 +35,36 @@ fi
 
 group="${1:-}"; action="${2:-}"
 
+# 실제 orca CLI 의 미지-플래그 거부를 흉내낸다.
+# 목이 아무 플래그나 받아주면 "실재하지 않는 플래그" 계열 버그를 영영 못 잡는다 —
+# 실제로 `worktree create --workspace-status` (worktree set 전용 플래그)가 이 방식으로
+# 계약 테스트를 전부 통과한 뒤 라이브에서 `Unknown flag` 로 죽었다.
+# 서브커맨드별 허용 플래그는 실제 `orca <sub> --help` 의 Usage 줄에서 옮겨온 것.
+_allowed=""
+case "$group $action" in
+  "worktree create") _allowed="--repo --name --project --host --project-host-setup --agent --prompt --setup --base-branch --issue --linear-issue --comment --parent-worktree --no-parent --run-hooks --activate --json" ;;
+  "worktree set")    _allowed="--worktree --display-name --issue --linear-issue --comment --workspace-status --parent-worktree --no-parent --json" ;;
+  "worktree current"|"worktree list") _allowed="--repo --limit --json" ;;
+  "terminal create") _allowed="--worktree --title --command --focus --json" ;;
+  "terminal send")   _allowed="--terminal --text --enter --interrupt --json" ;;
+  "terminal read")   _allowed="--terminal --cursor --limit --json" ;;
+  "terminal wait")   _allowed="--for --terminal --timeout-ms --json" ;;
+  "terminal show"|"terminal close") _allowed="--terminal --tab --json" ;;
+  "terminal list")   _allowed="--worktree --limit --json" ;;
+  "repo list"|"repo add") _allowed="--path --json" ;;
+esac
+if [ -n "$_allowed" ]; then
+  for _a in "$@"; do
+    case "$_a" in
+      --*)
+        case " $_allowed " in
+          *" $_a "*) ;;
+          *) printf '{"id":"local","ok":false,"error":{"code":"invalid_argument","message":"Unknown flag %s for command: %s %s"}}\n' "$_a" "$group" "$action"; exit 0 ;;
+        esac ;;
+    esac
+  done
+fi
+
 case "$group $action" in
   "worktree current")
     printf '{"id":"1","ok":true,"result":{"worktree":{"repoId":"repo1","path":"/parent","id":"repo1::/parent"}}}\n'
@@ -317,5 +347,38 @@ grep -q '^repo add' "$argslog12" && fail "미등록 repo 인데 repo add 가 호
 echo "ok: 미등록 repo → 탭 폴백, repo add 미호출 확인"
 
 # ============================================================================
+step 13 "worktree create 에 실재하지 않는 플래그를 보내지 않는다 (Unknown flag 회귀 가드)"
+
+# 2026-08-31 실측 회귀: --workspace-status 는 `worktree set` 전용인데 `worktree create` 에
+# 붙어 있었다. 가짜 orca 가 아무 플래그나 받아줘 계약 테스트 12개가 전부 통과했고,
+# 실제 orca 에서만 `Unknown flag --workspace-status for command: worktree create` 로 죽었다.
+# 이제 목이 실제 CLI 처럼 미지 플래그를 거부하므로, 잘못된 플래그가 다시 들어오면
+# worktree create 가 ok:false 를 반환해 launch 가 비0 으로 끝난다.
+d13="$TMP/c13"; mkdir -p "$d13"
+orca13=$(make_fake_orca "$d13")
+argslog13="$d13/args.log"; : > "$argslog13"
+set +e
+out13=$(scrub_env ORCA_BIN="$orca13" ORCA_FAKE_ARGS_LOG="$argslog13" \
+  ORCA_FAKE_REPO_KIND=git \
+  "$WRAPPER" launch --worktree-mode --name=slice-flag 2>"$d13/err")
+rc13=$?
+set -e
+[ "$rc13" -eq 0 ] || fail "정상 플래그만 쓰는데 launch 가 실패했다 rc=$rc13 stderr=$(cat "$d13/err" 2>/dev/null)"
+[ "${out13#term_}" != "$out13" ] || fail "stdout 이 term_* 가 아님: '$out13'"
+
+# 실제로 보낸 create 인자에 --workspace-status 가 없어야 한다 (원인 자체를 고정)
+create_line=$(grep '^worktree create' "$argslog13" | head -1)
+case "$create_line" in
+  *--workspace-status*) fail "worktree create 에 --workspace-status 가 다시 들어갔다: $create_line" ;;
+esac
+# 목이 실제로 미지 플래그를 거부하는지 (가드 자체가 살아있는지) 확인
+probe=$("$orca13" worktree create --repo id:x --bogus-flag v --json 2>/dev/null)
+case "$probe" in
+  *"Unknown flag --bogus-flag"*) ;;
+  *) fail "가짜 orca 의 미지-플래그 거부가 동작하지 않는다 — 이 가드는 무의미해진다: $probe" ;;
+esac
+echo "ok: create 인자에 미지 플래그 없음 + 목의 거부 가드 동작 확인"
+
+# ============================================================================
 echo ""
-echo "✅ orca_worktree_mode: 12개 케이스 모두 PASS"
+echo "✅ orca_worktree_mode: 13개 케이스 모두 PASS"
