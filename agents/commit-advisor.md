@@ -38,9 +38,13 @@ model: haiku
    - **판별 1**: "고치기 전 잘못된 동작(버그)이 있었나?" 예→`fix`, 아니오→다음. **판별 2**: "관찰 가능한 동작이 바뀌나?" 예(추가)→`feat`, 아니오→`refactor`.
 3. 추천 출력 (한글 메시지):
    - 브랜치명: `<branch-prefix>/<kebab-case-요약>` (feat→`feature/`, 그 외 type 그대로). 예: `feature/user-signup`, `fix/auth-token`.
-   - 커밋: `<type>: <한글 한 문장>` — **scope 쓰지 말 것** (괄호 scope 금지). 항상 `type: 설명` 형식.
+   - 커밋: `<type>: <한글 명사형 한 줄>` — **scope 쓰지 말 것** (괄호 scope 금지). 항상 `type: 설명` 형식.
      - 예: `feat: 이메일 인증 기반 회원가입 추가`
      - ❌ 금지: `feat(auth): ...` (scope 안 씀)
+   - **개조식** — 제목은 명사형 종결(`~추가`, `~제거`, `~복구`), 서술형 문장 금지(`~했다`, `~하도록 바꿨다`).
+   - 본문은 **필요할 때만**. 넣으면 불릿 **3~5줄 상한**, 한 줄 = 한 사실, 명사형 종결.
+     이유는 짧은 한 절로. 경위·재발방지 서사·실측 과정은 **설계 문서와 PR 본문**이 담당 —
+     커밋에 중복시키지 않는다. 본문이 5줄을 넘으면 그건 커밋 메시지가 아니라 설계 문서감이다.
 
 ## 출력 예시
 
@@ -56,11 +60,30 @@ Branch: refactor/auth-service
 DOC_IMPACT: none (내부 구조 정리, 외부 인터페이스 동일)
 Commit cmd:
   DOC_IMPACT=none git commit -m "refactor: AuthService 의존성 정리"
+
+# 본문이 필요한 경우 — 개조식 불릿, 3~5줄 상한:
+  DOC_IMPACT=none git commit -m "fix: worktree create 의 --workspace-status 제거
+
+- worktree set 전용 플래그 — create 엔 미존재, Unknown flag 로 dispatch 실패
+- create 가 이미 in-progress 로 생성 → 플래그 불필요
+- mock 이 미지 플래그 거부하도록 보강 (계약 테스트가 못 잡던 원인)"
 ```
+
+❌ 금지 형태 — 커밋 메시지에 서사를 담는 것:
+
+```
+fix: worktree create 에서 실재하지 않는 --workspace-status 제거
+
+라이브에서 orca 워크트리 카드 모드 dispatch 가 죽었다: ...
+버전 드리프트가 아니라 처음부터 없던 플래그다 — ...  (20줄 산문 계속)
+```
+
+이 내용은 설계 문서 `## 6. 결과` 와 PR 본문에 이미 있다. 커밋은 결론만.
 
 ## 규칙
 
-- 한글 한 문장, 마침표 없음.
+- 한글 명사형 한 줄, 마침표 없음. 서술형 문장(`~했다`) 금지 — 개조식.
+- 본문 불릿 3~5줄 상한. 초과하면 설계 문서/PR 로 옮기고 커밋엔 결론만 남긴다.
 - 변경 범위가 여러 type 섞이면 가장 큰 비중으로 분류 + 분리 커밋 권고.
 - 토큰 / 비밀번호 / `.env` 등 민감 파일 staged → 경고 후 중단.
 

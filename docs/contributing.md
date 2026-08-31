@@ -40,7 +40,7 @@
 | `agents/implementor.md` | TDD Red→Green→Refactor. subagent / tmux pane 모드 양쪽 지원. |
 | `agents/verifier.md` | Read-only 빌드/테스트. 코드 수정 안 함. |
 | `agents/reviewer.md` | 치명적 vs 제안 분류. 직접 수정 안 함. |
-| `agents/commit-advisor.md` | 한글 Conventional Commit + DOC 영향 평가 + 히스토리 위생/squash 추천. 실제 commit 안 함. |
+| `agents/commit-advisor.md` | 한글 Conventional Commit(**개조식** — 명사형 제목, 본문 불릿 3~5줄 상한) + DOC 영향 평가 + 히스토리 위생/squash 추천. 실제 commit 안 함. 경위·재발방지 서사는 설계 문서/PR 담당. |
 | `.claude/workflows/*.mjs` | dynamic **Workflow** 툴용 reference 스크립트 (plan-review-panel / slice-pipeline / codebase-audit / `vuln-scan-pipeline`(defending-code-reference-harness find→grade→judge→report 정적분석 재현, 코드 실행 X)). plan-dev 의 A(Plan/Review judge·적대 panel) / B(opt-in workflow 실행모드) / C(대규모 audit) 통합 템플릿. `Workflow({scriptPath})` 또는 inline `script:` paste. `export const meta` + top-level await/return → 런타임이 async fn wrap (raw `node --check` 불가, `tests/workflow_integration_lint.sh` 가 export-strip+wrap 후 syntax 검증). cmux surface 아님 — `/workflows` 트리 표현, cmux 시각화와 상호배타. **이동 안 함 — Workflow 툴 reference 로 .claude/ 유지.** |
 | `skills/fork/SKILL.md` | 자식 컨텍스트로 작업 위임, 요약만 반환. 이중 용도(격리 실행 / Phase 6 클로저). |
 | `skills/tmux-orchestrate/SKILL.md` | 부모-자식 Claude tmux pane 협업 패턴 가이드. |
